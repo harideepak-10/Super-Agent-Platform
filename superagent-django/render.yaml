@@ -1,0 +1,64 @@
+services:
+  # ── Django Web Server ─────────────────────────────────────────────────────
+  - type: web
+    name: krypsos-api
+    runtime: python
+    rootDir: superagent-django
+    buildCommand: pip install -r requirements/production.txt && python manage.py collectstatic --noinput
+    startCommand: gunicorn superagent.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /api/v1/auth/health/
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: superagent.settings.production
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: SECRET_KEY
+        sync: false          # set manually in Render dashboard
+      - key: ALLOWED_HOSTS
+        sync: false          # e.g. krypsos-api.onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: krypsos-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: krypsos-redis
+          type: redis
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+
+  # ── Celery Worker ─────────────────────────────────────────────────────────
+  - type: worker
+    name: krypsos-worker
+    runtime: python
+    rootDir: superagent-django
+    buildCommand: pip install -r requirements/production.txt
+    startCommand: celery -A superagent worker --loglevel=info --concurrency 2
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: superagent.settings.production
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: krypsos-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: krypsos-redis
+          type: redis
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+
+databases:
+  # ── Postgres ──────────────────────────────────────────────────────────────
+  - name: krypsos-db
+    databaseName: krypsos
+    user: krypsos
+
+# Note: Redis on Render requires a paid plan (starts at $10/mo)
+# Free alternative: use Upstash Redis (upstash.com) and paste the URL manually
