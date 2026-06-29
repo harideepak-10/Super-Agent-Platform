@@ -1,0 +1,22 @@
+# Core agent dependencies
+groq
+python-dotenv
+
+# Gmail API
+google-auth
+google-auth-oauthlib
+google-api-python-client
+
+# REST API
+fastapi
+uvicorn[standard]
+python-multipart
+
+# JWT authentication
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Testing
+pytest
+pytest-asyncio
+httpx
