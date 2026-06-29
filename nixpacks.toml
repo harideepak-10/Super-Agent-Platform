@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = ["pip install -r superagent-django/requirements/production.txt"]
+
+[phases.build]
+cmds = ["cd superagent-django && python manage.py collectstatic --noinput"]
+
+[start]
+cmd = "cd superagent-django && python manage.py migrate --noinput && gunicorn superagent.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
