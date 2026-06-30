@@ -178,15 +178,46 @@ class GroqProvider(LLMProvider):
         Returns:
             Normalised response dict.
         """
+        translated = self._translate_messages(messages)
         kwargs: dict[str, Any] = {
             "model": self._model,
-            "messages": self._translate_messages(messages),
+            "messages": translated,
         }
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
-        completion = self._client.chat.completions.create(**kwargs)
+        try:
+            completion = self._client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            # Model hallucinated a tool not in our schema — strip the bad tool
+            # call from history and retry without tool_choice forced
+            if "tool_use_failed" in str(exc) or "tool call validation failed" in str(exc):
+                clean: list[dict[str, Any]] = []
+                skip_tool_result = False
+                for m in translated:
+                    if skip_tool_result and m.get("role") == "tool":
+                        skip_tool_result = False
+                        continue
+                    if m.get("role") == "assistant" and m.get("tool_calls"):
+                        clean.append({
+                            "role": "assistant",
+                            "content": m.get("content") or "I need to answer this question.",
+                        })
+                        skip_tool_result = True
+                    else:
+                        clean.append(m)
+                # Retry without forcing tool_choice so the model can answer directly
+                retry_kwargs: dict[str, Any] = {
+                    "model": self._model,
+                    "messages": clean,
+                }
+                if tools:
+                    retry_kwargs["tools"] = tools
+                completion = self._client.chat.completions.create(**retry_kwargs)
+            else:
+                raise
+
         return self._parse_response(completion)
 
     def _parse_response(self, completion: Any) -> dict[str, Any]:
