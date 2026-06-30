@@ -188,26 +188,15 @@ class GroqProvider(LLMProvider):
         try:
             completion = self._client.chat.completions.create(**kwargs)
         except Exception as exc:
+            # Model hallucinated a tool not in our schema (e.g. brave_search).
+            # The bad call was rejected by Groq BEFORE being returned, so it is
+            # NOT in `translated` — the history is already clean.
+            # Simply retry with the same history but NO tools so the model is
+            # forced to produce a plain-text answer from what it already has.
             if "tool_use_failed" in str(exc) or "tool call validation failed" in str(exc):
-                clean: list[dict[str, Any]] = []
-                skip_tool_result = False
-                for m in translated:
-                    if skip_tool_result and m.get("role") == "tool":
-                        skip_tool_result = False
-                        continue
-                    if m.get("role") == "assistant" and m.get("tool_calls"):
-                        clean.append({
-                            "role": "assistant",
-                            "content": m.get("content") or "I need to answer this question.",
-                        })
-                        skip_tool_result = True
-                    else:
-                        clean.append(m)
-                # Retry WITHOUT tools — forces model to answer in plain text
-                # (passing tools again risks another hallucinated tool call with empty content)
                 retry_kwargs: dict[str, Any] = {
                     "model": self._model,
-                    "messages": clean,
+                    "messages": translated,  # history already clean
                 }
                 completion = self._client.chat.completions.create(**retry_kwargs)
             else:
