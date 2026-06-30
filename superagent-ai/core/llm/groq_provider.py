@@ -36,8 +36,11 @@ class GroqProvider(LLMProvider):
         total_cost:   Cumulative cost (USD) across all calls this session.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, model: str = _MODEL) -> None:
         """Initialise the Groq client from the GROQ_API_KEY env variable.
+
+        Args:
+            model: Groq model name to use (default: llama-3.1-8b-instant).
 
         Raises:
             EnvironmentError: If GROQ_API_KEY is not set.
@@ -58,6 +61,7 @@ class GroqProvider(LLMProvider):
             ) from exc
 
         self._client = Groq(api_key=api_key)
+        self._model = model
         self.total_tokens: int = 0
         self.total_cost: float = 0.0
 
@@ -120,7 +124,7 @@ class GroqProvider(LLMProvider):
             Normalised response dict.
         """
         kwargs: dict[str, Any] = {
-            "model": _MODEL,
+            "model": self._model,
             "messages": messages,
         }
         if tools:
