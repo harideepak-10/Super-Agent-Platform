@@ -58,18 +58,16 @@ class WebSearchTool(BaseTool):
         except Exception:
             query = input_str.strip()
         try:
-            import requests as req
-            from urllib.parse import quote
-            url = "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1".format(quote(query))
-            r = req.get(url, timeout=10)
-            d = r.json()
-            abstract = d.get("AbstractText", "")
-            related = [t["Text"] for t in d.get("RelatedTopics", [])[:4] if "Text" in t]
-            if abstract:
-                return "Result for '{}':\n{}\n\nRelated: {}".format(query, abstract, "; ".join(related))
-            if related:
-                return "Results for '{}':\n".format(query) + "\n".join("- {}".format(r) for r in related)
-            return "No results for '{}'. Try a more specific query.".format(query)
+            from duckduckgo_search import DDGS
+            results = DDGS().text(query, max_results=5)
+            if not results:
+                return "No results found for '{}'.".format(query)
+            lines = []
+            for r in results:
+                lines.append("**{}**\n{}\n{}".format(
+                    r.get("title", ""), r.get("body", ""), r.get("href", "")
+                ))
+            return "Search results for '{}':\n\n".format(query) + "\n\n".join(lines)
         except Exception as exc:
             return "Web search error: {}".format(exc)
 
