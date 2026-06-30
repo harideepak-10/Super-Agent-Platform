@@ -20,10 +20,10 @@ import json
 import os
 import sys
 
-# -- Make superagent-ai importable -------------------------------------------
-# Directory layout (local + Render):
-#   <repo>/superagent-django/apps/tasks/tasks.py   <- this file
-#   <repo>/superagent-ai/core/...
+# ---------------------------------------------------------------------------
+# Make superagent-ai importable (fallback — superagent-django/core/ is used
+# directly since Django runs from that directory, but keep this for safety)
+# ---------------------------------------------------------------------------
 _THIS    = os.path.abspath(__file__)
 _DJANGO  = os.path.dirname(os.path.dirname(os.path.dirname(_THIS)))
 _REPO    = os.path.dirname(_DJANGO)
@@ -34,7 +34,6 @@ if _AI_PATH not in sys.path:
 from celery import shared_task
 from django.utils import timezone
 
-# -- Import ReAct engine ------------------------------------------------------
 from core.tools.base_tool import BaseTool, ToolZone
 from core.base_agent import (
     BaseAgent, ApprovalRequired, RedZoneBlocked,
@@ -44,6 +43,7 @@ from core.base_agent import (
 
 # =============================================================================
 # TOOL IMPLEMENTATIONS
+# Each tool overrides to_schema() to return OpenAI function-calling format
 # =============================================================================
 
 class WebSearchTool(BaseTool):
@@ -60,18 +60,18 @@ class WebSearchTool(BaseTool):
         try:
             import requests as req
             from urllib.parse import quote
-            url = f"https://api.duckduckgo.com/?q={quote(query)}&format=json&no_html=1&skip_disambig=1"
+            url = "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1".format(quote(query))
             r = req.get(url, timeout=10)
             d = r.json()
             abstract = d.get("AbstractText", "")
             related = [t["Text"] for t in d.get("RelatedTopics", [])[:4] if "Text" in t]
             if abstract:
-                return f"Result for '{query}':\n{abstract}\n\nRelated: {'; '.join(related)}"
+                return "Result for '{}':\n{}\n\nRelated: {}".format(query, abstract, "; ".join(related))
             if related:
-                return f"Results for '{query}':\n" + "\n".join(f"- {r}" for r in related)
-            return f"No results for '{query}'. Try a more specific query."
+                return "Results for '{}':\n".format(query) + "\n".join("- {}".format(r) for r in related)
+            return "No results for '{}'. Try a more specific query.".format(query)
         except Exception as exc:
-            return f"Web search error: {exc}"
+            return "Web search error: {}".format(exc)
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -133,7 +133,7 @@ class GenerateReportTool(BaseTool):
         except Exception:
             title, content = "Report", input_str
         ts = timezone.now().strftime("%Y-%m-%d %H:%M UTC")
-        return f"# {title}\n_Generated: {ts}_\n\n{content}\n"
+        return "# {}\n_Generated: {}_\n\n{}\n".format(title, ts, content)
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -217,7 +217,8 @@ class SendEmailTool(BaseTool):
         return json.dumps({
             "status": "simulated",
             "note": "Email send simulated (no Gmail connected).",
-            "to": data.get("to", ""), "subject": data.get("subject", ""),
+            "to": data.get("to", ""),
+            "subject": data.get("subject", ""),
         })
 
     def to_schema(self):
@@ -251,7 +252,7 @@ class CreateDraftTool(BaseTool):
             "to": data.get("to", ""),
             "subject": data.get("subject", "(no subject)"),
             "body_preview": data.get("body", "")[:100],
-            "draft_id": f"draft_{timezone.now().strftime('%Y%m%d%H%M%S')}",
+            "draft_id": "draft_{}".format(timezone.now().strftime("%Y%m%d%H%M%S")),
         })
 
     def to_schema(self):
@@ -284,7 +285,7 @@ class FileReadTool(BaseTool):
             with open(path) as f:
                 return f.read()
         except Exception as exc:
-            return f"Cannot read '{path}': {exc}"
+            return "Cannot read '{}': {}".format(path, exc)
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -306,7 +307,8 @@ class FileWriteTool(BaseTool):
     def run(self, input_str: str) -> str:
         try:
             data = json.loads(input_str)
-            path, content = data.get("path", "output.txt"), data.get("content", "")
+            path = data.get("path", "output.txt")
+            content = data.get("content", "")
             with open(path, "w") as f:
                 f.write(content)
             return json.dumps({"status": "written", "path": path, "bytes": len(content)})
@@ -337,7 +339,8 @@ class ExportCsvTool(BaseTool):
         import csv, io
         try:
             d = json.loads(input_str)
-            rows, headers = d.get("data", []), d.get("headers", [])
+            rows = d.get("data", [])
+            headers = d.get("headers", [])
             out = io.StringIO()
             w = csv.writer(out)
             if headers:
@@ -374,13 +377,14 @@ class BrowseWebTool(BaseTool):
         except Exception:
             url = input_str.strip()
         try:
-            import re, requests as req
+            import re
+            import requests as req
             r = req.get(url, timeout=15, headers={"User-Agent": "SuperAgent/1.0"})
             text = re.sub(r"<[^>]+>", " ", r.text)
             text = re.sub(r"\s+", " ", text).strip()
             return text[:2000] + ("..." if len(text) > 2000 else "")
         except Exception as exc:
-            return f"Cannot browse '{url}': {exc}"
+            return "Cannot browse '{}': {}".format(url, exc)
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -487,7 +491,7 @@ class UploadToDriveTool(BaseTool):
 # TOOL REGISTRY
 # =============================================================================
 
-_TOOL_REGISTRY: dict[str, type] = {
+_TOOL_REGISTRY: dict = {
     "web_search":      WebSearchTool,
     "classify_text":   ClassifyTextTool,
     "generate_report": GenerateReportTool,
@@ -507,7 +511,7 @@ _TOOL_REGISTRY: dict[str, type] = {
 _HIGH_ZONE_TOOLS = {"send_email", "delete_file", "cal_write", "file_write"}
 
 
-def _build_tools(agent_model, workspace_id=None) -> list[BaseTool]:
+def _build_tools(agent_model, workspace_id=None):
     tools = []
     for tool_name in (agent_model.tools or []):
         cls = _TOOL_REGISTRY.get(tool_name)
@@ -522,7 +526,7 @@ def _build_tools(agent_model, workspace_id=None) -> list[BaseTool]:
 
 
 # =============================================================================
-# DJANGO AGENT — BaseAgent with configurable system prompt from DB
+# DJANGO AGENT
 # =============================================================================
 
 class DjangoAgent(BaseAgent):
@@ -540,10 +544,10 @@ class DjangoAgent(BaseAgent):
 
 
 # =============================================================================
-# HELPER — save audit_log -> TaskStep records
+# HELPER — save audit_log entries as TaskStep records
 # =============================================================================
 
-def _save_audit_steps(task, audit_log: list, step_offset: int = 0) -> int:
+def _save_audit_steps(task, audit_log, step_offset=0):
     from .models import TaskStep
 
     saved = 0
@@ -557,14 +561,14 @@ def _save_audit_steps(task, audit_log: list, step_offset: int = 0) -> int:
 
         if event_type == "llm_called":
             stype = TaskStep.StepType.THOUGHT
-            content = f"Thinking... (step {details.get('step', i+1)})"
+            content = "Thinking... (step {})".format(details.get("step", i + 1))
             tname, tinput, toutput = "", None, None
 
         elif event_type == "tool_called":
             stype = TaskStep.StepType.TOOL_CALL
             tname = details.get("tool_name", "")
             raw_in = details.get("tool_input", "")
-            content = f"Calling tool: {tname}"
+            content = "Calling tool: {}".format(tname)
             try:
                 tinput = json.loads(raw_in) if isinstance(raw_in, str) else raw_in
             except Exception:
@@ -578,7 +582,11 @@ def _save_audit_steps(task, audit_log: list, step_offset: int = 0) -> int:
             content = str(raw_out)[:500]
             tinput = None
             try:
-                toutput = json.loads(raw_out) if isinstance(raw_out, str) and raw_out.strip().startswith("{") else {"result": str(raw_out)}
+                toutput = (
+                    json.loads(raw_out)
+                    if isinstance(raw_out, str) and raw_out.strip().startswith("{")
+                    else {"result": str(raw_out)}
+                )
             except Exception:
                 toutput = {"result": str(raw_out)}
 
@@ -590,13 +598,13 @@ def _save_audit_steps(task, audit_log: list, step_offset: int = 0) -> int:
         elif event_type == "approval_needed":
             stype = TaskStep.StepType.TOOL_CALL
             tname = details.get("tool_name", "")
-            content = f"Approval required for: {tname}"
+            content = "Approval required for: {}".format(tname)
             tinput = {"raw": str(details.get("tool_input", ""))}
             toutput = None
 
         else:
             stype = TaskStep.StepType.THOUGHT
-            content = f"{event_type}: {json.dumps(details)[:200]}"
+            content = "{}: {}".format(event_type, json.dumps(details)[:200])
             tname, tinput, toutput = "", None, None
 
         TaskStep.objects.create(
@@ -628,10 +636,10 @@ def run_agent_task(self, task_id: str):
     try:
         task = Task.objects.select_related("agent", "workspace").get(id=task_id)
     except Task.DoesNotExist:
-        return {"error": f"Task {task_id} not found"}
+        return {"error": "Task {} not found".format(task_id)}
 
     if task.status != Task.Status.QUEUED:
-        return {"skipped": f"Task already {task.status}"}
+        return {"skipped": "Task already {}".format(task.status)}
 
     task.status = Task.Status.RUNNING
     task.started_at = timezone.now()
@@ -641,9 +649,11 @@ def run_agent_task(self, task_id: str):
     agent_model = task.agent
     workspace_id = task.workspace_id
 
-    tools = _build_tools(agent_model, workspace_id=workspace_id) if agent_model else [
-        WebSearchTool(), ClassifyTextTool(), GenerateReportTool()
-    ]
+    tools = (
+        _build_tools(agent_model, workspace_id=workspace_id)
+        if agent_model
+        else [WebSearchTool(), ClassifyTextTool(), GenerateReportTool()]
+    )
 
     from core.llm.groq_provider import GroqProvider
     llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.1-8b-instant"
@@ -653,7 +663,7 @@ def run_agent_task(self, task_id: str):
         name=(agent_model.name if agent_model else "Agent"),
         llm_provider=llm,
         tools=tools,
-        max_steps=(agent_model.max_steps if agent_model else None) or 20,
+        max_steps=int((agent_model.max_steps if agent_model else None) or 20),
         max_cost=float((agent_model.max_cost_usd if agent_model else None) or 1.0),
         task_id=task_id,
         system_prompt=(agent_model.system_prompt if agent_model else "") or "",
@@ -731,10 +741,13 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     except (Task.DoesNotExist, Approval.DoesNotExist) as exc:
         return {"error": str(exc)}
 
-    # If rejected, mark task failed immediately
     if not approved:
         task.status = Task.Status.FAILED
-        task.error_message = f"Approval rejected by reviewer. Note: {note}" if note else "Approval rejected by reviewer."
+        task.error_message = (
+            "Approval rejected by reviewer. Note: {}".format(note)
+            if note
+            else "Approval rejected by reviewer."
+        )
         task.completed_at = timezone.now()
         task.save(update_fields=["status", "error_message", "completed_at"])
         return {"status": "rejected", "task_id": task_id}
@@ -754,9 +767,11 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     workspace_id = task.workspace_id
     step_offset = TaskStep.objects.filter(task=task).count()
 
-    tools = _build_tools(agent_model, workspace_id=workspace_id) if agent_model else [
-        WebSearchTool(), ClassifyTextTool(), GenerateReportTool()
-    ]
+    tools = (
+        _build_tools(agent_model, workspace_id=workspace_id)
+        if agent_model
+        else [WebSearchTool(), ClassifyTextTool(), GenerateReportTool()]
+    )
 
     from core.llm.groq_provider import GroqProvider
     llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.1-8b-instant"
@@ -766,13 +781,12 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         name=(agent_model.name if agent_model else "Agent"),
         llm_provider=llm,
         tools=tools,
-        max_steps=(agent_model.max_steps if agent_model else None) or 20,
+        max_steps=int((agent_model.max_steps if agent_model else None) or 20),
         max_cost=float((agent_model.max_cost_usd if agent_model else None) or 1.0),
         task_id=task_id,
         system_prompt=(agent_model.system_prompt if agent_model else "") or "",
     )
 
-    # Rebuild message history: snapshot + approved tool result
     messages = list(snapshot.get("messages_snapshot", []))
     messages.append({
         "role": "assistant",
@@ -784,7 +798,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         "name": approval.tool_name,
         "content": json.dumps({
             "approved": True,
-            "message": f"Action '{approval.tool_name}' was approved by a human. Proceed.",
+            "message": "Action '{}' was approved by a human. Proceed.".format(approval.tool_name),
         }),
     })
 
@@ -812,12 +826,24 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
             tool_input_data = {"raw": str(exc.tool_input)}
         last_step = TaskStep.objects.filter(task=task).order_by("-step_number").first()
         new_approval = Approval.objects.create(
-            task=task, step=last_step,
-            tool_name=exc.tool_name, tool_input=tool_input_data,
-            tool_zone="yellow", resume_snapshot=react_agent.pending_approval or {},
+            task=task,
+            step=last_step,
+            tool_name=exc.tool_name,
+            tool_input=tool_input_data,
+            tool_zone="yellow",
+            resume_snapshot=react_agent.pending_approval or {},
         )
         cost = react_agent.get_cost_summary()
         task.status = Task.Status.WAITING_APPROVAL
         task.steps_taken = (task.steps_taken or 0) + cost["total_steps"]
         task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_usd"]
-        task.save(update_fields=["status", "
+        task.save(update_fields=["status", "steps_taken", "cost_usd"])
+        return {"status": "waiting_approval", "approval_id": str(new_approval.id)}
+
+    except Exception as exc:
+        _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
+        task.status = Task.Status.FAILED
+        task.error_message = str(exc)[:500]
+        task.completed_at = timezone.now()
+        task.save(update_fields=["status", "error_message", "completed_at"])
+        raise
