@@ -186,7 +186,7 @@ CHANNEL_LAYERS = {
 }
 
 # ---------------------------------------------------------------------------
-# Celery — in-memory broker for dev (no Redis needed)
+# Celery
 # ---------------------------------------------------------------------------
 CELERY_BROKER_URL = env("REDIS_URL", default="memory://")
 CELERY_RESULT_BACKEND = env("REDIS_RESULT_BACKEND", default="cache+memory://")
@@ -194,7 +194,14 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
-CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_ALWAYS_EAGER", default=True)  # run tasks inline, no worker needed
+CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_ALWAYS_EAGER", default=False)
+
+# Upstash Redis uses rediss:// (TLS) — must set ssl_cert_reqs or Celery raises ValueError
+import ssl as _ssl
+_REDIS_URL = env("REDIS_URL", default="")
+if _REDIS_URL.startswith("rediss://"):
+    CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": _ssl.CERT_NONE}
+    CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": _ssl.CERT_NONE}
 
 # ---------------------------------------------------------------------------
 # Google OAuth (allauth)
