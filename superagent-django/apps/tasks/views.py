@@ -441,3 +441,139 @@ def new_task_form(request):
         "quick_start":     quick_start,
         "priority_options": priority_options,
     })
+
+
+# ---------------------------------------------------------------------------
+# Task Mobile Detail screen
+# ---------------------------------------------------------------------------
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def task_mobile_detail(request, pk):
+    """
+    GET /api/v1/tasks/{id}/mobile-detail/
+    Full task detail screen — header, progress, step timeline, result, actions.
+    """
+    import datetime as dt
+    from django.utils import timezone
+
+    workspace = _get_workspace(request)
+    task = get_object_or_404(
+        Task.objects.select_related("agent", "created_by"),
+        id=pk, workspace=workspace
+    )
+
+    _STATUS_META = {
+        Task.Status.QUEUED:           ("Queued",           "#6B7280", "clock"),
+        Task.Status.RUNNING:          ("Running",          "#F59E0B", "loader"),
+        Task.Status.COMPLETED:        ("Completed",        "#22C55E", "check-circle"),
+        Task.Status.FAILED:           ("Failed",           "#EF4444", "x-circle"),
+        Task.Status.CANCELLED:        ("Cancelled",        "#6B7280", "slash"),
+        Task.Status.WAITING_APPROVAL: ("Waiting Approval", "#3B82F6", "pause-circle"),
+    }
+
+    status_label, status_color, status_icon = _STATUS_META.get(
+        task.status, ("Unknown", "#6B7280", "help-circle")
+    )
+
+    # Duration
+    duration = None
+    if task.started_at and task.completed_at:
+        secs = int((task.completed_at - task.started_at).total_seconds())
+        if secs < 60:    duration = "%ds" % secs
+        elif secs < 3600: duration = "%dm %ds" % (secs // 60, secs % 60)
+        else:             duration = "%dh %dm" % (secs // 3600, (secs % 3600) // 60)
+    elif task.started_at:
+        secs = int((timezone.now() - task.started_at).total_seconds())
+        duration = "%dm running" % (secs // 60) if secs >= 60 else "%ds running" % secs
+
+    # Step timeline
+    steps = TaskStep.objects.filter(task=task).order_by("created_at")
+
+    _STEP_TAG_META = {
+        "start":            ("task.started",   "#3B82F6", "#1E3A5F"),
+        "thinking":         ("thinking",       "#8B5CF6", "#2E1065"),
+        "tool_call":        ("tool.executed",  "#22C55E", "#064E3B"),
+        "approval_request": ("approval.req",   "#F59E0B", "#78350F"),
+        "approval_resume":  ("approval.done",  "#22C55E", "#064E3B"),
+        "error":            ("error",          "#EF4444", "#7F1D1D"),
+        "complete":         ("completed",      "#22C55E", "#064E3B"),
+    }
+
+    timeline = []
+    for step in steps:
+        tag_label, tag_color, tag_bg = _STEP_TAG_META.get(
+            step.step_type, ("event", "#6B7280", "#1F2937")
+        )
+        timeline.append({
+            "step_id":    str(step.id),
+            "step_type":  step.step_type,
+            "tag":        tag_label,
+            "tag_color":  tag_color,
+            "tag_bg":     tag_bg,
+            "content":    step.content or "",
+            "timestamp":  step.created_at.strftime("%H:%M:%S"),
+            "created_at": step.created_at.isoformat(),
+        })
+
+    # Pending approval for this task
+    pending_approval = None
+    from apps.approvals.models import Approval
+    ap = Approval.objects.filter(
+        task=task, status=Approval.Status.PENDING
+    ).first()
+    if ap:
+        pending_approval = {
+            "id":           str(ap.id),
+            "tool_name":    ap.tool_name,
+            "review_url":   "/api/v1/approvals/%s/review/" % ap.id,
+            "confirm_url":  "/api/v1/approvals/%s/confirm/" % ap.id,
+        }
+
+    # Agent info
+    agent_info = None
+    if task.agent:
+        agent_info = {
+            "id":         str(task.agent.id),
+            "name":       task.agent.name,
+            "agent_type": task.agent.agent_type,
+        }
+
+    # Created by
+    creator_name = None
+    if task.created_by:
+        creator_name = task.created_by.name or task.created_by.email.split("@")[0]
+
+    now = timezone.now()
+    created_secs = int((now - task.created_at).total_seconds())
+
+    return Response({
+        "id":           str(task.id),
+        "prompt":       task.prompt,
+        "status":       task.status,
+        "status_label": status_label,
+        "status_color": status_color,
+        "status_icon":  status_icon,
+        "priority":     getattr(task, "priority", "routine"),
+        "agent":        agent_info,
+        "created_by":   creator_name,
+        "stats": {
+            "steps_taken":  task.steps_taken,
+            "cost_usd":     round(float(task.cost_usd), 4),
+            "cost_label":   "€%.2f" % float(task.cost_usd),
+            "duration":     duration,
+            "created_ago":  "%dm ago" % (created_secs // 60) if created_secs >= 60 else "just now",
+        },
+        "result":           task.result or None,
+        "timeline":         timeline,
+        "pending_approval": pending_approval,
+        "actions": {
+            "can_cancel": task.status in (Task.Status.QUEUED, Task.Status.RUNNING),
+            "can_retry":  task.status in (Task.Status.FAILED, Task.Status.CANCELLED),
+            "cancel_url": "/api/v1/tasks/%s/cancel/" % pk,
+            "retry_url":  "/api/v1/tasks/%s/retry/" % pk,
+        },
+        "started_at":   task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "created_at":   task.created_at.isoformat(),
+    })

@@ -407,3 +407,86 @@ def approval_rule_detail(request, pk):
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return Response(ApprovalRuleSerializer(rule).data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def approval_history(request):
+    """
+    GET /api/v1/approvals/history/
+    Past decisions — approved and rejected, with reviewer, note, timestamp.
+
+    Query params:
+      ?decision=approved|rejected   filter by decision
+      ?agent_id=<uuid>              filter by agent
+    """
+    workspace = _get_workspace(request)
+
+    qs = (
+        Approval.objects
+        .exclude(status=Approval.Status.PENDING)
+        .filter(task__workspace=workspace)
+        .select_related("task", "task__agent", "reviewer")
+        .order_by("-reviewed_at")
+    )
+
+    decision = request.query_params.get("decision")
+    if decision == "approved":
+        qs = qs.filter(status=Approval.Status.APPROVED)
+    elif decision == "rejected":
+        qs = qs.filter(status=Approval.Status.REJECTED)
+
+    agent_id = request.query_params.get("agent_id")
+    if agent_id:
+        qs = qs.filter(task__agent__id=agent_id)
+
+    items = []
+    for ap in qs[:50]:
+        task  = ap.task
+        agent = task.agent
+        meta  = _tool_meta(ap.tool_name)
+
+        reviewer_name = ap.reviewer.name if ap.reviewer else "Unknown"
+        parts = reviewer_name.split()
+        if len(parts) >= 2:
+            initials = (parts[0][0] + parts[-1][0]).upper()
+        else:
+            initials = reviewer_name[:2].upper()
+
+        items.append({
+            "id":         str(ap.id),
+            "status":     ap.status,
+            "decision":   ap.status,
+            "accent_color": "#22C55E" if ap.status == Approval.Status.APPROVED else "#EF4444",
+            "agent": {
+                "name":       agent.name if agent else "Agent",
+                "agent_type": agent.agent_type if agent else "custom",
+            },
+            "action": {
+                "tool_name":    ap.tool_name,
+                "display_name": meta["display_name"],
+                "icon":         meta["icon"],
+                "risk_level":   meta["risk_level"],
+            },
+            "task_prompt":    task.prompt[:80],
+            "reviewer": {
+                "name":     reviewer_name,
+                "initials": initials,
+                "note":     ap.reviewer_note or None,
+            },
+            "reviewed_ago":  _human_ago(ap.reviewed_at) if ap.reviewed_at else None,
+            "reviewed_at":   ap.reviewed_at.isoformat() if ap.reviewed_at else None,
+            "requested_ago": _human_ago(ap.created_at),
+            "created_at":    ap.created_at.isoformat(),
+        })
+
+    approved_count  = qs.filter(status=Approval.Status.APPROVED).count()
+    rejected_count  = qs.filter(status=Approval.Status.REJECTED).count()
+
+    return Response({
+        "total":          len(items),
+        "approved_count": approved_count,
+        "rejected_count": rejected_count,
+        "subtitle":       "%d approved · %d rejected" % (approved_count, rejected_count),
+        "history":        items,
+    })

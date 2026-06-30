@@ -1,27 +1,24 @@
 """
-Production settings for Railway deployment.
+Production settings for Render deployment.
 
-Railway injects these env vars automatically:
+Render injects these automatically when you attach services:
   DATABASE_URL  — Postgres connection string
-  REDIS_URL     — Redis connection string (add a Redis service in Railway)
-  PORT          — Port gunicorn should bind to
+  PORT          — Port gunicorn binds to
 
-You must set these manually in Railway → Variables:
+Set these manually in Render → Environment:
   SECRET_KEY
-  ALLOWED_HOSTS          e.g. yourapp.railway.app
-  CORS_ALLOWED_ORIGINS   e.g. https://yourmobileapp.com
+  DJANGO_SETTINGS_MODULE = superagent.settings.production
+  ALLOWED_HOSTS          e.g. your-app.onrender.com
+  REDIS_URL              from upstash.com (free)
   GROQ_API_KEY
+  CORS_ALLOWED_ORIGINS   once your mobile app is live
 """
 
 from .base import *  # noqa: F401,F403
-import os
 
-# ---------------------------------------------------------------------------
-# Security
-# ---------------------------------------------------------------------------
 DEBUG = False
 
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["*.railway.app"])
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["*.onrender.com"])
 
 SECRET_KEY = env("SECRET_KEY")
 
@@ -34,45 +31,56 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
 # ---------------------------------------------------------------------------
-# Database — Railway injects DATABASE_URL automatically
+# Database — Render injects DATABASE_URL automatically
 # ---------------------------------------------------------------------------
 DATABASES = {
     "default": env.db("DATABASE_URL")
 }
 
 # ---------------------------------------------------------------------------
-# Static files — WhiteNoise serves them directly from gunicorn
+# Static files — WhiteNoise
 # ---------------------------------------------------------------------------
 MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 # ---------------------------------------------------------------------------
-# Redis — Celery broker + Django Channels
+# Redis — Celery broker + Django Channels (use Upstash free tier)
 # ---------------------------------------------------------------------------
-REDIS_URL = env("REDIS_URL")
+REDIS_URL = env("REDIS_URL", default="memory://")
 
 CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = REDIS_URL
-CELERY_TASK_ALWAYS_EAGER = False   # real async workers in production
+CELERY_RESULT_BACKEND = REDIS_URL if REDIS_URL != "memory://" else "cache+memory://"
+CELERY_TASK_ALWAYS_EAGER = False
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True   # silence deprecation warning
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [REDIS_URL],
-        },
+if REDIS_URL != "memory://":
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [REDIS_URL]},
+        }
     }
+
+# ---------------------------------------------------------------------------
+# Celery Beat — scheduled tasks
+# ---------------------------------------------------------------------------
+from datetime import timedelta
+CELERY_BEAT_SCHEDULE = {
+    "aggregate-daily-costs": {
+        "task": "apps.costs.tasks.aggregate_daily_costs",
+        "schedule": timedelta(hours=1),   # runs every hour
+    },
 }
 
 # ---------------------------------------------------------------------------
-# CORS — lock down to your mobile app origin
+# CORS
 # ---------------------------------------------------------------------------
-CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_ALL_ORIGINS = env.bool("CORS_ALLOW_ALL_ORIGINS", default=False)
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 
 # ---------------------------------------------------------------------------
-# Email — set EMAIL_BACKEND=smtp in Railway vars to enable real sending
+# Email
 # ---------------------------------------------------------------------------
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
@@ -80,20 +88,13 @@ EMAIL_BACKEND = env(
 )
 
 # ---------------------------------------------------------------------------
-# Logging — print to stdout so Railway captures it
+# Logging — stdout for Render log viewer
 # ---------------------------------------------------------------------------
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
-    },
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "root": {"handlers": ["console"], "level": "INFO"},
     "loggers": {
         "django": {
             "handlers": ["console"],
