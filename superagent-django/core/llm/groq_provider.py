@@ -120,9 +120,9 @@ class GroqProvider(LLMProvider):
           {"role": "assistant", "content": "...", "tool_calls": [{"id": ..., "type": "function", "function": {...}}]}
           {"role": "tool", "tool_call_id": ..., "content": ...}
         """
-        import hashlib
         translated = []
         last_call_id: str = "call_0"
+        call_counter: int = 0
 
         for msg in messages:
             role = msg.get("role", "")
@@ -134,8 +134,9 @@ class GroqProvider(LLMProvider):
                 if not isinstance(arguments, str):
                     import json as _json
                     arguments = _json.dumps(arguments)
-                # Generate a stable call ID from name + args
-                call_id = "call_" + hashlib.md5((name + arguments).encode()).hexdigest()[:8]
+                # Use a counter to guarantee unique IDs even for repeated tool calls
+                call_counter += 1
+                call_id = "call_{}_{}".format(name, call_counter)
                 last_call_id = call_id
                 translated.append({
                     "role": "assistant",
