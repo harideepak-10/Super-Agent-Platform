@@ -109,6 +109,59 @@ class GroqProvider(LLMProvider):
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _translate_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert BaseAgent internal message format to Groq/OpenAI format.
+
+        BaseAgent stores:
+          {"role": "assistant", "content": "...", "tool_call": {"name": ..., "input": ...}}
+          {"role": "tool", "name": ..., "content": ...}
+
+        Groq expects:
+          {"role": "assistant", "content": "...", "tool_calls": [{"id": ..., "type": "function", "function": {...}}]}
+          {"role": "tool", "tool_call_id": ..., "content": ...}
+        """
+        import hashlib
+        translated = []
+        last_call_id: str = "call_0"
+
+        for msg in messages:
+            role = msg.get("role", "")
+
+            if role == "assistant" and msg.get("tool_call"):
+                tc = msg["tool_call"]
+                name = tc.get("name", "tool")
+                arguments = tc.get("input", "{}")
+                if not isinstance(arguments, str):
+                    import json as _json
+                    arguments = _json.dumps(arguments)
+                import hashlib as _hl
+                call_id = "call_" + _hl.md5((name + arguments).encode()).hexdigest()[:8]
+                last_call_id = call_id
+                translated.append({
+                    "role": "assistant",
+                    "content": msg.get("content") or "",
+                    "tool_calls": [{
+                        "id": call_id,
+                        "type": "function",
+                        "function": {"name": name, "arguments": arguments},
+                    }],
+                })
+
+            elif role == "tool":
+                translated.append({
+                    "role": "tool",
+                    "tool_call_id": last_call_id,
+                    "content": str(msg.get("content", "")),
+                })
+
+            else:
+                translated.append({
+                    "role": role,
+                    "content": msg.get("content", ""),
+                })
+
+        return translated
+
     def _call_api(
         self,
         messages: list[dict[str, Any]],
@@ -125,7 +178,7 @@ class GroqProvider(LLMProvider):
         """
         kwargs: dict[str, Any] = {
             "model": self._model,
-            "messages": messages,
+            "messages": self._translate_messages(messages),
         }
         if tools:
             kwargs["tools"] = tools

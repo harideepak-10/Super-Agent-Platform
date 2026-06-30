@@ -36,8 +36,11 @@ class GroqProvider(LLMProvider):
         total_cost:   Cumulative cost (USD) across all calls this session.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, model: str = _MODEL) -> None:
         """Initialise the Groq client from the GROQ_API_KEY env variable.
+
+        Args:
+            model: Groq model name to use (default: llama-3.1-8b-instant).
 
         Raises:
             EnvironmentError: If GROQ_API_KEY is not set.
@@ -58,6 +61,7 @@ class GroqProvider(LLMProvider):
             ) from exc
 
         self._client = Groq(api_key=api_key)
+        self._model = model
         self.total_tokens: int = 0
         self.total_cost: float = 0.0
 
@@ -105,6 +109,60 @@ class GroqProvider(LLMProvider):
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _translate_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert BaseAgent internal message format to Groq/OpenAI format.
+
+        BaseAgent stores:
+          {"role": "assistant", "content": "...", "tool_call": {"name": ..., "input": ...}}
+          {"role": "tool", "name": ..., "content": ...}
+
+        Groq expects:
+          {"role": "assistant", "content": "...", "tool_calls": [{"id": ..., "type": "function", "function": {...}}]}
+          {"role": "tool", "tool_call_id": ..., "content": ...}
+        """
+        import hashlib
+        translated = []
+        last_call_id: str = "call_0"
+
+        for msg in messages:
+            role = msg.get("role", "")
+
+            if role == "assistant" and msg.get("tool_call"):
+                tc = msg["tool_call"]
+                name = tc.get("name", "tool")
+                arguments = tc.get("input", "{}")
+                if not isinstance(arguments, str):
+                    import json as _json
+                    arguments = _json.dumps(arguments)
+                # Generate a stable call ID from name + args
+                call_id = "call_" + hashlib.md5((name + arguments).encode()).hexdigest()[:8]
+                last_call_id = call_id
+                translated.append({
+                    "role": "assistant",
+                    "content": msg.get("content") or "",
+                    "tool_calls": [{
+                        "id": call_id,
+                        "type": "function",
+                        "function": {"name": name, "arguments": arguments},
+                    }],
+                })
+
+            elif role == "tool":
+                translated.append({
+                    "role": "tool",
+                    "tool_call_id": last_call_id,
+                    "content": str(msg.get("content", "")),
+                })
+
+            else:
+                # system / user — pass through, strip unknown keys
+                translated.append({
+                    "role": role,
+                    "content": msg.get("content", ""),
+                })
+
+        return translated
+
     def _call_api(
         self,
         messages: list[dict[str, Any]],
@@ -120,8 +178,8 @@ class GroqProvider(LLMProvider):
             Normalised response dict.
         """
         kwargs: dict[str, Any] = {
-            "model": _MODEL,
-            "messages": messages,
+            "model": self._model,
+            "messages": self._translate_messages(messages),
         }
         if tools:
             kwargs["tools"] = tools
