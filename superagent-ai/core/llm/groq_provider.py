@@ -203,12 +203,12 @@ class GroqProvider(LLMProvider):
                         skip_tool_result = True
                     else:
                         clean.append(m)
+                # Retry WITHOUT tools — forces model to answer in plain text
+                # (passing tools again risks another hallucinated tool call with empty content)
                 retry_kwargs: dict[str, Any] = {
                     "model": self._model,
                     "messages": clean,
                 }
-                if tools:
-                    retry_kwargs["tools"] = tools
                 completion = self._client.chat.completions.create(**retry_kwargs)
             else:
                 raise
