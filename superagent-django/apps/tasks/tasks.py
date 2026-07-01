@@ -845,4 +845,32 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.save()
         return {"status": "completed", "task_id": task_id}
 
-    except ApprovalR
+    except ApprovalRequired as exc:
+        _save_audit_steps(task, react_agent.audit_log, step_offset=step_offset)
+        try:
+            tool_input_data = json.loads(exc.tool_input) if exc.tool_input else {}
+        except Exception:
+            tool_input_data = {"raw": str(exc.tool_input)}
+        last_step = TaskStep.objects.filter(task=task).order_by("-step_number").first()
+        new_approval = Approval.objects.create(
+            task=task,
+            step=last_step,
+            tool_name=exc.tool_name,
+            tool_input=tool_input_data,
+            tool_zone="yellow",
+            resume_snapshot=react_agent.pending_approval or {},
+        )
+        cost = react_agent.get_cost_summary()
+        task.status = Task.Status.WAITING_APPROVAL
+        task.steps_taken = (task.steps_taken or 0) + cost["total_steps"]
+        task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_usd"]
+        task.save(update_fields=["status", "steps_taken", "cost_usd"])
+        return {"status": "waiting_approval", "approval_id": str(new_approval.id)}
+
+    except Exception as exc:
+        _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
+        task.status = Task.Status.FAILED
+        task.error_message = str(exc)[:500]
+        task.completed_at = timezone.now()
+        task.save(update_fields=["status", "error_message", "completed_at"])
+        raise

@@ -1,0 +1,769 @@
+{
+  "info": {
+    "_postman_id": "krypsos-superagent-v1",
+    "name": "KRYPSOS Super Agent Platform",
+    "description": "Complete API collection for KRYPSOS Super Agent AI Platform. Base URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ and copy the access token\n3. Set the 'token' variable to the access token\n4. All authenticated requests use Bearer {{token}} automatically",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://super-agent-platform.onrender.com/api/v1", "type": "string" },
+    { "key": "token", "value": "", "type": "string", "description": "Paste your access token here after login" },
+    { "key": "refresh_token", "value": "", "type": "string" },
+    { "key": "agent_id", "value": "", "type": "string" },
+    { "key": "task_id", "value": "", "type": "string" },
+    { "key": "approval_id", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "01 - Authentication",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/health/",
+            "description": "Check if the server is alive. No auth required."
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/register/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"yourpassword123\",\n  \"name\": \"Your Name\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.access) { pm.collectionVariables.set('token', json.access); }",
+                  "if (json.refresh) { pm.collectionVariables.set('refresh_token', json.refresh); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"yourpassword123\"\n}"
+            },
+            "description": "Login and get JWT tokens. Test script auto-saves token to collection variable."
+          }
+        },
+        {
+          "name": "Google OAuth Login",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/google/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"<google_id_token_from_client>\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/logout/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.access) { pm.collectionVariables.set('token', json.access); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/token/refresh/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/forgot-password/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\"\n}" }
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/reset-password/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"<reset_token_from_email>\",\n  \"password\": \"newpassword123\"\n}" }
+          }
+        },
+        {
+          "name": "Get Current User (me)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/me/",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Profile",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": { "method": "GET", "url": "{{base_url}}/profile/" }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/profile/update/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Deepak\",\n  \"avatar_url\": \"https://example.com/avatar.jpg\"\n}" }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/profile/change-password/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"old_password\": \"currentpassword\",\n  \"new_password\": \"newpassword123\"\n}" }
+          }
+        },
+        {
+          "name": "Get Profile Settings",
+          "request": { "method": "GET", "url": "{{base_url}}/profile/settings/" }
+        },
+        {
+          "name": "Update Profile Settings",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/profile/settings/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email_notifications\": true,\n  \"push_notifications\": true\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Dashboard",
+      "item": [
+        {
+          "name": "Mobile Home Dashboard",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/dashboard/",
+            "description": "Returns all home screen data in one call: active agents, tasks today, pending approvals, cost this month, recent activity."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Agents",
+      "item": [
+        {
+          "name": "List Agents",
+          "request": { "method": "GET", "url": "{{base_url}}/agents/" }
+        },
+        {
+          "name": "Create Agent Form Config",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents/create-form/",
+            "description": "Returns all form options (agent types, tools, models, guardrails). Call this before rendering the Create Agent screen."
+          }
+        },
+        {
+          "name": "Mobile Agents List",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents/mobile/",
+            "description": "Returns agent grid cards with health status, tasks today, and marketplace section."
+          }
+        },
+        {
+          "name": "Create Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) { pm.collectionVariables.set('agent_id', json.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/agents/create/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Email Agent\",\n  \"agent_type\": \"email\",\n  \"description\": \"Handles inbox triage and replies\",\n  \"llm_model\": \"llama-3.1-8b-instant\",\n  \"tools\": [\"read_email\", \"classify_text\", \"create_draft\"],\n  \"max_steps\": 20,\n  \"max_cost_usd\": 1.00\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Agent Detail",
+          "request": { "method": "GET", "url": "{{base_url}}/agents/{{agent_id}}/" }
+        },
+        {
+          "name": "Update Agent",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/agents/{{agent_id}}/update/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"max_steps\": 30,\n  \"tools\": [\"read_email\", \"classify_text\", \"create_draft\", \"send_email\"]\n}" }
+          }
+        },
+        {
+          "name": "Delete Agent",
+          "request": { "method": "DELETE", "url": "{{base_url}}/agents/{{agent_id}}/delete/" }
+        },
+        {
+          "name": "Agent Tasks",
+          "request": { "method": "GET", "url": "{{base_url}}/agents/{{agent_id}}/tasks/" }
+        },
+        {
+          "name": "Agent Mobile Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents/{{agent_id}}/mobile-detail/",
+            "description": "Full Agent Detail screen data: header, status badges, stats (tasks today, success rate, total cost), capabilities list, tools chips, recent runs."
+          }
+        },
+        {
+          "name": "Agent Live Activity",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents/{{agent_id}}/live/",
+            "description": "Live Activity screen: running task with progress bar, queue, live log entries. Poll every 3s while agent is running."
+          }
+        },
+        {
+          "name": "Agent Audit Log",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/agents/{{agent_id}}/audit-log/?filter=all",
+              "query": [{ "key": "filter", "value": "all", "description": "all | approvals | tools | errors" }]
+            },
+            "description": "Filterable audit log for a single agent."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Tasks",
+      "item": [
+        {
+          "name": "List Tasks",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/tasks/?status=running",
+              "query": [
+                { "key": "status", "value": "running", "description": "queued | running | waiting_approval | completed | failed | cancelled" },
+                { "key": "agent_id", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "New Task Form Config",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/tasks/new-task-form/",
+            "description": "Returns form options for the New Task screen."
+          }
+        },
+        {
+          "name": "Mobile Task List",
+          "request": { "method": "GET", "url": "{{base_url}}/tasks/mobile/" }
+        },
+        {
+          "name": "Create Task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) { pm.collectionVariables.set('task_id', json.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/tasks/create/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Read my latest 5 emails and summarise them\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"priority\": \"routine\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Task Detail",
+          "request": { "method": "GET", "url": "{{base_url}}/tasks/{{task_id}}/" }
+        },
+        {
+          "name": "Cancel Task",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/tasks/{{task_id}}/cancel/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Get Task Steps",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/tasks/{{task_id}}/steps/",
+            "description": "Returns all ReAct loop steps (thoughts, tool calls, results, final answer)."
+          }
+        },
+        {
+          "name": "Get Task Result",
+          "request": { "method": "GET", "url": "{{base_url}}/tasks/{{task_id}}/result/" }
+        },
+        {
+          "name": "Retry Task",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/tasks/{{task_id}}/retry/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Task Mobile Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/tasks/{{task_id}}/mobile-detail/",
+            "description": "Full task detail screen: status, stats, step timeline, pending approval CTA, retry/cancel actions."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Approvals",
+      "item": [
+        {
+          "name": "List Approvals",
+          "request": { "method": "GET", "url": "{{base_url}}/approvals/" }
+        },
+        {
+          "name": "Pending Approvals",
+          "request": { "method": "GET", "url": "{{base_url}}/approvals/pending/" }
+        },
+        {
+          "name": "Approval Inbox",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/approvals/inbox/",
+            "description": "Mobile notification tray - pending approvals that need action."
+          }
+        },
+        {
+          "name": "Approval History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/approvals/history/",
+              "query": [
+                { "key": "decision", "value": "approved", "disabled": true, "description": "approved | rejected" },
+                { "key": "agent_id", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Approval Rules",
+          "request": { "method": "GET", "url": "{{base_url}}/approvals/rules/" }
+        },
+        {
+          "name": "Create Approval Rule",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/approvals/rules/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"tool_name\": \"send_email\",\n  \"always_require\": true,\n  \"always_block\": false\n}" }
+          }
+        },
+        {
+          "name": "Get Approval Detail",
+          "request": { "method": "GET", "url": "{{base_url}}/approvals/{{approval_id}}/" }
+        },
+        {
+          "name": "Get Approval Review Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/approvals/{{approval_id}}/review/",
+            "description": "Returns full context for the approve/reject screen: tool name, input, risk level, task context."
+          }
+        },
+        {
+          "name": "Decide (Approve or Reject)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/approvals/{{approval_id}}/decide/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"approved\",\n  \"note\": \"Looks good, go ahead\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "decision: 'approved' or 'rejected'. Note is optional."
+          }
+        },
+        {
+          "name": "Confirm Approval",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/approvals/{{approval_id}}/confirm/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Costs",
+      "item": [
+        {
+          "name": "Cost Summary",
+          "request": { "method": "GET", "url": "{{base_url}}/costs/summary/" }
+        },
+        {
+          "name": "Daily Costs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/costs/daily/?days=30",
+              "query": [{ "key": "days", "value": "30" }]
+            }
+          }
+        },
+        {
+          "name": "Cost By Agent",
+          "request": { "method": "GET", "url": "{{base_url}}/costs/by-agent/" }
+        },
+        {
+          "name": "Budget Detail",
+          "request": { "method": "GET", "url": "{{base_url}}/costs/budget/" }
+        },
+        {
+          "name": "Cost Tracker (Mobile)",
+          "request": { "method": "GET", "url": "{{base_url}}/costs/tracker/" }
+        }
+      ]
+    },
+    {
+      "name": "08 - Integrations",
+      "item": [
+        {
+          "name": "List Connected Integrations",
+          "request": { "method": "GET", "url": "{{base_url}}/integrations/" }
+        },
+        {
+          "name": "Available Integrations",
+          "request": { "method": "GET", "url": "{{base_url}}/integrations/available/" }
+        },
+        {
+          "name": "Connect Integration",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/integrations/connect/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"integration_type\": \"gmail\",\n  \"credentials\": {\n    \"access_token\": \"<oauth_access_token>\",\n    \"refresh_token\": \"<oauth_refresh_token>\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "Gmail - Read Emails",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/integrations/gmail/emails/?max=10",
+              "query": [{ "key": "max", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "Get Integration Detail",
+          "request": { "method": "GET", "url": "{{base_url}}/integrations/{{integration_id}}/" }
+        },
+        {
+          "name": "Disconnect Integration",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/integrations/{{integration_id}}/disconnect/",
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Refresh Integration Tokens",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/integrations/{{integration_id}}/refresh/",
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Integration Status",
+          "request": { "method": "GET", "url": "{{base_url}}/integrations/{{integration_id}}/status/" }
+        }
+      ]
+    },
+    {
+      "name": "09 - Team",
+      "item": [
+        {
+          "name": "List Members",
+          "request": { "method": "GET", "url": "{{base_url}}/team/members/" }
+        },
+        {
+          "name": "Invite Member",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/team/invite/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"colleague@example.com\",\n  \"role\": \"member\"\n}" }
+          }
+        },
+        {
+          "name": "Accept Invite",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/team/accept-invite/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"<invite_token_from_email>\"\n}" }
+          }
+        },
+        {
+          "name": "Update Member Role",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/team/members/{{member_id}}/role/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"admin\"\n}" }
+          }
+        },
+        {
+          "name": "Remove Member",
+          "request": { "method": "DELETE", "url": "{{base_url}}/team/members/{{member_id}}/remove/" }
+        }
+      ]
+    },
+    {
+      "name": "10 - Notifications",
+      "item": [
+        {
+          "name": "List Notifications",
+          "request": { "method": "GET", "url": "{{base_url}}/notifications/" }
+        },
+        {
+          "name": "Mark All Read",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/notifications/mark-all-read/",
+            "body": { "mode": "raw", "raw": "{}" }
+          }
+        },
+        {
+          "name": "Get Notification Settings",
+          "request": { "method": "GET", "url": "{{base_url}}/notifications/settings/" }
+        },
+        {
+          "name": "Update Notification Settings",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/notifications/settings/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"approval_alerts\": true,\n  \"task_completed\": true,\n  \"task_failed\": true\n}" }
+          }
+        },
+        {
+          "name": "Get Notification",
+          "request": { "method": "GET", "url": "{{base_url}}/notifications/{{notification_id}}/" }
+        }
+      ]
+    },
+    {
+      "name": "11 - Audit Log",
+      "item": [
+        {
+          "name": "Workspace Audit Log",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/audit/",
+              "query": [
+                { "key": "page", "value": "1", "disabled": true },
+                { "key": "event_type", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Audit Event Types",
+          "request": { "method": "GET", "url": "{{base_url}}/audit/event-types/" }
+        },
+        {
+          "name": "Audit Summary",
+          "request": { "method": "GET", "url": "{{base_url}}/audit/summary/" }
+        },
+        {
+          "name": "Audit By Resource",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/audit/resource/agent/{{agent_id}}/",
+            "description": "resource_type: agent | task | approval | integration"
+          }
+        },
+        {
+          "name": "Audit By Actor",
+          "request": { "method": "GET", "url": "{{base_url}}/audit/actor/{{user_id}}/" }
+        }
+      ]
+    },
+    {
+      "name": "12 - Search",
+      "item": [
+        {
+          "name": "Global Search",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/search/?q=email",
+              "query": [{ "key": "q", "value": "email" }]
+            }
+          }
+        },
+        {
+          "name": "Search Tasks",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/search/tasks/?q=invoice",
+              "query": [{ "key": "q", "value": "invoice" }]
+            }
+          }
+        },
+        {
+          "name": "Search Agents",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/search/agents/?q=finance",
+              "query": [{ "key": "q", "value": "finance" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 - Customer Memory",
+      "item": [
+        {
+          "name": "List Profiles",
+          "request": { "method": "GET", "url": "{{base_url}}/memory/" }
+        },
+        {
+          "name": "Create Profile",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/memory/create/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"company\": \"Acme Corp\",\n  \"notes\": \"VIP customer\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Lookup Profile by Email",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/memory/lookup/?email=john@example.com",
+              "query": [{ "key": "email", "value": "john@example.com" }]
+            }
+          }
+        },
+        {
+          "name": "Get Profile Detail",
+          "request": { "method": "GET", "url": "{{base_url}}/memory/{{profile_id}}/" }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/memory/{{profile_id}}/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"notes\": \"Updated notes\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Profile",
+          "request": { "method": "DELETE", "url": "{{base_url}}/memory/{{profile_id}}/" }
+        },
+        {
+          "name": "List Interactions",
+          "request": { "method": "GET", "url": "{{base_url}}/memory/{{profile_id}}/interactions/" }
+        },
+        {
+          "name": "Add Interaction",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/memory/{{profile_id}}/interactions/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"email\",\n  \"summary\": \"Discussed Q3 invoice payment\"\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}
