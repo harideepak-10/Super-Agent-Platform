@@ -160,16 +160,16 @@ class ReadEmailTool(BaseTool):
             from apps.integrations.models import Integration
             integration = Integration.objects.filter(
                 workspace_id=self._workspace_id,
-                integration_type="gmail",
-                is_active=True,
+                provider=Integration.Provider.GMAIL,
+                status=Integration.Status.ACTIVE,
             ).first()
-            if not integration or not integration.credentials:
+            if not integration or not integration.access_token:
                 return None
             from google.oauth2.credentials import Credentials
             from googleapiclient.discovery import build
             creds = Credentials(
-                token=integration.credentials.get("access_token"),
-                refresh_token=integration.credentials.get("refresh_token"),
+                token=integration.access_token,
+                refresh_token=integration.refresh_token,
                 client_id=os.environ.get("GOOGLE_CLIENT_ID"),
                 client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
                 token_uri="https://oauth2.googleapis.com/token",
