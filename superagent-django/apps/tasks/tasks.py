@@ -909,6 +909,17 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         "name": approval.tool_name,
         "content": _tool_result,  # real result — LLM sees it as done
     })
+    # Explicitly tell the LLM the tool finished — prevents small models from
+    # looping into irrelevant web searches after an approved action.
+    messages.append({
+        "role": "user",
+        "content": (
+            "The '{}' tool has been approved and executed. "
+            "Result: {}. "
+            "Please give the user a brief one-sentence confirmation. "
+            "Do NOT call any more tools."
+        ).format(approval.tool_name, _tool_result),
+    })
 
     try:
         result = react_agent.run(
