@@ -545,19 +545,29 @@ class DjangoAgent(BaseAgent):
     def _log(self, event_type: str, details: dict) -> None:
         """Override to push each step to WebSocket channel layer in real-time."""
         super()._log(event_type, details)
+        import json as _json
+        import logging as _logging
+        _ws_logger = _logging.getLogger("ws.live")
         try:
             from channels.layers import get_channel_layer
             from asgiref.sync import async_to_sync
             channel_layer = get_channel_layer()
+            _ws_logger.info("WS_PUSH task=%s event=%s layer=%s", self.task_id, event_type, type(channel_layer).__name__)
             if channel_layer and self.task_id:
+                # Ensure details is JSON-serializable
+                try:
+                    safe_details = _json.loads(_json.dumps(details, default=str))
+                except Exception:
+                    safe_details = {"raw": str(details)}
                 group_name = "task_{}".format(self.task_id)
                 async_to_sync(channel_layer.group_send)(group_name, {
                     "type": "task_update",
                     "event": event_type,
-                    "data": details,
+                    "data": safe_details,
                 })
-        except Exception:
-            pass  # Never let WS errors break the agent loop
+                _ws_logger.info("WS_PUSH_OK task=%s event=%s", self.task_id, event_type)
+        except Exception as _exc:
+            _ws_logger.error("WS_PUSH_ERR task=%s event=%s err=%s", self.task_id, event_type, _exc, exc_info=True)
 
 
 # =============================================================================
@@ -835,32 +845,4 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.save()
         return {"status": "completed", "task_id": task_id}
 
-    except ApprovalRequired as exc:
-        _save_audit_steps(task, react_agent.audit_log, step_offset=step_offset)
-        try:
-            tool_input_data = json.loads(exc.tool_input) if exc.tool_input else {}
-        except Exception:
-            tool_input_data = {"raw": str(exc.tool_input)}
-        last_step = TaskStep.objects.filter(task=task).order_by("-step_number").first()
-        new_approval = Approval.objects.create(
-            task=task,
-            step=last_step,
-            tool_name=exc.tool_name,
-            tool_input=tool_input_data,
-            tool_zone="yellow",
-            resume_snapshot=react_agent.pending_approval or {},
-        )
-        cost = react_agent.get_cost_summary()
-        task.status = Task.Status.WAITING_APPROVAL
-        task.steps_taken = (task.steps_taken or 0) + cost["total_steps"]
-        task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_usd"]
-        task.save(update_fields=["status", "steps_taken", "cost_usd"])
-        return {"status": "waiting_approval", "approval_id": str(new_approval.id)}
-
-    except Exception as exc:
-        _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
-        task.status = Task.Status.FAILED
-        task.error_message = str(exc)[:500]
-        task.completed_at = timezone.now()
-        task.save(update_fields=["status", "error_message", "completed_at"])
-        raise
+    except ApprovalR

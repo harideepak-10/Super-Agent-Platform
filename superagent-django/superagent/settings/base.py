@@ -253,20 +253,4 @@ ACCOUNT_EMAIL_REQUIRED = True
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = env("EMAIL_HOST", default="")
 EMAIL_PORT = env.int("EMAIL_PORT", default=587)
-EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@superagent.ai")
-
-# ---------------------------------------------------------------------------
-# AI / Groq
-# ---------------------------------------------------------------------------
-GROQ_API_KEY = env("GROQ_API_KEY", default="")
-GROQ_MODEL = env("GROQ_MODEL", default="llama-3.1-8b-instant")
-
-# ---------------------------------------------------------------------------
-# Google OAuth
-# ---------------------------------------------------------------------------
-GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
-GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
-BACKEND_URL = env("BACKEND_URL", default="")
+EMAIL_USE_
