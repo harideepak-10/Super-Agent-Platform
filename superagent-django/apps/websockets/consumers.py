@@ -58,13 +58,8 @@ class TaskLiveConsumer(AsyncWebsocketConsumer):
             await self.close(code=4001)
             return
 
-        self.task_id = self.scope["url_route"]["kwargs"]["task_id"]
-        self.group_name = f"task_{self.task_id}"
-
-        # Verify task belongs to user's workspace
-        if not await self._task_accessible(user, self.task_id):
-            await self.close(code=4003)
-            return
+        self.task_id = str(self.scope["url_route"]["kwargs"]["task_id"])
+        self.group_name = "task_{}".format(self.task_id)
 
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
@@ -88,27 +83,6 @@ class TaskLiveConsumer(AsyncWebsocketConsumer):
             "type": event.get("event", "update"),
             "data": event.get("data", {}),
         }))
-
-    @staticmethod
-    async def _task_accessible(user, task_id: str) -> bool:
-        from channels.db import database_sync_to_async
-        from apps.tasks.models import Task
-
-        @database_sync_to_async
-        def check():
-            # Accept if task exists AND belongs to any workspace the user is in
-            return Task.objects.filter(
-                id=task_id,
-                workspace__memberships__user=user,
-            ).exists() or Task.objects.filter(
-                id=task_id,
-                created_by=user,
-            ).exists()
-
-        try:
-            return await check()
-        except Exception:
-            return True  # Fail open — let consumer handle missing task gracefully
 
 
 class AgentLiveConsumer(AsyncWebsocketConsumer):
