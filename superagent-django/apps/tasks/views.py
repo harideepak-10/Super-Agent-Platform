@@ -36,7 +36,6 @@ def task_list(request):
         return Response([], status=status.HTTP_200_OK)
     tasks = Task.objects.filter(workspace=workspace).order_by("-created_at")
 
-    # Filtering
     task_status = request.query_params.get("status")
     if task_status:
         tasks = tasks.filter(status=task_status)
@@ -143,7 +142,6 @@ def task_retry(request, pk):
     if task.status not in (Task.Status.FAILED, Task.Status.CANCELLED):
         return Response({"detail": "Only failed or cancelled tasks can be retried."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Create a new task from the same prompt
     new_task = Task.objects.create(
         workspace=workspace,
         agent=task.agent,
@@ -156,190 +154,15 @@ def task_retry(request, pk):
 
 
 # ---------------------------------------------------------------------------
-# Mobile Tasks screen
+# New Task form config
 # ---------------------------------------------------------------------------
-
-def _duration_label(seconds):
-    """38s | 1m 12s | 4 min | 2h 5m"""
-    if seconds is None:
-        return None
-    s = int(seconds)
-    if s < 60:
-        return "%ds" % s
-    if s < 3600:
-        m, sec = divmod(s, 60)
-        return ("%dm %ds" % (m, sec)) if sec else ("%dm" % m)
-    h, rem = divmod(s, 3600)
-    m = rem // 60
-    return ("%dh %dm" % (h, m)) if m else ("%dh" % h)
-
-
-def _time_ago(dt):
-    from django.utils import timezone as tz
-    if not dt:
-        return None
-    secs = int((tz.now() - dt).total_seconds())
-    if secs < 60:
-        return "just now"
-    if secs < 3600:
-        return "%dm ago" % (secs // 60)
-    if secs < 86400:
-        return "%dh ago" % (secs // 3600)
-    return "%dd ago" % (secs // 86400)
-
-
-_STATUS_META = {
-    "queued":           ("Queued",            "#6B7280", "queued"),
-    "running":          ("Running",           "#3B82F6", "running"),
-    "waiting_approval": ("Awaiting approval", "#F59E0B", "waiting"),
-    "completed":        ("Done",              "#10B981", "done"),
-    "failed":           ("Failed",            "#EF4444", "failed"),
-    "cancelled":        ("Cancelled",         "#9CA3AF", "cancelled"),
-}
-_DEFAULT_STATUS = ("Unknown", "#6B7280", "unknown")
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def task_mobile_list(request):
-    """
-    GET /api/v1/tasks/mobile/
-
-    Mobile Tasks screen — rich per-card data including progress, duration,
-    cost label, accent color, and inline approval CTA.
-
-    Query params:
-      ?status=running|completed|failed|waiting_approval
-      ?agent_id=<uuid>
-      ?limit=N  (default 30)
-    """
-    from django.utils import timezone as tz
-    from apps.approvals.models import Approval
-
-    workspace = _get_workspace(request)
-    if not workspace:
-        return Response({"detail": "No workspace."}, status=status.HTTP_400_BAD_REQUEST)
-
-    qs = (
-        Task.objects
-        .filter(workspace=workspace)
-        .select_related("agent")
-        .prefetch_related("approvals")
-        .order_by("-updated_at")
-    )
-
-    status_filter = request.query_params.get("status")
-    if status_filter:
-        qs = qs.filter(status=status_filter)
-
-    agent_filter = request.query_params.get("agent_id")
-    if agent_filter:
-        qs = qs.filter(agent_id=agent_filter)
-
-    try:
-        limit = min(int(request.query_params.get("limit", 30)), 100)
-    except ValueError:
-        limit = 30
-
-    qs = qs[:limit]
-
-    running_count = Task.objects.filter(workspace=workspace, status=Task.Status.RUNNING).count()
-    waiting_count = Task.objects.filter(workspace=workspace, status=Task.Status.WAITING_APPROVAL).count()
-
-    items = []
-    for task in qs:
-        status_label, accent, badge_key = _STATUS_META.get(task.status, _DEFAULT_STATUS)
-
-        # Duration: running tasks = time since created; finished = completed_at - created_at
-        now = tz.now()
-        if task.completed_at:
-            dur_secs = (task.completed_at - task.created_at).total_seconds()
-        else:
-            dur_secs = (now - task.created_at).total_seconds()
-        duration = _duration_label(dur_secs)
-
-        # Progress estimate for running tasks (steps_taken / max_steps or heuristic)
-        progress_pct = None
-        current_step_desc = None
-        if task.status == Task.Status.RUNNING:
-            # Use steps_taken as a rough proxy; cap at 95 while still running
-            progress_pct = min(95, task.steps_taken * 10) if task.steps_taken else 5
-            current_step_desc = task.result[:60] if task.result else "Processing..."
-        elif task.status == Task.Status.WAITING_APPROVAL:
-            progress_pct = None
-            current_step_desc = task.result[:60] if task.result else "Waiting for approval..."
-
-        # Pending approval ID for the "Review & Approve" CTA
-        pending_approval = None
-        if task.status == Task.Status.WAITING_APPROVAL:
-            ap = task.approvals.filter(status=Approval.Status.PENDING).first()
-            if ap:
-                pending_approval = {
-                    "id":           str(ap.id),
-                    "tool_name":    ap.tool_name,
-                    "display_name": ap.tool_name.replace("_", " ").title(),
-                }
-
-        # Cost label: format as €0.12
-        cost_label = "€%.2f" % float(task.cost_usd)
-
-        # Meta line: "4 min · 5 steps · €0.12"
-        meta_parts = [duration]
-        if task.steps_taken:
-            meta_parts.append("%d step%s" % (task.steps_taken, "s" if task.steps_taken != 1 else ""))
-        meta_parts.append(cost_label)
-        meta_line = " · ".join(meta_parts)
-
-        items.append({
-            "id":           str(task.id),
-            "prompt":       task.prompt[:100],
-            "status":       task.status,
-            "status_label": status_label,
-            "badge_key":    badge_key,
-            "accent_color": accent,
-
-            "agent": {
-                "id":         str(task.agent.id) if task.agent else None,
-                "name":       task.agent.name if task.agent else "Agent",
-                "agent_type": task.agent.agent_type if task.agent else "custom",
-            },
-
-            "progress_pct":       progress_pct,
-            "current_step_desc":  current_step_desc,
-
-            "duration":           duration,
-            "steps_taken":        task.steps_taken,
-            "cost_eur":           round(float(task.cost_usd), 4),
-            "cost_label":         cost_label,
-            "meta_line":          meta_line,
-
-            "pending_approval":   pending_approval,
-            "error_message":      task.error_message[:100] if task.error_message else None,
-
-            "completed_at":       task.completed_at.isoformat() if task.completed_at else None,
-            "updated_at":         task.updated_at.isoformat(),
-            "time_ago":           _time_ago(task.updated_at),
-        })
-
-    return Response({
-        "running_count": running_count,
-        "waiting_count": waiting_count,
-        "total_shown":   len(items),
-        "tasks":         items,
-    })
-
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def new_task_form(request):
     """
     GET /api/v1/tasks/new-task-form/
-
-    Returns all config needed to render the New Task / Launch screen:
-      - agents      list for the "Assign to" dropdown
-      - quick_start preset task templates
-      - priority    options with labels and descriptions
-      - form_meta   character limits, placeholder text
+    Returns all config needed to render the New Task screen.
     """
     from apps.agents.models import Agent
 
@@ -347,7 +170,6 @@ def new_task_form(request):
     if not workspace:
         return Response({"detail": "No workspace."}, status=status.HTTP_400_BAD_REQUEST)
 
-    # ── Agents dropdown ───────────────────────────────────────────────────────
     agents = Agent.objects.filter(workspace=workspace, is_active=True).order_by("name")
 
     agent_options = [
@@ -367,222 +189,33 @@ def new_task_form(request):
             "is_default":  False,
         })
 
-    # ── Quick-start templates ─────────────────────────────────────────────────
     quick_start = [
-        {
-            "id":       "weekly_report",
-            "label":    "Draft weekly report",
-            "prompt":   "Draft a weekly summary report of all tasks completed this week, including key outcomes and any issues.",
-            "icon":     "file-text",
-            "agent_id": "auto",
-        },
-        {
-            "id":       "extract_invoices",
-            "label":    "Extract invoice data",
-            "prompt":   "Extract all invoice data from the latest documents in Google Drive and export to a CSV file.",
-            "icon":     "file-spreadsheet",
-            "agent_id": "auto",
-        },
-        {
-            "id":       "organize_drive",
-            "label":    "Organize Google Drive",
-            "prompt":   "Organize all files in Google Drive into appropriate folders by type and date.",
-            "icon":     "cloud",
-            "agent_id": "auto",
-        },
-        {
-            "id":       "reply_emails",
-            "label":    "Reply to urgent emails",
-            "prompt":   "Check my inbox for urgent emails and draft replies for any that have been waiting more than 24 hours.",
-            "icon":     "mail",
-            "agent_id": "auto",
-        },
-        {
-            "id":       "check_compliance",
-            "label":    "Check compliance deadlines",
-            "prompt":   "Check all upcoming compliance deadlines and alert me to anything due within the next 7 days.",
-            "icon":     "shield",
-            "agent_id": "auto",
-        },
-        {
-            "id":       "triage_inbox",
-            "label":    "Triage overnight inbox",
-            "prompt":   "Triage all emails received overnight, flag urgent items and summarize the rest.",
-            "icon":     "inbox",
-            "agent_id": "auto",
-        },
+        {"id": "weekly_report",    "label": "Draft weekly report",       "prompt": "Draft a weekly summary report of all tasks completed this week, including key outcomes and any issues.", "icon": "file-text",        "agent_id": "auto"},
+        {"id": "extract_invoices", "label": "Extract invoice data",      "prompt": "Extract all invoice data from the latest documents in Google Drive and export to a CSV file.",           "icon": "file-spreadsheet", "agent_id": "auto"},
+        {"id": "organize_drive",   "label": "Organize Google Drive",     "prompt": "Organize all files in Google Drive into appropriate folders by type and date.",                           "icon": "cloud",            "agent_id": "auto"},
+        {"id": "reply_emails",     "label": "Reply to urgent emails",    "prompt": "Check my inbox for urgent emails and draft replies for any that have been waiting more than 24 hours.",  "icon": "mail",             "agent_id": "auto"},
+        {"id": "check_compliance", "label": "Check compliance deadlines","prompt": "Check all upcoming compliance deadlines and alert me to anything due within the next 7 days.",            "icon": "shield",           "agent_id": "auto"},
+        {"id": "triage_inbox",     "label": "Triage overnight inbox",    "prompt": "Triage all emails received overnight, flag urgent items and summarize the rest.",                         "icon": "inbox",            "agent_id": "auto"},
     ]
 
-    # ── Priority options ──────────────────────────────────────────────────────
     priority_options = [
-        {
-            "value":       "routine",
-            "label":       "Routine",
-            "icon":        "clock",
-            "description": None,
-            "is_default":  True,
-        },
-        {
-            "value":       "urgent",
-            "label":       "Urgent",
-            "icon":        "zap",
-            "description": "Urgent tasks bypass the queue for immediate execution.",
-            "is_default":  False,
-        },
+        {"value": "routine", "label": "Routine", "icon": "clock", "description": None,                                                          "is_default": True},
+        {"value": "urgent",  "label": "Urgent",  "icon": "zap",   "description": "Urgent tasks bypass the queue for immediate execution.", "is_default": False},
     ]
 
     return Response({
         "form_meta": {
-            "title":           "New Task",
-            "subtitle":        "Tell your agents exactly what to do",
-            "prompt_label":    "WHAT SHOULD THE AI DO?",
-            "prompt_placeholder": (
-                "e.g. Send a follow-up email to all leads who "
-                "haven't replied in 3 days..."
-            ),
-            "prompt_max_length": 500,
-            "assign_label":    "ASSIGN TO",
-            "quick_start_label": "QUICK START",
-            "priority_label":  "PRIORITY",
-            "submit_label":    "Run Task",
+            "title":                "New Task",
+            "subtitle":             "Tell your agents exactly what to do",
+            "prompt_label":         "WHAT SHOULD THE AI DO?",
+            "prompt_placeholder":   "e.g. Send a follow-up email to all leads who haven't replied in 3 days...",
+            "prompt_max_length":    500,
+            "assign_label":         "ASSIGN TO",
+            "quick_start_label":    "QUICK START",
+            "priority_label":       "PRIORITY",
+            "submit_label":         "Run Task",
         },
-        "agents":          agent_options,
-        "quick_start":     quick_start,
+        "agents":           agent_options,
+        "quick_start":      quick_start,
         "priority_options": priority_options,
-    })
-
-
-# ---------------------------------------------------------------------------
-# Task Mobile Detail screen
-# ---------------------------------------------------------------------------
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def task_mobile_detail(request, pk):
-    """
-    GET /api/v1/tasks/{id}/mobile-detail/
-    Full task detail screen — header, progress, step timeline, result, actions.
-    """
-    import datetime as dt
-    from django.utils import timezone
-
-    workspace = _get_workspace(request)
-    task = get_object_or_404(
-        Task.objects.select_related("agent", "created_by"),
-        id=pk, workspace=workspace
-    )
-
-    _STATUS_META = {
-        Task.Status.QUEUED:           ("Queued",           "#6B7280", "clock"),
-        Task.Status.RUNNING:          ("Running",          "#F59E0B", "loader"),
-        Task.Status.COMPLETED:        ("Completed",        "#22C55E", "check-circle"),
-        Task.Status.FAILED:           ("Failed",           "#EF4444", "x-circle"),
-        Task.Status.CANCELLED:        ("Cancelled",        "#6B7280", "slash"),
-        Task.Status.WAITING_APPROVAL: ("Waiting Approval", "#3B82F6", "pause-circle"),
-    }
-
-    status_label, status_color, status_icon = _STATUS_META.get(
-        task.status, ("Unknown", "#6B7280", "help-circle")
-    )
-
-    # Duration
-    duration = None
-    if task.started_at and task.completed_at:
-        secs = int((task.completed_at - task.started_at).total_seconds())
-        if secs < 60:    duration = "%ds" % secs
-        elif secs < 3600: duration = "%dm %ds" % (secs // 60, secs % 60)
-        else:             duration = "%dh %dm" % (secs // 3600, (secs % 3600) // 60)
-    elif task.started_at:
-        secs = int((timezone.now() - task.started_at).total_seconds())
-        duration = "%dm running" % (secs // 60) if secs >= 60 else "%ds running" % secs
-
-    # Step timeline
-    steps = TaskStep.objects.filter(task=task).order_by("created_at")
-
-    _STEP_TAG_META = {
-        "start":            ("task.started",   "#3B82F6", "#1E3A5F"),
-        "thinking":         ("thinking",       "#8B5CF6", "#2E1065"),
-        "tool_call":        ("tool.executed",  "#22C55E", "#064E3B"),
-        "approval_request": ("approval.req",   "#F59E0B", "#78350F"),
-        "approval_resume":  ("approval.done",  "#22C55E", "#064E3B"),
-        "error":            ("error",          "#EF4444", "#7F1D1D"),
-        "complete":         ("completed",      "#22C55E", "#064E3B"),
-    }
-
-    timeline = []
-    for step in steps:
-        tag_label, tag_color, tag_bg = _STEP_TAG_META.get(
-            step.step_type, ("event", "#6B7280", "#1F2937")
-        )
-        timeline.append({
-            "step_id":    str(step.id),
-            "step_type":  step.step_type,
-            "tag":        tag_label,
-            "tag_color":  tag_color,
-            "tag_bg":     tag_bg,
-            "content":    step.content or "",
-            "timestamp":  step.created_at.strftime("%H:%M:%S"),
-            "created_at": step.created_at.isoformat(),
-        })
-
-    # Pending approval for this task
-    pending_approval = None
-    from apps.approvals.models import Approval
-    ap = Approval.objects.filter(
-        task=task, status=Approval.Status.PENDING
-    ).first()
-    if ap:
-        pending_approval = {
-            "id":           str(ap.id),
-            "tool_name":    ap.tool_name,
-            "review_url":   "/api/v1/approvals/%s/review/" % ap.id,
-            "confirm_url":  "/api/v1/approvals/%s/confirm/" % ap.id,
-        }
-
-    # Agent info
-    agent_info = None
-    if task.agent:
-        agent_info = {
-            "id":         str(task.agent.id),
-            "name":       task.agent.name,
-            "agent_type": task.agent.agent_type,
-        }
-
-    # Created by
-    creator_name = None
-    if task.created_by:
-        creator_name = task.created_by.name or task.created_by.email.split("@")[0]
-
-    now = timezone.now()
-    created_secs = int((now - task.created_at).total_seconds())
-
-    return Response({
-        "id":           str(task.id),
-        "prompt":       task.prompt,
-        "status":       task.status,
-        "status_label": status_label,
-        "status_color": status_color,
-        "status_icon":  status_icon,
-        "priority":     getattr(task, "priority", "routine"),
-        "agent":        agent_info,
-        "created_by":   creator_name,
-        "stats": {
-            "steps_taken":  task.steps_taken,
-            "cost_usd":     round(float(task.cost_usd), 4),
-            "cost_label":   "€%.2f" % float(task.cost_usd),
-            "duration":     duration,
-            "created_ago":  "%dm ago" % (created_secs // 60) if created_secs >= 60 else "just now",
-        },
-        "result":           task.result or None,
-        "timeline":         timeline,
-        "pending_approval": pending_approval,
-        "actions": {
-            "can_cancel": task.status in (Task.Status.QUEUED, Task.Status.RUNNING),
-            "can_retry":  task.status in (Task.Status.FAILED, Task.Status.CANCELLED),
-            "cancel_url": "/api/v1/tasks/%s/cancel/" % pk,
-            "retry_url":  "/api/v1/tasks/%s/retry/" % pk,
-        },
-        "started_at":   task.started_at.isoformat() if task.started_at else None,
-        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-        "created_at":   task.created_at.isoformat(),
     })

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "krypsos-superagent-v1",
     "name": "KRYPSOS Super Agent Platform",
-    "description": "Complete API collection for KRYPSOS Super Agent AI Platform. Base URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ and copy the access token\n3. Set the 'token' variable to the access token\n4. All authenticated requests use Bearer {{token}} automatically",
+    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ — token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSocket (Live Task Events):\nConnect to: wss://super-agent-platform.onrender.com/ws/tasks/<task_id>/\nHeader: Authorization: Bearer {{token}}\nEvents received: task_started, llm_called, tool_called, tool_result, approval_needed, task_completed\n\nTypical Flow:\n1. POST /agents/create/ → save agent_id\n2. POST /tasks/create/ → save task_id, connect WebSocket\n3. If task status = waiting_approval → GET /approvals/pending/ → POST /approvals/{id}/decide/\n4. GET /tasks/{task_id}/ to see final result",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,7 +11,13 @@
     { "key": "refresh_token", "value": "", "type": "string" },
     { "key": "agent_id", "value": "", "type": "string" },
     { "key": "task_id", "value": "", "type": "string" },
-    { "key": "approval_id", "value": "", "type": "string" }
+    { "key": "approval_id", "value": "", "type": "string" },
+    { "key": "integration_id", "value": "", "type": "string" },
+    { "key": "member_id", "value": "", "type": "string" },
+    { "key": "notification_id", "value": "", "type": "string" },
+    { "key": "profile_id", "value": "", "type": "string" },
+    { "key": "user_id", "value": "", "type": "string" },
+    { "key": "rule_id", "value": "", "type": "string" }
   ],
   "auth": {
     "type": "bearer",
@@ -210,14 +216,6 @@
           }
         },
         {
-          "name": "Mobile Agents List",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/agents/mobile/",
-            "description": "Returns agent grid cards with health status, tasks today, and marketplace section."
-          }
-        },
-        {
           "name": "Create Agent",
           "event": [
             {
@@ -260,14 +258,6 @@
         {
           "name": "Agent Tasks",
           "request": { "method": "GET", "url": "{{base_url}}/agents/{{agent_id}}/tasks/" }
-        },
-        {
-          "name": "Agent Mobile Detail",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/agents/{{agent_id}}/mobile-detail/",
-            "description": "Full Agent Detail screen data: header, status badges, stats (tasks today, success rate, total cost), capabilities list, tools chips, recent runs."
-          }
         },
         {
           "name": "Agent Live Activity",
@@ -313,10 +303,6 @@
             "url": "{{base_url}}/tasks/new-task-form/",
             "description": "Returns form options for the New Task screen."
           }
-        },
-        {
-          "name": "Mobile Task List",
-          "request": { "method": "GET", "url": "{{base_url}}/tasks/mobile/" }
         },
         {
           "name": "Create Task",
@@ -375,14 +361,6 @@
             "body": { "mode": "raw", "raw": "{}" }
           }
         },
-        {
-          "name": "Task Mobile Detail",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/tasks/{{task_id}}/mobile-detail/",
-            "description": "Full task detail screen: status, stats, step timeline, pending approval CTA, retry/cancel actions."
-          }
-        }
       ]
     },
     {
@@ -428,6 +406,31 @@
             "url": "{{base_url}}/approvals/rules/",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"tool_name\": \"send_email\",\n  \"always_require\": true,\n  \"always_block\": false\n}" }
+          }
+        },
+        {
+          "name": "Get Approval Rule Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/approvals/rules/{{rule_id}}/",
+            "description": "Get a single approval rule."
+          }
+        },
+        {
+          "name": "Update Approval Rule",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/approvals/rules/{{rule_id}}/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"always_require\": false,\n  \"always_block\": true\n}" }
+          }
+        },
+        {
+          "name": "Delete Approval Rule",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/approvals/rules/{{rule_id}}/",
+            "description": "Delete an approval rule."
           }
         },
         {
@@ -511,6 +514,17 @@
         },
         {
           "name": "Connect Integration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) { pm.collectionVariables.set('integration_id', json.id); }"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "url": "{{base_url}}/integrations/connect/",
@@ -519,6 +533,28 @@
               "mode": "raw",
               "raw": "{\n  \"integration_type\": \"gmail\",\n  \"credentials\": {\n    \"access_token\": \"<oauth_access_token>\",\n    \"refresh_token\": \"<oauth_refresh_token>\"\n  }\n}"
             }
+          }
+        },
+        {
+          "name": "Gmail - Get OAuth URL",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/integrations/gmail/auth-url/",
+            "description": "Returns the Google OAuth consent URL. Redirect the user to this URL to authorise Gmail access."
+          }
+        },
+        {
+          "name": "Gmail - OAuth Callback",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/integrations/gmail/callback/?code=<auth_code>&state=<state>",
+              "query": [
+                { "key": "code", "value": "<auth_code>", "description": "Authorization code from Google redirect" },
+                { "key": "state", "value": "<state>", "description": "State token returned by Google" }
+              ]
+            },
+            "description": "Google redirects here after the user grants permission. Exchanges the auth code for tokens and saves the Gmail integration."
           }
         },
         {
