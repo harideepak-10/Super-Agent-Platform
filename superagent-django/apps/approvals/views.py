@@ -1,3 +1,5 @@
+import threading
+
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -8,6 +10,16 @@ from rest_framework.response import Response
 from .models import Approval, ApprovalRule
 from .serializers import ApprovalSerializer, ApprovalDecisionSerializer, ApprovalRuleSerializer
 from apps.audit.utils import log_event
+
+
+def _run_in_thread(celery_task, *args):
+    def _worker():
+        from django.db import connection
+        try:
+            celery_task.apply(args=args)
+        finally:
+            connection.close()
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +154,7 @@ def approval_decide(request, pk):
     event = "approval_granted" if approved else "approval_rejected"
     log_event(request, event, "approval", str(approval.id), workspace)
 
-    resume_agent_task.delay(str(approval.task_id), str(approval.id), approved, note)
+    _run_in_thread(resume_agent_task, str(approval.task_id), str(approval.id), approved, note)
 
     return Response(ApprovalSerializer(approval).data)
 
@@ -481,12 +493,4 @@ def approval_history(request):
         })
 
     approved_count  = qs.filter(status=Approval.Status.APPROVED).count()
-    rejected_count  = qs.filter(status=Approval.Status.REJECTED).count()
-
-    return Response({
-        "total":          len(items),
-        "approved_count": approved_count,
-        "rejected_count": rejected_count,
-        "subtitle":       "%d approved · %d rejected" % (approved_count, rejected_count),
-        "history":        items,
-    })
+    rejected_count  = qs.filter(status=Approval.Status.REJE

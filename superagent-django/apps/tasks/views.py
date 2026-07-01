@@ -1,3 +1,5 @@
+import threading
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -7,6 +9,17 @@ from rest_framework.response import Response
 from .models import Task, TaskStep
 from .serializers import TaskSerializer, TaskListSerializer, CreateTaskSerializer, TaskStepSerializer
 from apps.audit.utils import log_event
+
+
+def _run_in_thread(celery_task, *args):
+    """Run a Celery task in a background thread (free tier — no separate worker needed)."""
+    def _worker():
+        from django.db import connection
+        try:
+            celery_task.apply(args=args)
+        finally:
+            connection.close()
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def _get_workspace(request):
@@ -60,11 +73,7 @@ def task_create(request):
         status=Task.Status.QUEUED,
     )
 
-    # Urgent tasks bypass the normal queue — use high Celery priority
-    if priority == "urgent":
-        run_agent_task.apply_async(args=[str(task.id)], priority=9)
-    else:
-        run_agent_task.delay(str(task.id))
+    _run_in_thread(run_agent_task, str(task.id))
 
     log_event(request, "task_created", "task", str(task.id), workspace)
     return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
@@ -142,7 +151,7 @@ def task_retry(request, pk):
         prompt=task.prompt,
         status=Task.Status.QUEUED,
     )
-    run_agent_task.delay(str(new_task.id))
+    _run_in_thread(run_agent_task, str(new_task.id))
     return Response(TaskSerializer(new_task).data, status=status.HTTP_201_CREATED)
 
 
@@ -571,9 +580,4 @@ def task_mobile_detail(request, pk):
             "can_cancel": task.status in (Task.Status.QUEUED, Task.Status.RUNNING),
             "can_retry":  task.status in (Task.Status.FAILED, Task.Status.CANCELLED),
             "cancel_url": "/api/v1/tasks/%s/cancel/" % pk,
-            "retry_url":  "/api/v1/tasks/%s/retry/" % pk,
-        },
-        "started_at":   task.started_at.isoformat() if task.started_at else None,
-        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-        "created_at":   task.created_at.isoformat(),
-    })
+            "retry_url":  "/api/v1/tasks/%s/
