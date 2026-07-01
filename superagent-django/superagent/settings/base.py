@@ -299,6 +299,16 @@ LOGGING = {
             "level": "DEBUG",
             "propagate": False,
         },
+        "send_email": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
+        "apps.tasks.tasks": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": False,
+        },
         "django": {
             "handlers": ["console"],
             "level": "INFO",

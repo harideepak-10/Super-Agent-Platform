@@ -31,10 +31,14 @@ _AI_PATH = os.path.join(_REPO, "superagent-ai")
 if _AI_PATH not in sys.path:
     sys.path.insert(0, _AI_PATH)
 
+import logging
+
 from celery import shared_task
 from django.utils import timezone
 
 from core.tools.base_tool import BaseTool, ToolZone
+
+_logger = logging.getLogger(__name__)
 from core.base_agent import (
     BaseAgent, ApprovalRequired, RedZoneBlocked,
     StepLimitReached, CostLimitReached,
@@ -208,7 +212,9 @@ class SendEmailTool(BaseTool):
         self._workspace_id = workspace_id
 
     def _gmail_service(self):
+        _svc_log = logging.getLogger("send_email.service")
         if not self._workspace_id:
+            _svc_log.warning("_gmail_service: no workspace_id")
             return None
         try:
             from apps.integrations.models import Integration
@@ -219,8 +225,13 @@ class SendEmailTool(BaseTool):
                 provider=Integration.Provider.GMAIL,
                 status=Integration.Status.ACTIVE,
             ).first()
-            if not integration or not integration.access_token:
+            if not integration:
+                _svc_log.warning("_gmail_service: no active Gmail integration for workspace=%s", self._workspace_id)
                 return None
+            if not integration.access_token:
+                _svc_log.warning("_gmail_service: integration found but no access_token for workspace=%s", self._workspace_id)
+                return None
+            _svc_log.info("_gmail_service: building service for workspace=%s has_refresh=%s", self._workspace_id, bool(integration.refresh_token))
             creds = Credentials(
                 token=integration.access_token,
                 refresh_token=integration.refresh_token,
@@ -229,20 +240,26 @@ class SendEmailTool(BaseTool):
                 token_uri="https://oauth2.googleapis.com/token",
             )
             return build("gmail", "v1", credentials=creds)
-        except Exception:
+        except Exception as exc:
+            _svc_log.error("_gmail_service: exception building service err=%s", exc, exc_info=True)
             return None
 
     def run(self, input_str: str) -> str:
+        _run_log = logging.getLogger("send_email")
+        _run_log.info("SendEmailTool.run called input=%r", input_str[:200] if input_str else "")
         try:
             data = json.loads(input_str)
-        except Exception:
+        except Exception as parse_exc:
+            _run_log.warning("SendEmailTool.run json.loads failed err=%s input=%r", parse_exc, input_str[:100])
             data = {"raw": input_str}
 
         to      = data.get("to", "")
         subject = data.get("subject", "(no subject)")
         body    = data.get("body", "")
+        _run_log.info("SendEmailTool.run to=%r subject=%r body_len=%d", to, subject, len(body))
 
         service = self._gmail_service()
+        _run_log.info("SendEmailTool.run gmail_service_ok=%s", service is not None)
         if service:
             try:
                 import base64
@@ -251,17 +268,21 @@ class SendEmailTool(BaseTool):
                 msg["to"]      = to
                 msg["subject"] = subject
                 raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-                service.users().messages().send(userId="me", body={"raw": raw}).execute()
-                return json.dumps({"status": "sent", "to": to, "subject": subject})
+                send_result = service.users().messages().send(userId="me", body={"raw": raw}).execute()
+                _run_log.info("SendEmailTool.run SENT OK to=%r msg_id=%s", to, send_result.get("id"))
+                return json.dumps({"status": "sent", "to": to, "subject": subject, "msg_id": send_result.get("id", "")})
             except Exception as exc:
+                _run_log.error("SendEmailTool.run SEND FAILED to=%r err=%s", to, exc, exc_info=True)
                 return json.dumps({"status": "error", "error": str(exc)})
 
-        return json.dumps({
+        result = json.dumps({
             "status": "no_gmail",
             "note": "Gmail not connected. Go to Integrations to connect Gmail first.",
             "to": to,
             "subject": subject,
         })
+        _run_log.warning("SendEmailTool.run no_gmail to=%r", to)
+        return result
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -866,10 +887,16 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     _tool_input = _last_tool_call.get("input", "") if isinstance(_last_tool_call, dict) else ""
     if not isinstance(_tool_input, str):
         _tool_input = json.dumps(_tool_input)
+    _logger.info(
+        "RESUME_EXEC task=%s tool=%s tool_found=%s input=%r",
+        task_id, approval.tool_name, _approved_tool is not None, str(_tool_input)[:200],
+    )
     try:
-        _tool_result = _approved_tool.run(_tool_input) if _approved_tool else json.dumps({"error": "tool not found"})
+        _tool_result = _approved_tool.run(_tool_input) if _approved_tool else json.dumps({"error": "tool not found: {}".format(approval.tool_name)})
     except Exception as _exc:
+        _logger.error("RESUME_EXEC tool=%s raised %s", approval.tool_name, _exc, exc_info=True)
         _tool_result = json.dumps({"error": str(_exc)})
+    _logger.info("RESUME_EXEC task=%s tool=%s result=%r", task_id, approval.tool_name, str(_tool_result)[:300])
 
     messages = list(snapshot.get("messages_snapshot", []))
     messages.append({
