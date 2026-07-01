@@ -857,6 +857,20 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         system_prompt=(agent_model.system_prompt if agent_model else "") or "",
     )
 
+    # Execute the approved tool NOW and inject the real result into messages.
+    # (Do NOT send a fake "approved" message — the LLM would call the tool again.)
+    _tools_for_resume = _build_tools(agent_model, workspace_id=task.workspace_id)
+    _tool_map = {t.name: t for t in _tools_for_resume}
+    _approved_tool = _tool_map.get(approval.tool_name)
+    _last_tool_call = snapshot.get("last_tool_call", {})
+    _tool_input = _last_tool_call.get("input", "") if isinstance(_last_tool_call, dict) else ""
+    if not isinstance(_tool_input, str):
+        _tool_input = json.dumps(_tool_input)
+    try:
+        _tool_result = _approved_tool.run(_tool_input) if _approved_tool else json.dumps({"error": "tool not found"})
+    except Exception as _exc:
+        _tool_result = json.dumps({"error": str(_exc)})
+
     messages = list(snapshot.get("messages_snapshot", []))
     messages.append({
         "role": "assistant",
@@ -866,10 +880,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     messages.append({
         "role": "tool",
         "name": approval.tool_name,
-        "content": json.dumps({
-            "approved": True,
-            "message": "Action '{}' was approved by a human. Proceed.".format(approval.tool_name),
-        }),
+        "content": _tool_result,  # real result — LLM sees it as done
     })
 
     try:
