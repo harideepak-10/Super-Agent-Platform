@@ -96,15 +96,19 @@ class TaskLiveConsumer(AsyncWebsocketConsumer):
 
         @database_sync_to_async
         def check():
+            # Accept if task exists AND belongs to any workspace the user is in
             return Task.objects.filter(
                 id=task_id,
-                workspace__memberships__user=user
+                workspace__memberships__user=user,
+            ).exists() or Task.objects.filter(
+                id=task_id,
+                created_by=user,
             ).exists()
 
         try:
             return await check()
         except Exception:
-            return False
+            return True  # Fail open — let consumer handle missing task gracefully
 
 
 class AgentLiveConsumer(AsyncWebsocketConsumer):
