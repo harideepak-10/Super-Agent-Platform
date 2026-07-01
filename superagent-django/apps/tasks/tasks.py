@@ -554,7 +554,6 @@ class DjangoAgent(BaseAgent):
             channel_layer = get_channel_layer()
             _ws_logger.info("WS_PUSH task=%s event=%s layer=%s", self.task_id, event_type, type(channel_layer).__name__)
             if channel_layer and self.task_id:
-                # Ensure details is JSON-serializable
                 try:
                     safe_details = _json.loads(_json.dumps(details, default=str))
                 except Exception:

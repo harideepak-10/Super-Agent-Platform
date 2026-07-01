@@ -493,4 +493,12 @@ def approval_history(request):
         })
 
     approved_count  = qs.filter(status=Approval.Status.APPROVED).count()
-    rejected_count  = qs.filter(status=Approval.Status.REJE
+    rejected_count  = qs.filter(status=Approval.Status.REJECTED).count()
+
+    return Response({
+        "total":          len(items),
+        "approved_count": approved_count,
+        "rejected_count": rejected_count,
+        "subtitle":       "%d approved · %d rejected" % (approved_count, rejected_count),
+        "history":        items,
+    })
