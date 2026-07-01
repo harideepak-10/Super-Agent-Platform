@@ -245,3 +245,10 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@superagent.ai")
 # ---------------------------------------------------------------------------
 GROQ_API_KEY = env("GROQ_API_KEY", default="")
 GROQ_MODEL = env("GROQ_MODEL", default="llama-3.1-8b-instant")
+
+# ---------------------------------------------------------------------------
+# Google OAuth
+# ---------------------------------------------------------------------------
+GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
+GOOGLE_CLIENT_SECRET = env("GOOGLE_CLIENT_SECRET", default="")
+BACKEND_URL = env("BACKEND_URL", default="")
