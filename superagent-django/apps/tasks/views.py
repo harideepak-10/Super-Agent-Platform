@@ -46,7 +46,7 @@ def task_create(request):
         return Response({"detail": "No workspace found."}, status=status.HTTP_400_BAD_REQUEST)
 
     agent = None
-    agent_id = serializer.validated_data.get("agent_id")
+    agent_id = serializer.validated_data.get("agent_id") or serializer.validated_data.get("agent")
     if agent_id:
         agent = get_object_or_404(Agent, id=agent_id, workspace=workspace)
 

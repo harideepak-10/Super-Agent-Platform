@@ -37,6 +37,7 @@ class TaskSerializer(serializers.ModelSerializer):
 class CreateTaskSerializer(serializers.Serializer):
     prompt    = serializers.CharField(max_length=500)
     agent_id  = serializers.UUIDField(required=False, allow_null=True)
+    agent     = serializers.UUIDField(required=False, allow_null=True)  # alias for agent_id
     priority  = serializers.ChoiceField(choices=["routine", "urgent"], default="routine")
 
 
