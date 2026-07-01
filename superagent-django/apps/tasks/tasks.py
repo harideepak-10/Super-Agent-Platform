@@ -201,22 +201,66 @@ class ReadEmailTool(BaseTool):
 
 class SendEmailTool(BaseTool):
     name = "send_email"
-    description = "Send an email. REQUIRES HUMAN APPROVAL. Input JSON: {\"to\": \"email\", \"subject\": \"...\", \"body\": \"...\"}."
+    description = "Send an email via Gmail. REQUIRES HUMAN APPROVAL before sending. Input JSON: {\"to\": \"email\", \"subject\": \"...\", \"body\": \"...\"}."
     zone = ToolZone.YELLOW
 
     def __init__(self, workspace_id=None):
         self._workspace_id = workspace_id
+
+    def _gmail_service(self):
+        if not self._workspace_id:
+            return None
+        try:
+            from apps.integrations.models import Integration
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+            integration = Integration.objects.filter(
+                workspace_id=self._workspace_id,
+                provider=Integration.Provider.GMAIL,
+                status=Integration.Status.ACTIVE,
+            ).first()
+            if not integration or not integration.access_token:
+                return None
+            creds = Credentials(
+                token=integration.access_token,
+                refresh_token=integration.refresh_token,
+                client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+                client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+                token_uri="https://oauth2.googleapis.com/token",
+            )
+            return build("gmail", "v1", credentials=creds)
+        except Exception:
+            return None
 
     def run(self, input_str: str) -> str:
         try:
             data = json.loads(input_str)
         except Exception:
             data = {"raw": input_str}
+
+        to      = data.get("to", "")
+        subject = data.get("subject", "(no subject)")
+        body    = data.get("body", "")
+
+        service = self._gmail_service()
+        if service:
+            try:
+                import base64
+                from email.mime.text import MIMEText
+                msg = MIMEText(body)
+                msg["to"]      = to
+                msg["subject"] = subject
+                raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+                service.users().messages().send(userId="me", body={"raw": raw}).execute()
+                return json.dumps({"status": "sent", "to": to, "subject": subject})
+            except Exception as exc:
+                return json.dumps({"status": "error", "error": str(exc)})
+
         return json.dumps({
-            "status": "simulated",
-            "note": "Email send simulated (no Gmail connected).",
-            "to": data.get("to", ""),
-            "subject": data.get("subject", ""),
+            "status": "no_gmail",
+            "note": "Gmail not connected. Go to Integrations to connect Gmail first.",
+            "to": to,
+            "subject": subject,
         })
 
     def to_schema(self):
