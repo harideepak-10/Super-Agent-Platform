@@ -141,3 +141,148 @@ def available_integrations(request):
         {"provider": choice[0], "label": choice[1]}
         for choice in Integration.Provider.choices
     ])
+
+
+# ---------------------------------------------------------------------------
+# Gmail OAuth flow
+# ---------------------------------------------------------------------------
+
+def _gmail_oauth_client():
+    """Return (client_id, client_secret) from settings."""
+    from django.conf import settings
+    client_id = getattr(settings, "GOOGLE_CLIENT_ID", "")
+    client_secret = getattr(settings, "GOOGLE_CLIENT_SECRET", "")
+    if not client_id or not client_secret:
+        raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set.")
+    return client_id, client_secret
+
+
+def _gmail_redirect_uri(request):
+    from django.conf import settings
+    base = getattr(settings, "BACKEND_URL", "").rstrip("/")
+    if not base:
+        base = request.build_absolute_uri("/").rstrip("/")
+    return base + "/api/v1/integrations/gmail/callback/"
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def gmail_auth_url(request):
+    """
+    GET /api/v1/integrations/gmail/auth-url/
+    Returns the Google OAuth consent-screen URL.
+    The mobile app opens this URL in a browser; after consent Google
+    redirects to /api/v1/integrations/gmail/callback/.
+    """
+    try:
+        client_id, _ = _gmail_oauth_client()
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    import urllib.parse
+    redirect_uri = _gmail_redirect_uri(request)
+
+    # Encode the user ID in state so the callback knows which user to save for
+    state = str(request.user.id)
+
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+    }
+    auth_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+    return Response({"auth_url": auth_url, "redirect_uri": redirect_uri})
+
+
+@api_view(["GET"])
+def gmail_callback(request):
+    """
+    GET /api/v1/integrations/gmail/callback/
+    Google redirects here after the user grants (or denies) consent.
+    Exchanges the auth code for tokens and saves the integration.
+    """
+    code  = request.query_params.get("code")
+    state = request.query_params.get("state")  # user ID
+    error = request.query_params.get("error")
+
+    if error:
+        return Response({"detail": "OAuth denied: {}".format(error)}, status=status.HTTP_400_BAD_REQUEST)
+    if not code or not state:
+        return Response({"detail": "Missing code or state."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Look up the user from state
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    try:
+        user = User.objects.get(id=state)
+    except (User.DoesNotExist, Exception):
+        return Response({"detail": "Invalid state."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Exchange code for tokens
+    try:
+        client_id, client_secret = _gmail_oauth_client()
+    except ValueError as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    import requests as http_requests
+    redirect_uri = _gmail_redirect_uri(request)
+    token_resp = http_requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        },
+    )
+    if not token_resp.ok:
+        return Response({"detail": "Token exchange failed.", "error": token_resp.json()},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    tokens = token_resp.json()
+    access_token  = tokens.get("access_token", "")
+    refresh_token = tokens.get("refresh_token", "")
+    scopes        = tokens.get("scope", "").split()
+
+    # Fetch user's Gmail address
+    profile_resp = http_requests.get(
+        "https://www.googleapis.com/oauth2/v1/userinfo",
+        headers={"Authorization": "Bearer " + access_token},
+    )
+    email_address = ""
+    if profile_resp.ok:
+        email_address = profile_resp.json().get("email", "")
+
+    # Find the user's workspace
+    membership = user.memberships.select_related("workspace").first()
+    if not membership:
+        return Response({"detail": "User has no workspace."}, status=status.HTTP_400_BAD_REQUEST)
+    workspace = membership.workspace
+
+    # Save / update the integration
+    integration, _ = Integration.objects.update_or_create(
+        workspace=workspace,
+        user=user,
+        provider=Integration.Provider.GMAIL,
+        defaults={
+            "status": Integration.Status.ACTIVE,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "scopes": scopes,
+            "metadata": {"email": email_address},
+        },
+    )
+
+    # Return a simple success page the mobile WebView can detect
+    from django.http import HttpResponse
+    return HttpResponse(
+        "<html><body><h2>Gmail connected!</h2>"
+        "<p>Your Gmail account <b>{}</b> is now linked. You can close this window.</p>"
+        "</body></html>".format(email_address),
+        content_type="text/html",
+    )
