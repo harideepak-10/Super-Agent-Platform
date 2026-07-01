@@ -580,4 +580,9 @@ def task_mobile_detail(request, pk):
             "can_cancel": task.status in (Task.Status.QUEUED, Task.Status.RUNNING),
             "can_retry":  task.status in (Task.Status.FAILED, Task.Status.CANCELLED),
             "cancel_url": "/api/v1/tasks/%s/cancel/" % pk,
-            "retry_url":  "/api/v1/tasks/%s/
+            "retry_url":  "/api/v1/tasks/%s/retry/" % pk,
+        },
+        "started_at":   task.started_at.isoformat() if task.started_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "created_at":   task.created_at.isoformat(),
+    })
