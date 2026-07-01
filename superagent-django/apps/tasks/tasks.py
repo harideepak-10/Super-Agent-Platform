@@ -536,8 +536,10 @@ class DjangoAgent(BaseAgent):
         if self._db_system_prompt:
             return self._db_system_prompt
         return (
-            "You are a helpful AI agent. Use the available tools to complete the task. "
-            "Think step by step. When you have enough information, give a clear final answer."
+            "You are an AI agent with access to tools. "
+            "When the user asks you to perform an action (send email, search, etc.), "
+            "you MUST call the appropriate tool directly — do NOT describe how to do it manually. "
+            "Use the tools provided. Only give a final text answer when all actions are done."
         )
 
 
