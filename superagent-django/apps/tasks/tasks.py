@@ -542,6 +542,23 @@ class DjangoAgent(BaseAgent):
             "Use the tools provided. Only give a final text answer when all actions are done."
         )
 
+    def _log(self, event_type: str, details: dict) -> None:
+        """Override to push each step to WebSocket channel layer in real-time."""
+        super()._log(event_type, details)
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            channel_layer = get_channel_layer()
+            if channel_layer and self.task_id:
+                group_name = "task_{}".format(self.task_id)
+                async_to_sync(channel_layer.group_send)(group_name, {
+                    "type": "task_update",
+                    "event": event_type,
+                    "data": details,
+                })
+        except Exception:
+            pass  # Never let WS errors break the agent loop
+
 
 # =============================================================================
 # HELPER — save audit_log entries as TaskStep records

@@ -177,13 +177,31 @@ CORS_ALLOW_ALL_ORIGINS = env.bool("CORS_ALLOW_ALL_ORIGINS", default=True)
 CORS_ALLOW_CREDENTIALS = True
 
 # ---------------------------------------------------------------------------
-# Django Channels (WebSockets) — in-memory for dev, Redis for prod
+# Django Channels (WebSockets) — Redis channel layer for prod
 # ---------------------------------------------------------------------------
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
+_CHANNEL_REDIS_URL = env("REDIS_URL", default="")
+if _CHANNEL_REDIS_URL.startswith("rediss://"):
+    _channel_config = {
+        "hosts": [{"address": _CHANNEL_REDIS_URL, "ssl_cert_reqs": None}],
     }
-}
+elif _CHANNEL_REDIS_URL:
+    _channel_config = {"hosts": [_CHANNEL_REDIS_URL]}
+else:
+    _channel_config = None
+
+if _channel_config:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": _channel_config,
+        }
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 
 # ---------------------------------------------------------------------------
 # Celery
