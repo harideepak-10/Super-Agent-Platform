@@ -30,7 +30,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Google OAuth
     google_id = models.CharField(max_length=255, blank=True, unique=True, null=True)
 
     objects = UserManager()

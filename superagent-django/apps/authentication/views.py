@@ -100,7 +100,7 @@ def google_login(request):
         if Workspace.objects.filter(slug=slug).exists():
             slug = f"{base_slug}-{_uuid.uuid4().hex[:6]}"
         workspace = Workspace.objects.create(
-            name=f"{name or email.split(chr(64))[0]}'s Workspace",
+            name=f"{name or email.split('@')[0]}'s Workspace",
             slug=slug,
             owner=user,
         )
@@ -182,7 +182,7 @@ def reset_password(request):
         return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
-# Profile views
+# ── Profile views ─────────────────────────────────────────────────────────────
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -196,47 +196,29 @@ def me(request):
 def update_profile(request):
     user = request.user
 
-    # Handle avatar file upload — accept "avatar" or "image" (Flutter image_picker uses "image")
+    # Handle avatar file upload — accept "avatar" or "image" (Flutter image_picker)
     avatar_file = request.FILES.get("avatar") or request.FILES.get("image")
     if avatar_file:
         import os
         from django.conf import settings as django_settings
 
-        cloudinary_url = getattr(django_settings, "CLOUDINARY_URL", None)
+        ext = os.path.splitext(avatar_file.name)[1].lower() or ".jpg"
+        filename = f"{user.id}{ext}"
+        avatars_dir = os.path.join(django_settings.MEDIA_ROOT, "avatars")
+        os.makedirs(avatars_dir, exist_ok=True)
+        file_path = os.path.join(avatars_dir, filename)
 
-        if cloudinary_url:
-            # ── Cloudinary (production on Render) ────────────────────────
-            import cloudinary.uploader
-            result = cloudinary.uploader.upload(
-                avatar_file,
-                folder="avatars",
-                public_id=str(user.id),
-                overwrite=True,
-                resource_type="image",
-            )
-            user.avatar_url = result["secure_url"]
-            user.save(update_fields=["avatar_url"])
-        else:
-            # ── Local disk (development) ──────────────────────────────────
-            ext = os.path.splitext(avatar_file.name)[1].lower() or ".jpg"
-            filename = f"{user.id}{ext}"
-            avatars_dir = os.path.join(django_settings.MEDIA_ROOT, "avatars")
-            os.makedirs(avatars_dir, exist_ok=True)
-            file_path = os.path.join(avatars_dir, filename)
+        with open(file_path, "wb+") as dest:
+            for chunk in avatar_file.chunks():
+                dest.write(chunk)
 
-            with open(file_path, "wb+") as dest:
-                for chunk in avatar_file.chunks():
-                    dest.write(chunk)
+        relative_url = f"{django_settings.MEDIA_URL}avatars/{filename}"
+        user.avatar_url = request.build_absolute_uri(relative_url)
+        user.save(update_fields=["avatar_url"])
 
-            relative_url = f"{django_settings.MEDIA_URL}avatars/{filename}"
-            user.avatar_url = request.build_absolute_uri(relative_url)
-            user.save(update_fields=["avatar_url"])
-
-    # Handle name / other text fields
     serializer = UpdateProfileSerializer(user, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
     serializer.save()
-
     return Response(UserSerializer(request.user, context={"request": request}).data)
 
 
@@ -313,7 +295,7 @@ def profile_settings(request):
         monthly_cost = float(agg["total"] or 0)
         budget = Budget.objects.filter(workspace=workspace, period=Budget.Period.MONTHLY).first()
         if budget:
-            budget_label = "\u20ac%.2f / month" % float(budget.limit_usd)
+            budget_label = "€%.2f / month" % float(budget.limit_usd)
 
     member_count = 0
     if workspace:
@@ -336,7 +318,7 @@ def profile_settings(request):
         "control": {"items": [
             {"key": "notifications", "title": "Notifications", "subtitle": notifications_label, "icon": "bell"},
             {"key": "approval_rules", "title": "Approval rules", "subtitle": rules_label, "icon": "shield", "badge_count": rules_count},
-            {"key": "costs", "title": "Costs", "subtitle": "\u20ac%.2f this month" % monthly_cost, "icon": "euro-sign"},
+            {"key": "costs", "title": "Costs", "subtitle": "€%.2f this month" % monthly_cost, "icon": "euro-sign"},
             {"key": "budget_limit", "title": "Budget limit", "subtitle": budget_label, "icon": "piggy-bank"},
         ]},
         "team": {"items": [{"key": "team_members", "title": "Team members",
