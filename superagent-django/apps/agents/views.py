@@ -64,7 +64,7 @@ def agent_delete(request, pk):
     agent.is_active = False
     agent.save(update_fields=["is_active"])
     log_event(request, "agent_deleted", "agent", str(agent.id), workspace)
-    return Response(status=status.HTTP_204_NO_CONTENT)
+    return Response({"detail": "Agent deleted successfully."}, status=status.HTTP_200_OK)
 
 
 @api_view(["GET"])
