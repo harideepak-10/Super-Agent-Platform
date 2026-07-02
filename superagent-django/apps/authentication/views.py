@@ -196,28 +196,41 @@ def me(request):
 def update_profile(request):
     user = request.user
 
-    # Handle avatar file upload
-    avatar_file = request.FILES.get("avatar")
+    # Handle avatar file upload — accept "avatar" or "image" (Flutter image_picker uses "image")
+    avatar_file = request.FILES.get("avatar") or request.FILES.get("image")
     if avatar_file:
-        import os, uuid
+        import os
         from django.conf import settings as django_settings
 
-        # Build save path: MEDIA_ROOT/avatars/<user_id>.<ext>
-        ext = os.path.splitext(avatar_file.name)[1].lower() or ".jpg"
-        filename = f"{user.id}{ext}"
-        avatars_dir = os.path.join(django_settings.MEDIA_ROOT, "avatars")
-        os.makedirs(avatars_dir, exist_ok=True)
-        file_path = os.path.join(avatars_dir, filename)
+        cloudinary_url = getattr(django_settings, "CLOUDINARY_URL", None)
 
-        # Save file to disk
-        with open(file_path, "wb+") as dest:
-            for chunk in avatar_file.chunks():
-                dest.write(chunk)
+        if cloudinary_url:
+            # ── Cloudinary (production on Render) ────────────────────────
+            import cloudinary.uploader
+            result = cloudinary.uploader.upload(
+                avatar_file,
+                folder="avatars",
+                public_id=str(user.id),
+                overwrite=True,
+                resource_type="image",
+            )
+            user.avatar_url = result["secure_url"]
+            user.save(update_fields=["avatar_url"])
+        else:
+            # ── Local disk (development) ──────────────────────────────────
+            ext = os.path.splitext(avatar_file.name)[1].lower() or ".jpg"
+            filename = f"{user.id}{ext}"
+            avatars_dir = os.path.join(django_settings.MEDIA_ROOT, "avatars")
+            os.makedirs(avatars_dir, exist_ok=True)
+            file_path = os.path.join(avatars_dir, filename)
 
-        # Build full URL and save to avatar_url
-        relative_url = f"{django_settings.MEDIA_URL}avatars/{filename}"
-        user.avatar_url = request.build_absolute_uri(relative_url)
-        user.save(update_fields=["avatar_url"])
+            with open(file_path, "wb+") as dest:
+                for chunk in avatar_file.chunks():
+                    dest.write(chunk)
+
+            relative_url = f"{django_settings.MEDIA_URL}avatars/{filename}"
+            user.avatar_url = request.build_absolute_uri(relative_url)
+            user.save(update_fields=["avatar_url"])
 
     # Handle name / other text fields
     serializer = UpdateProfileSerializer(user, data=request.data, partial=True)
