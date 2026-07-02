@@ -75,23 +75,9 @@ class ResetPasswordSerializer(serializers.Serializer):
 
 
 class UpdateProfileSerializer(serializers.ModelSerializer):
-    avatar = serializers.ImageField(required=False, allow_null=True)
-
     class Meta:
         model = User
-        fields = ["name", "avatar_url", "avatar"]
-
-    def update(self, instance, validated_data):
-        avatar_file = validated_data.pop("avatar", None)
-        if avatar_file:
-            if instance.avatar:
-                instance.avatar.delete(save=False)
-            instance.avatar = avatar_file
-            instance.avatar_url = ""
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
+        fields = ["name"]  # avatar handled manually in the view via request.FILES
 
 
 class ChangePasswordSerializer(serializers.Serializer):

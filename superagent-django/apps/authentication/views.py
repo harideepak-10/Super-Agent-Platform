@@ -194,9 +194,36 @@ def me(request):
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser, JSONParser])
 def update_profile(request):
-    serializer = UpdateProfileSerializer(request.user, data=request.data, partial=True)
+    user = request.user
+
+    # Handle avatar file upload
+    avatar_file = request.FILES.get("avatar")
+    if avatar_file:
+        import os, uuid
+        from django.conf import settings as django_settings
+
+        # Build save path: MEDIA_ROOT/avatars/<user_id>.<ext>
+        ext = os.path.splitext(avatar_file.name)[1].lower() or ".jpg"
+        filename = f"{user.id}{ext}"
+        avatars_dir = os.path.join(django_settings.MEDIA_ROOT, "avatars")
+        os.makedirs(avatars_dir, exist_ok=True)
+        file_path = os.path.join(avatars_dir, filename)
+
+        # Save file to disk
+        with open(file_path, "wb+") as dest:
+            for chunk in avatar_file.chunks():
+                dest.write(chunk)
+
+        # Build full URL and save to avatar_url
+        relative_url = f"{django_settings.MEDIA_URL}avatars/{filename}"
+        user.avatar_url = request.build_absolute_uri(relative_url)
+        user.save(update_fields=["avatar_url"])
+
+    # Handle name / other text fields
+    serializer = UpdateProfileSerializer(user, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
     serializer.save()
+
     return Response(UserSerializer(request.user, context={"request": request}).data)
 
 
