@@ -6,10 +6,19 @@ User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = ["id", "email", "name", "avatar_url", "created_at"]
         read_only_fields = ["id", "created_at"]
+
+    def get_avatar_url(self, obj):
+        request = self.context.get("request")
+        if obj.avatar:
+            url = obj.avatar.url
+            return request.build_absolute_uri(url) if request else url
+        return obj.avatar_url or None
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -27,10 +36,8 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user = User.objects.create_user(**validated_data)
 
-        # Auto-create a workspace and make the user its owner
         base_slug = slugify(user.email.split("@")[0]) or "workspace"
         slug = base_slug
-        # Ensure slug is unique
         if Workspace.objects.filter(slug=slug).exists():
             slug = f"{base_slug}-{uuid.uuid4().hex[:6]}"
 
@@ -40,7 +47,6 @@ class RegisterSerializer(serializers.ModelSerializer):
             owner=user,
         )
 
-        # Create membership so _get_workspace() can find it
         TeamMembership.objects.create(
             workspace=workspace,
             user=user,
@@ -69,9 +75,23 @@ class ResetPasswordSerializer(serializers.Serializer):
 
 
 class UpdateProfileSerializer(serializers.ModelSerializer):
+    avatar = serializers.ImageField(required=False, allow_null=True)
+
     class Meta:
         model = User
-        fields = ["name", "avatar_url"]
+        fields = ["name", "avatar_url", "avatar"]
+
+    def update(self, instance, validated_data):
+        avatar_file = validated_data.pop("avatar", None)
+        if avatar_file:
+            if instance.avatar:
+                instance.avatar.delete(save=False)
+            instance.avatar = avatar_file
+            instance.avatar_url = ""
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance
 
 
 class ChangePasswordSerializer(serializers.Serializer):

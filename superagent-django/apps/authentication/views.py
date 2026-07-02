@@ -4,7 +4,8 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -18,7 +19,6 @@ from .serializers import (
 
 User = get_user_model()
 
-# Simple in-memory password reset store (use Redis/DB in production)
 _password_reset_tokens: dict = {}
 
 
@@ -62,7 +62,6 @@ def login(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def google_login(request):
-    """Exchange Google ID token for app JWT tokens."""
     serializer = GoogleLoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
@@ -95,14 +94,13 @@ def google_login(request):
         user.google_id = google_id
         user.save(update_fields=["google_id"])
 
-    # Auto-create workspace for new Google users
     if created and not user.memberships.exists():
         base_slug = slugify(email.split("@")[0]) or "workspace"
         slug = base_slug
         if Workspace.objects.filter(slug=slug).exists():
             slug = f"{base_slug}-{_uuid.uuid4().hex[:6]}"
         workspace = Workspace.objects.create(
-            name=f"{name or email.split('@')[0]}'s Workspace",
+            name=f"{name or email.split(chr(64))[0]}'s Workspace",
             slug=slug,
             owner=user,
         )
@@ -131,7 +129,6 @@ def logout(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def token_refresh(request):
-    """Re-issue access token from refresh token."""
     refresh_token = request.data.get("refresh")
     if not refresh_token:
         return Response({"detail": "refresh token required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -162,7 +159,7 @@ def forgot_password(request):
             fail_silently=True,
         )
     except User.DoesNotExist:
-        pass  # Don't leak whether email exists
+        pass
 
     return Response({"detail": "If that email exists, a reset link has been sent."})
 
@@ -185,21 +182,22 @@ def reset_password(request):
         return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
 
-# ── Profile views ────────────────────────────────────────────────────────────
+# Profile views
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def me(request):
-    return Response(UserSerializer(request.user).data)
+    return Response(UserSerializer(request.user, context={"request": request}).data)
 
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
 def update_profile(request):
     serializer = UpdateProfileSerializer(request.user, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
     serializer.save()
-    return Response(UserSerializer(request.user).data)
+    return Response(UserSerializer(request.user, context={"request": request}).data)
 
 
 @api_view(["POST"])
@@ -218,18 +216,8 @@ def change_password(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def profile_settings(request):
-    """
-    GET /api/v1/profile/settings/
-
-    Profile & Settings screen — single call for all sections:
-      header       (name, email, role, plan badge)
-      integrations (connected apps count)
-      control      (notifications, approval rules, history, audit, costs, budget)
-      team         (member count)
-      account      (danger zone flags)
-    """
     from apps.integrations.models import Integration
-    from apps.approvals.models import Approval, ApprovalRule
+    from apps.approvals.models import ApprovalRule
     from apps.costs.models import DailyCost, Budget
     from apps.team.models import TeamMembership
     from apps.notifications.models import NotificationSettings
@@ -239,216 +227,92 @@ def profile_settings(request):
     membership = user.memberships.select_related("workspace").first()
     workspace = membership.workspace if membership else None
 
-    # ── Header ────────────────────────────────────────────────────────────────
-    role_label = {
-        "owner":  "Owner",
-        "admin":  "Admin",
-        "member": "Member",
-        "viewer": "Viewer",
-    }.get(membership.role if membership else "", "Member")
-
-    # Plan is workspace-level; default to "Pro plan" until billing model is added
+    role_label = {"owner": "Owner", "admin": "Admin", "member": "Member", "viewer": "Viewer"}.get(
+        membership.role if membership else "", "Member"
+    )
     plan_label = "Pro plan"
     badge_label = "%s · %s" % (role_label, plan_label)
 
-    # ── Integrations ──────────────────────────────────────────────────────────
     connected_count = 0
     if workspace:
         connected_count = Integration.objects.filter(
-            workspace=workspace,
-            user=user,
-            status=Integration.Status.ACTIVE,
+            workspace=workspace, user=user, status=Integration.Status.ACTIVE
         ).count()
 
-    # ── Control: Notifications ────────────────────────────────────────────────
     notif_settings = None
     notifications_label = "All alerts on"
     if workspace:
-        notif_settings = NotificationSettings.objects.filter(
-            user=user, workspace=workspace
-        ).first()
+        notif_settings = NotificationSettings.objects.filter(user=user, workspace=workspace).first()
     if notif_settings:
-        all_on = all([
+        flags = [
             notif_settings.push_enabled,
             notif_settings.email_on_task_complete,
             notif_settings.email_on_task_failed,
             notif_settings.email_on_approval_needed,
             notif_settings.email_on_budget_alert,
-        ])
-        all_off = not any([
-            notif_settings.push_enabled,
-            notif_settings.email_on_task_complete,
-            notif_settings.email_on_task_failed,
-            notif_settings.email_on_approval_needed,
-            notif_settings.email_on_budget_alert,
-        ])
-        if all_on:
+        ]
+        if all(flags):
             notifications_label = "All alerts on"
-        elif all_off:
+        elif not any(flags):
             notifications_label = "All alerts off"
         else:
             notifications_label = "Some alerts on"
 
-    # ── Control: Approval rules ───────────────────────────────────────────────
     rules_count = 0
     if workspace:
         rules_count = ApprovalRule.objects.filter(workspace=workspace).count()
     rules_label = "%d rule%s active" % (rules_count, "s" if rules_count != 1 else "")
 
-    # ── Control: Costs & Budget ───────────────────────────────────────────────
     today = datetime.date.today()
     month_start = today.replace(day=1)
     monthly_cost = 0.0
     budget_label = "No budget set"
-
     if workspace:
         from django.db.models import Sum
-        agg = DailyCost.objects.filter(
-            workspace=workspace, date__gte=month_start
-        ).aggregate(total=Sum("total_cost_usd"))
+        agg = DailyCost.objects.filter(workspace=workspace, date__gte=month_start).aggregate(total=Sum("total_cost_usd"))
         monthly_cost = float(agg["total"] or 0)
-
-        budget = Budget.objects.filter(
-            workspace=workspace, period=Budget.Period.MONTHLY
-        ).first()
+        budget = Budget.objects.filter(workspace=workspace, period=Budget.Period.MONTHLY).first()
         if budget:
-            budget_label = "€%.2f / month" % float(budget.limit_usd)
+            budget_label = "\u20ac%.2f / month" % float(budget.limit_usd)
 
-    # ── Team ──────────────────────────────────────────────────────────────────
     member_count = 0
     if workspace:
         member_count = TeamMembership.objects.filter(workspace=workspace).count()
 
     return Response({
-        # ── Header ────────────────────────────────────────────────────────
         "header": {
-            "name":         user.name or user.email.split("@")[0],
-            "email":        user.email,
-            "avatar_url":   user.avatar_url or None,
-            "role":         membership.role if membership else "member",
-            "role_label":   role_label,
-            "plan":         "pro",
-            "plan_label":   plan_label,
-            "badge_label":  badge_label,
+            "name": user.name or user.email.split("@")[0],
+            "email": user.email,
+            "avatar_url": user.avatar_url or None,
+            "role": membership.role if membership else "member",
+            "role_label": role_label,
+            "plan": "pro",
+            "plan_label": plan_label,
+            "badge_label": badge_label,
         },
-
-        # ── Integrations ──────────────────────────────────────────────────
-        "integrations": {
-            "items": [
-                {
-                    "key":         "connected_apps",
-                    "title":       "Connected apps",
-                    "subtitle":    "%d connected" % connected_count,
-                    "icon":        "grid",
-                    "route":       "/integrations",
-                    "badge_count": connected_count,
-                }
-            ]
-        },
-
-        # ── Control ───────────────────────────────────────────────────────
-        "control": {
-            "items": [
-                {
-                    "key":      "notifications",
-                    "title":    "Notifications",
-                    "subtitle": notifications_label,
-                    "icon":     "bell",
-                    "route":    "/settings/notifications",
-                },
-                {
-                    "key":      "approval_rules",
-                    "title":    "Approval rules",
-                    "subtitle": rules_label,
-                    "icon":     "shield",
-                    "route":    "/settings/approval-rules",
-                    "badge_count": rules_count,
-                },
-                {
-                    "key":      "approval_history",
-                    "title":    "Approval history",
-                    "subtitle": "View past decisions",
-                    "icon":     "clock",
-                    "route":    "/approvals/history",
-                },
-                {
-                    "key":      "audit_log",
-                    "title":    "Audit log",
-                    "subtitle": "Full platform history",
-                    "icon":     "file-text",
-                    "route":    "/audit",
-                },
-                {
-                    "key":      "costs",
-                    "title":    "Costs",
-                    "subtitle": "€%.2f this month" % monthly_cost,
-                    "icon":     "euro-sign",
-                    "route":    "/costs/tracker",
-                },
-                {
-                    "key":      "budget_limit",
-                    "title":    "Budget limit",
-                    "subtitle": budget_label,
-                    "icon":     "piggy-bank",
-                    "route":    "/settings/budget",
-                },
-            ]
-        },
-
-        # ── Team ──────────────────────────────────────────────────────────
-        "team": {
-            "items": [
-                {
-                    "key":         "team_members",
-                    "title":       "Team members",
-                    "subtitle":    "%d member%s" % (member_count, "s" if member_count != 1 else ""),
-                    "icon":        "users",
-                    "route":       "/team",
-                    "badge_count": member_count,
-                }
-            ]
-        },
-
-        # ── Account (danger zone — partially visible on scroll) ───────────
-        "account": {
-            "items": [
-                {
-                    "key":      "change_password",
-                    "title":    "Change password",
-                    "subtitle": None,
-                    "icon":     "lock",
-                    "route":    "/settings/change-password",
-                    "is_destructive": False,
-                },
-                {
-                    "key":      "sign_out",
-                    "title":    "Sign out",
-                    "subtitle": None,
-                    "icon":     "log-out",
-                    "route":    None,
-                    "is_destructive": False,
-                },
-                {
-                    "key":      "delete_account",
-                    "title":    "Delete account",
-                    "subtitle": "This cannot be undone",
-                    "icon":     "trash-2",
-                    "route":    None,
-                    "is_destructive": True,
-                },
-            ]
-        },
+        "integrations": {"items": [{"key": "connected_apps", "title": "Connected apps",
+            "subtitle": "%d connected" % connected_count, "icon": "grid",
+            "route": "/integrations", "badge_count": connected_count}]},
+        "control": {"items": [
+            {"key": "notifications", "title": "Notifications", "subtitle": notifications_label, "icon": "bell"},
+            {"key": "approval_rules", "title": "Approval rules", "subtitle": rules_label, "icon": "shield", "badge_count": rules_count},
+            {"key": "costs", "title": "Costs", "subtitle": "\u20ac%.2f this month" % monthly_cost, "icon": "euro-sign"},
+            {"key": "budget_limit", "title": "Budget limit", "subtitle": budget_label, "icon": "piggy-bank"},
+        ]},
+        "team": {"items": [{"key": "team_members", "title": "Team members",
+            "subtitle": "%d member%s" % (member_count, "s" if member_count != 1 else ""),
+            "icon": "users", "badge_count": member_count}]},
+        "account": {"items": [
+            {"key": "change_password", "title": "Change password", "is_destructive": False},
+            {"key": "sign_out", "title": "Sign out", "is_destructive": False},
+            {"key": "delete_account", "title": "Delete account", "is_destructive": True},
+        ]},
     })
 
-
-# ---------------------------------------------------------------------------
-# Health check — used by Railway to verify the app is running
-# ---------------------------------------------------------------------------
 
 @api_view(["GET"])
 @permission_classes([])
 def health_check(request):
-    """GET /api/v1/auth/health/ — Railway healthcheck endpoint (no auth required)."""
     from django.db import connection
     try:
         connection.ensure_connection()
