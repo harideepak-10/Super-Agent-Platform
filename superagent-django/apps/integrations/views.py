@@ -133,7 +133,7 @@ def gmail_emails(request):
         max_results = int(request.query_params.get("max_results", 10))
         import json as _json
         result = tool.run(_json.dumps({"limit": max_results}))
-        return Response(result)
+        return Response(_json.loads(result))
     except Exception as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
