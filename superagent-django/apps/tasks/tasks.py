@@ -584,7 +584,12 @@ def _build_tools(agent_model, workspace_id=None):
             except TypeError:
                 tools.append(cls())
     if not tools:
-        tools = [WebSearchTool(), ClassifyTextTool(), GenerateReportTool()]
+        # No agent or agent has no tools configured — give ALL registered tools
+        for cls in _TOOL_REGISTRY.values():
+            try:
+                tools.append(cls(workspace_id=workspace_id))
+            except TypeError:
+                tools.append(cls())
     return tools
 
 
@@ -747,7 +752,7 @@ def run_agent_task(self, task_id: str):
     )
 
     from core.llm.groq_provider import GroqProvider
-    llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.1-8b-instant"
+    llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.3-70b-versatile"
     llm = GroqProvider(model=llm_model)
 
     react_agent = DjangoAgent(
@@ -865,7 +870,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     )
 
     from core.llm.groq_provider import GroqProvider
-    llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.1-8b-instant"
+    llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.3-70b-versatile"
     llm = GroqProvider(model=llm_model)
 
     react_agent = DjangoAgent(
