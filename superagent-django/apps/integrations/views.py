@@ -116,15 +116,19 @@ def gmail_emails(request):
         return Response({"detail": "Gmail not connected."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        from core.tools.gmail.auth import GmailAuth
+        import os
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
         from core.tools.gmail.read_emails import ReadEmailsTool
 
-        auth = GmailAuth(
-            client_id=integration.metadata.get("client_id", ""),
-            client_secret=integration.metadata.get("client_secret", ""),
+        creds = Credentials(
+            token=integration.access_token,
             refresh_token=integration.refresh_token,
+            client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            token_uri="https://oauth2.googleapis.com/token",
         )
-        gmail_service = auth.get_service()
+        gmail_service = build("gmail", "v1", credentials=creds)
         tool = ReadEmailsTool(gmail_service=gmail_service)
         max_results = int(request.query_params.get("max_results", 10))
         result = tool.run({"max_results": max_results})
