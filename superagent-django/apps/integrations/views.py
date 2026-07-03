@@ -131,7 +131,8 @@ def gmail_emails(request):
         gmail_service = build("gmail", "v1", credentials=creds)
         tool = ReadEmailsTool(gmail_service=gmail_service)
         max_results = int(request.query_params.get("max_results", 10))
-        result = tool.run({"max_results": max_results})
+        import json as _json
+        result = tool.run(_json.dumps({"limit": max_results}))
         return Response(result)
     except Exception as exc:
         return Response({"detail": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
