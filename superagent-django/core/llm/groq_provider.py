@@ -190,16 +190,18 @@ class GroqProvider(LLMProvider):
         try:
             completion = self._client.chat.completions.create(**kwargs)
         except Exception as exc:
-            # Model hallucinated a tool not in our schema (e.g. brave_search).
-            # The bad call was rejected by Groq BEFORE being returned, so it is
-            # NOT in `translated` — the history is already clean.
-            # Simply retry with the same history but NO tools so the model is
-            # forced to produce a plain-text answer from what it already has.
+            # Model used wrong parameter names — Groq rejected the tool call BEFORE
+            # returning it, so `translated` is already clean (no bad message added).
+            # Retry WITH tools so the model can try again (not without — that causes
+            # the model to output the function call as text).
             if "tool_use_failed" in str(exc) or "tool call validation failed" in str(exc):
                 retry_kwargs: dict[str, Any] = {
                     "model": self._model,
-                    "messages": translated,  # history already clean
+                    "messages": translated,
                 }
+                if tools:
+                    retry_kwargs["tools"] = tools
+                    retry_kwargs["tool_choice"] = "auto"
                 completion = self._client.chat.completions.create(**retry_kwargs)
             else:
                 raise

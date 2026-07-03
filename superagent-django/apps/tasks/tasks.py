@@ -205,7 +205,7 @@ class ReadEmailTool(BaseTool):
 
 class SendEmailTool(BaseTool):
     name = "send_email"
-    description = "Send an email via Gmail. REQUIRES HUMAN APPROVAL before sending. Input JSON: {\"to\": \"email\", \"subject\": \"...\", \"body\": \"...\"}."
+    description = "Send an email. Input JSON: {\"to\": \"recipient@email.com\", \"subject\": \"...\", \"body\": \"...\"}."
     zone = ToolZone.YELLOW
 
     def __init__(self, workspace_id=None):
@@ -253,7 +253,7 @@ class SendEmailTool(BaseTool):
             _run_log.warning("SendEmailTool.run json.loads failed err=%s input=%r", parse_exc, input_str[:100])
             data = {"raw": input_str}
 
-        to      = data.get("to", "")
+        to      = data.get("to") or data.get("recipient", "")
         subject = data.get("subject", "(no subject)")
         body    = data.get("body", "")
         _run_log.info("SendEmailTool.run to=%r subject=%r body_len=%d", to, subject, len(body))
@@ -289,11 +289,12 @@ class SendEmailTool(BaseTool):
             "name": self.name, "description": self.description,
             "parameters": {"type": "object",
                 "properties": {
-                    "to": {"type": "string"},
+                    "to": {"type": "string", "description": "Recipient email address"},
+                    "recipient": {"type": "string", "description": "Recipient email address (alias for 'to')"},
                     "subject": {"type": "string"},
                     "body": {"type": "string"},
                 },
-                "required": ["to", "subject", "body"]},
+                "required": ["subject", "body"]},
         }}
 
 
