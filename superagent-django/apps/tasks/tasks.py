@@ -556,16 +556,16 @@ class UploadToDriveTool(BaseTool):
 # =============================================================================
 
 _TOOL_REGISTRY: dict = {
+    "send_email":      SendEmailTool,      # first — most commonly needed
+    "read_email":      ReadEmailTool,
+    "create_draft":    CreateDraftTool,
     "web_search":      WebSearchTool,
+    "browse_web":      BrowseWebTool,
     "classify_text":   ClassifyTextTool,
     "generate_report": GenerateReportTool,
-    "read_email":      ReadEmailTool,
-    "send_email":      SendEmailTool,
-    "create_draft":    CreateDraftTool,
     "file_read":       FileReadTool,
     "file_write":      FileWriteTool,
     "export_csv":      ExportCsvTool,
-    "browse_web":      BrowseWebTool,
     "cal_read":        CalReadTool,
     "cal_write":       CalWriteTool,
     "delete_file":     DeleteFileTool,
@@ -606,11 +606,16 @@ class DjangoAgent(BaseAgent):
     def _system_prompt(self) -> str:
         if self._db_system_prompt:
             return self._db_system_prompt
+        tool_names = list(self._tools.keys())
+        tools_str = ", ".join(tool_names) if tool_names else "none"
         return (
-            "You are an AI agent with access to tools. "
-            "When the user asks you to perform an action (send email, search, etc.), "
-            "you MUST call the appropriate tool directly — do NOT describe how to do it manually. "
-            "Use the tools provided. Only give a final text answer when all actions are done."
+            f"You are an autonomous AI agent. You have these tools available: {tools_str}.\n\n"
+            "RULES — follow these exactly:\n"
+            "1. ALWAYS use a tool to complete the task. NEVER say you cannot do something if you have the tool for it.\n"
+            "2. To send an email: call the 'send_email' tool with the fields: to, subject, body. Do this immediately — do not search first.\n"
+            "3. Do NOT search the web for 'how to send email' or any implementation details — you already have the send_email tool.\n"
+            "4. Do NOT write code or instructions — call the tool directly.\n"
+            "5. After the tool runs, give a short confirmation to the user."
         )
 
     def _log(self, event_type: str, details: dict) -> None:
