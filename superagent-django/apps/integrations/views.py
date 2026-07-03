@@ -18,7 +18,9 @@ def _get_workspace(request):
 @permission_classes([IsAuthenticated])
 def integration_list(request):
     workspace = _get_workspace(request)
-    integrations = Integration.objects.filter(workspace=workspace, user=request.user)
+    integrations = Integration.objects.filter(
+        workspace=workspace, user=request.user
+    ).exclude(status=Integration.Status.REVOKED)
     return Response(IntegrationSerializer(integrations, many=True).data)
 
 
