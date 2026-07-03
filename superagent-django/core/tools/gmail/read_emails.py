@@ -101,24 +101,15 @@ class ReadEmailsTool(BaseTool):
         return self._service
 
     @staticmethod
-    def _parse_input(input_str: str) -> tuple[int, str]:
-        """Parse the input string into (limit, query).
-
-        Args:
-            input_str: Raw input from the agent.
-
-        Returns:
-            Tuple of (limit: int, query: str).
-        """
-        if input_str and input_str.strip().startswith("{"):
-            try:
-                data = json.loads(input_str)
-                limit = int(data.get("limit", _DEFAULT_LIMIT))
-                query = str(data.get("filter", _DEFAULT_FILTER))
-                return limit, query
-            except (json.JSONDecodeError, ValueError):
-                pass
-        return _DEFAULT_LIMIT, _DEFAULT_FILTER
+    def _parse_input(input_str) -> tuple[int, str]:
+        """Parse the input (dict or JSON string) into (limit, query)."""
+        try:
+            data = input_str if isinstance(input_str, dict) else json.loads(input_str)
+            limit = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
+            query = str(data.get("filter", _DEFAULT_FILTER))
+            return limit, query
+        except Exception:
+            return _DEFAULT_LIMIT, _DEFAULT_FILTER
 
     def _fetch_emails(self, service: Any, limit: int, query: str) -> str:
         """Fetch and parse emails from the Gmail API.
