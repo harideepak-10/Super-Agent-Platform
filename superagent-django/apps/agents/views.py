@@ -406,6 +406,192 @@ def agent_audit_log(request, pk):
 
 
 # ---------------------------------------------------------------------------
+# Agent Templates — ready-made agents users can add with one tap
+# ---------------------------------------------------------------------------
+
+_AGENT_TEMPLATES = [
+    {
+        "slug":        "email-agent",
+        "name":        "Email Agent",
+        "agent_type":  "email",
+        "description": "Reads your inbox, classifies emails, and sends replies. Requires Gmail connected.",
+        "icon":        "mail",
+        "icon_bg":     "#B45309",
+        "border_color":"#F59E0B",
+        "badge":       "Popular",
+        "badge_color": "#22C55E",
+        "tools":       ["read_email", "classify_text", "send_email", "create_draft"],
+        "llm_model":   "llama-3.3-70b-versatile",
+        "system_prompt": (
+            "You are an email management agent. You can read emails, classify them, "
+            "send replies, and create drafts. When asked to send an email, always call "
+            "the send_email tool directly with to, subject, and body fields. "
+            "Never say you cannot send emails — use the tool."
+        ),
+        "max_steps":   20,
+        "max_cost_usd": 1.0,
+    },
+    {
+        "slug":        "research-agent",
+        "name":        "Research Agent",
+        "agent_type":  "research",
+        "description": "Searches the web, browses pages, and generates structured research reports.",
+        "icon":        "search",
+        "icon_bg":     "#1E40AF",
+        "border_color":"#3B82F6",
+        "badge":       None,
+        "badge_color": None,
+        "tools":       ["web_search", "browse_web", "generate_report"],
+        "llm_model":   "llama-3.3-70b-versatile",
+        "system_prompt": (
+            "You are a research agent. Search the web for information, browse relevant pages, "
+            "and generate clear structured reports. Always use tools — never make up information."
+        ),
+        "max_steps":   20,
+        "max_cost_usd": 1.0,
+    },
+    {
+        "slug":        "document-agent",
+        "name":        "Document Agent",
+        "agent_type":  "document",
+        "description": "Reads files, extracts information, and exports summaries as CSV or reports.",
+        "icon":        "file-text",
+        "icon_bg":     "#0F766E",
+        "border_color":"#14B8A6",
+        "badge":       None,
+        "badge_color": None,
+        "tools":       ["file_read", "generate_report", "export_csv"],
+        "llm_model":   "llama-3.3-70b-versatile",
+        "system_prompt": (
+            "You are a document processing agent. Read files, extract key information, "
+            "and generate structured summaries or CSV exports as needed."
+        ),
+        "max_steps":   15,
+        "max_cost_usd": 1.0,
+    },
+    {
+        "slug":        "calendar-agent",
+        "name":        "Calendar Agent",
+        "agent_type":  "calendar",
+        "description": "Reads your calendar and schedules meetings. Requires Google Calendar connected.",
+        "icon":        "calendar",
+        "icon_bg":     "#065F46",
+        "border_color":"#10B981",
+        "badge":       None,
+        "badge_color": None,
+        "tools":       ["cal_read", "cal_write", "web_search"],
+        "llm_model":   "llama-3.3-70b-versatile",
+        "system_prompt": (
+            "You are a calendar management agent. Read calendar events and schedule meetings "
+            "when asked. Always confirm before creating or modifying events."
+        ),
+        "max_steps":   15,
+        "max_cost_usd": 1.0,
+    },
+    {
+        "slug":        "reporting-agent",
+        "name":        "Reporting Agent",
+        "agent_type":  "reporting",
+        "description": "Generates business reports, summaries, and CSV exports from your data.",
+        "icon":        "bar-chart",
+        "icon_bg":     "#5B21B6",
+        "border_color":"#8B5CF6",
+        "badge":       None,
+        "badge_color": None,
+        "tools":       ["generate_report", "export_csv", "web_search"],
+        "llm_model":   "llama-3.3-70b-versatile",
+        "system_prompt": (
+            "You are a reporting agent. Generate structured business reports and export data "
+            "as CSV when needed. Always use the generate_report tool for report creation."
+        ),
+        "max_steps":   15,
+        "max_cost_usd": 1.0,
+    },
+]
+
+_TEMPLATE_MAP = {t["slug"]: t for t in _AGENT_TEMPLATES}
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def agent_templates(request):
+    """
+    GET /api/v1/agents/templates/
+    Returns all ready-made agent templates.
+    """
+    workspace = _get_workspace(request)
+    existing_slugs = set()
+    if workspace:
+        existing_slugs = set(
+            Agent.objects.filter(workspace=workspace, is_active=True)
+            .values_list("agent_type", flat=True)
+        )
+
+    result = []
+    for t in _AGENT_TEMPLATES:
+        already_added = t["agent_type"] in existing_slugs
+        result.append({
+            "slug":          t["slug"],
+            "name":          t["name"],
+            "agent_type":    t["agent_type"],
+            "description":   t["description"],
+            "icon":          t["icon"],
+            "icon_bg":       t["icon_bg"],
+            "border_color":  t["border_color"],
+            "badge":         t["badge"],
+            "badge_color":   t["badge_color"],
+            "tools":         [_tool_card(tn) for tn in t["tools"]],
+            "llm_model":     t["llm_model"],
+            "already_added": already_added,
+        })
+    return Response(result)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def agent_template_activate(request, slug):
+    """
+    POST /api/v1/agents/templates/<slug>/activate/
+    Creates an agent in the user's workspace from the selected template.
+    """
+    workspace = _get_workspace(request)
+    if not workspace:
+        return Response({"detail": "No workspace found."}, status=status.HTTP_400_BAD_REQUEST)
+
+    template = _TEMPLATE_MAP.get(slug)
+    if not template:
+        return Response({"detail": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Allow only one agent per type per workspace
+    existing = Agent.objects.filter(
+        workspace=workspace, agent_type=template["agent_type"], is_active=True
+    ).first()
+    if existing:
+        return Response(
+            {"detail": "You already have a {} in your workspace.".format(template["name"]),
+             "agent": AgentSerializer(existing).data},
+            status=status.HTTP_200_OK,
+        )
+
+    agent = Agent.objects.create(
+        workspace=workspace,
+        created_by=request.user,
+        name=template["name"],
+        agent_type=template["agent_type"],
+        description=template["description"],
+        system_prompt=template["system_prompt"],
+        tools=template["tools"],
+        llm_model=template["llm_model"],
+        max_steps=template["max_steps"],
+        max_cost_usd=template["max_cost_usd"],
+        is_active=True,
+    )
+    log_event(request, "agent_created", "agent", str(agent.id), workspace,
+              {"template": slug})
+    return Response(AgentSerializer(agent).data, status=status.HTTP_201_CREATED)
+
+
+# ---------------------------------------------------------------------------
 # Screen 4 — Create Agent Form Config
 # ---------------------------------------------------------------------------
 
