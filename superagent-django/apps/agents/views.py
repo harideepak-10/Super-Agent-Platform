@@ -411,6 +411,7 @@ def agent_audit_log(request, pk):
 
 _AGENT_TEMPLATES = [
     {
+        "id":          1,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -432,6 +433,7 @@ _AGENT_TEMPLATES = [
         "max_cost_usd": 1.0,
     },
     {
+        "id":          2,
         "slug":        "research-agent",
         "name":        "Research Agent",
         "agent_type":  "research",
@@ -451,6 +453,7 @@ _AGENT_TEMPLATES = [
         "max_cost_usd": 1.0,
     },
     {
+        "id":          3,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -470,6 +473,7 @@ _AGENT_TEMPLATES = [
         "max_cost_usd": 1.0,
     },
     {
+        "id":          4,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -489,6 +493,7 @@ _AGENT_TEMPLATES = [
         "max_cost_usd": 1.0,
     },
     {
+        "id":          5,
         "slug":        "reporting-agent",
         "name":        "Reporting Agent",
         "agent_type":  "reporting",
@@ -509,7 +514,8 @@ _AGENT_TEMPLATES = [
     },
 ]
 
-_TEMPLATE_MAP = {t["slug"]: t for t in _AGENT_TEMPLATES}
+_TEMPLATE_MAP  = {t["slug"]: t for t in _AGENT_TEMPLATES}
+_TEMPLATE_ID_MAP = {t["id"]: t for t in _AGENT_TEMPLATES}
 
 
 @api_view(["GET"])
@@ -531,6 +537,7 @@ def agent_templates(request):
     for t in _AGENT_TEMPLATES:
         already_added = t["agent_type"] in existing_slugs
         result.append({
+            "id":            t["id"],
             "slug":          t["slug"],
             "name":          t["name"],
             "agent_type":    t["agent_type"],
@@ -549,16 +556,23 @@ def agent_templates(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def agent_template_activate(request, slug):
+def agent_template_activate(request, template_id):
     """
-    POST /api/v1/agents/templates/<slug>/activate/
+    POST /api/v1/agents/templates/<id>/activate/
     Creates an agent in the user's workspace from the selected template.
+
+    Template IDs:
+      1 — Email Agent
+      2 — Research Agent
+      3 — Document Agent
+      4 — Calendar Agent
+      5 — Reporting Agent
     """
     workspace = _get_workspace(request)
     if not workspace:
         return Response({"detail": "No workspace found."}, status=status.HTTP_400_BAD_REQUEST)
 
-    template = _TEMPLATE_MAP.get(slug)
+    template = _TEMPLATE_ID_MAP.get(template_id)
     if not template:
         return Response({"detail": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
 

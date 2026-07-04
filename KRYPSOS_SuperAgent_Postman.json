@@ -204,7 +204,7 @@
           }
         },
         {
-          "name": "Activate Agent Template",
+          "name": "Activate Agent Template (by ID)",
           "event": [
             {
               "listen": "test",
@@ -218,8 +218,8 @@
           ],
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/agents/templates/email-agent/activate/",
-            "description": "Available slugs: email-agent, research-agent, document-agent, calendar-agent, reporting-agent\nReturns 201 if created, 200 if already exists.",
+            "url": "{{base_url}}/agents/templates/1/activate/",
+            "description": "Activate a ready-made agent by its numeric ID.\n\nTemplate IDs:\n  1 — Email Agent\n  2 — Research Agent\n  3 — Document Agent\n  4 — Calendar Agent\n  5 — Reporting Agent\n\nReturns 201 if created, 200 if already exists in workspace.\nAgent ID is auto-saved to the agent_id variable.",
             "body": { "mode": "raw", "raw": "{}" }
           }
         },
@@ -771,9 +771,10 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/search/?q=email",
-              "query": [{ "key": "q", "value": "email" }]
-            }
+              "raw": "{{base_url}}/search/?q=send email",
+              "query": [{ "key": "q", "value": "send email", "description": "Words matched individually with OR — 'send email' finds anything with 'send' OR 'email'" }]
+            },
+            "description": "Searches tasks (prompt, result, agent name), agents (name, type, description), and audit events simultaneously. Returns grouped results."
           }
         },
         {
@@ -781,9 +782,13 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/search/tasks/?q=invoice",
-              "query": [{ "key": "q", "value": "invoice" }]
-            }
+              "raw": "{{base_url}}/search/tasks/?q=send email&status=failed",
+              "query": [
+                { "key": "q", "value": "send email", "description": "Words matched individually — 'send email' finds tasks with 'send' OR 'email' in prompt/result/agent name/status" },
+                { "key": "status", "value": "failed", "description": "Optional: completed | failed | running | waiting_approval", "disabled": true }
+              ]
+            },
+            "description": "Search tasks by keyword. Multi-word queries match any word — so 'send an email' finds all tasks containing 'send', 'an', or 'email'."
           }
         },
         {
@@ -791,9 +796,12 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/search/agents/?q=finance",
-              "query": [{ "key": "q", "value": "finance" }]
-            }
+              "raw": "{{base_url}}/search/agents/?q=email agent",
+              "query": [
+                { "key": "q", "value": "email agent", "description": "Words matched individually across name, agent_type, description" }
+              ]
+            },
+            "description": "Search agents by keyword. 'email agent' finds any agent whose name, type, or description contains 'email' OR 'agent'."
           }
         }
       ]
