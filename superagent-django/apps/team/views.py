@@ -32,8 +32,13 @@ def member_list(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def invite_member(request):
-    from django.core.mail import send_mail
-    from django.conf import settings
+    """
+    POST /api/v1/team/invite/
+    A invites B by email. B must already have an account.
+    No email sent — B sees the invite in-app via GET /team/invites/
+    """
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
 
     workspace = _get_workspace(request)
     if not workspace:
@@ -43,29 +48,109 @@ def invite_member(request):
     serializer.is_valid(raise_exception=True)
 
     email = serializer.validated_data["email"]
-    role = serializer.validated_data["role"]
-    token = secrets.token_urlsafe(32)
+    role  = serializer.validated_data["role"]
+
+    # B must have an account
+    if not User.objects.filter(email=email).exists():
+        return Response(
+            {"detail": "No account found with that email. Ask them to sign up first."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Don't invite someone already in the workspace
+    if TeamMembership.objects.filter(workspace=workspace, user__email=email).exists():
+        return Response({"detail": "This person is already in your workspace."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Don't send duplicate pending invite
+    if TeamInvitation.objects.filter(workspace=workspace, email=email, status=TeamInvitation.Status.PENDING).exists():
+        return Response({"detail": "An invite is already pending for this email."}, status=status.HTTP_400_BAD_REQUEST)
 
     invitation = TeamInvitation.objects.create(
         workspace=workspace,
         email=email,
         role=role,
         invited_by=request.user,
-        token=token,
-        expires_at=timezone.now() + timedelta(days=7),
-    )
-
-    invite_url = f"{getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')}/accept-invite?token={token}"
-    send_mail(
-        subject=f"You're invited to join {workspace.name} on Super Agent",
-        message=f"Click here to accept: {invite_url}",
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[email],
-        fail_silently=True,
+        token=secrets.token_urlsafe(32),
+        expires_at=timezone.now() + timedelta(days=30),
     )
 
     log_event(request, "team_invited", "invitation", str(invitation.id), workspace, {"email": email})
     return Response(TeamInvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def my_invites(request):
+    """
+    GET /api/v1/team/invites/
+    Returns pending invites for the logged-in user.
+    B calls this to see who invited them.
+    """
+    invites = TeamInvitation.objects.filter(
+        email=request.user.email,
+        status=TeamInvitation.Status.PENDING,
+    ).select_related("invited_by", "workspace")
+
+    data = []
+    for inv in invites:
+        data.append({
+            "id":             str(inv.id),
+            "workspace_name": inv.workspace.name,
+            "workspace_id":   str(inv.workspace.id),
+            "invited_by":     inv.invited_by.name or inv.invited_by.email,
+            "invited_by_email": inv.invited_by.email,
+            "role":           inv.role,
+            "created_at":     inv.created_at.isoformat(),
+            "expires_at":     inv.expires_at.isoformat(),
+        })
+    return Response(data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def accept_invite(request, pk):
+    """
+    POST /api/v1/team/invites/<id>/accept/
+    B accepts the invite — added to workspace as member.
+    """
+    invitation = get_object_or_404(
+        TeamInvitation, id=pk,
+        email=request.user.email,
+        status=TeamInvitation.Status.PENDING,
+    )
+    if invitation.expires_at < timezone.now():
+        invitation.status = TeamInvitation.Status.EXPIRED
+        invitation.save(update_fields=["status"])
+        return Response({"detail": "Invitation expired."}, status=status.HTTP_400_BAD_REQUEST)
+
+    membership, _ = TeamMembership.objects.get_or_create(
+        workspace=invitation.workspace,
+        user=request.user,
+        defaults={"role": invitation.role, "invited_by": invitation.invited_by},
+    )
+    invitation.status = TeamInvitation.Status.ACCEPTED
+    invitation.save(update_fields=["status"])
+    log_event(request, "team_invite_accepted", "invitation", str(invitation.id), invitation.workspace)
+    return Response({"detail": "You joined {}.".format(invitation.workspace.name),
+                     "membership": TeamMemberSerializer(membership).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def reject_invite(request, pk):
+    """
+    POST /api/v1/team/invites/<id>/reject/
+    B rejects the invite.
+    """
+    invitation = get_object_or_404(
+        TeamInvitation, id=pk,
+        email=request.user.email,
+        status=TeamInvitation.Status.PENDING,
+    )
+    invitation.status = TeamInvitation.Status.DECLINED
+    invitation.save(update_fields=["status"])
+    log_event(request, "team_invite_rejected", "invitation", str(invitation.id), invitation.workspace)
+    return Response({"detail": "Invite declined."})
 
 
 @api_view(["PATCH"])
@@ -90,26 +175,3 @@ def remove_member(request, pk):
     membership.delete()
     log_event(request, "team_removed", "membership", str(pk), workspace)
     return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def accept_invite(request):
-    token = request.data.get("token")
-    if not token:
-        return Response({"detail": "token required."}, status=status.HTTP_400_BAD_REQUEST)
-
-    invitation = get_object_or_404(TeamInvitation, token=token, status=TeamInvitation.Status.PENDING)
-    if invitation.expires_at < timezone.now():
-        invitation.status = TeamInvitation.Status.EXPIRED
-        invitation.save(update_fields=["status"])
-        return Response({"detail": "Invitation expired."}, status=status.HTTP_400_BAD_REQUEST)
-
-    membership, _ = TeamMembership.objects.get_or_create(
-        workspace=invitation.workspace,
-        user=request.user,
-        defaults={"role": invitation.role, "invited_by": invitation.invited_by},
-    )
-    invitation.status = TeamInvitation.Status.ACCEPTED
-    invitation.save(update_fields=["status"])
-    return Response(TeamMemberSerializer(membership).data)
