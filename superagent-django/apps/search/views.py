@@ -1,3 +1,4 @@
+import re
 from functools import reduce
 
 from django.db.models import Q
@@ -13,14 +14,15 @@ def _get_workspace(request):
 
 def _word_q(fields, query):
     """
-    Split query into individual words and build a Q filter that returns rows
-    where ANY field contains ANY word.
+    Split query into individual words and build a Q filter using whole-word
+    regex matching so that "read" does NOT match "ready" or "already".
+
+    Each word is matched with \b word boundaries (case-insensitive).
+    ALL words must be present (AND logic) — each word can appear in any field.
 
     Example:
         query = "send email"
-        words = ["send", "email"]
-        returns: (Q(f1__icontains="send") | Q(f2__icontains="send") |
-                  Q(f1__icontains="email") | Q(f2__icontains="email"))
+        → prompt contains whole word "send" AND prompt/result/etc contains whole word "email"
     """
     words = [w for w in query.split() if w]
     if not words:
@@ -28,10 +30,12 @@ def _word_q(fields, query):
 
     word_qs = []
     for word in words:
-        field_q = reduce(lambda a, b: a | b, [Q(**{f + "__icontains": word}) for f in fields])
+        # \b ensures whole-word match: "read" won't match "ready" or "already"
+        pattern = r'\b' + re.escape(word) + r'\b'
+        field_q = reduce(lambda a, b: a | b, [Q(**{f + "__iregex": pattern}) for f in fields])
         word_qs.append(field_q)
 
-    # Row matches if it contains ALL words (each word can be in any field)
+    # ALL words must match (AND across words, OR across fields per word)
     return reduce(lambda a, b: a & b, word_qs)
 
 
