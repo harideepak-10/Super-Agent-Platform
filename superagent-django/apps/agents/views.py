@@ -601,7 +601,7 @@ def agent_template_activate(request, template_id):
         is_active=True,
     )
     log_event(request, "agent_created", "agent", str(agent.id), workspace,
-              {"template": slug})
+              {"template_id": template_id, "template": template["slug"]})
     return Response(AgentSerializer(agent).data, status=status.HTTP_201_CREATED)
 
 
