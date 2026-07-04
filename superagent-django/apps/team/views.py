@@ -174,4 +174,4 @@ def remove_member(request, pk):
         return Response({"detail": "Cannot remove yourself."}, status=status.HTTP_400_BAD_REQUEST)
     membership.delete()
     log_event(request, "team_removed", "membership", str(pk), workspace)
-    return Response(status=status.HTTP_204_NO_CONTENT)
+    return Response({"detail": "Member removed successfully."}, status=status.HTTP_200_OK)
