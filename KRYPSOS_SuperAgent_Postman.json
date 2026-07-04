@@ -451,7 +451,11 @@
       "item": [
         {
           "name": "Cost Summary",
-          "request": { "method": "GET", "url": "{{base_url}}/costs/summary/" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/costs/summary/",
+            "description": "Monthly + today totals in EUR, plus budget info."
+          }
         },
         {
           "name": "Daily Costs",
@@ -459,29 +463,80 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/costs/daily/?days=30",
-              "query": [{ "key": "days", "value": "30" }]
-            }
+              "query": [{ "key": "days", "value": "30", "description": "Number of past days to return" }]
+            },
+            "description": "Returns one row per day with total_cost_eur and token counts."
           }
         },
         {
           "name": "Cost By Agent",
-          "request": { "method": "GET", "url": "{{base_url}}/costs/by-agent/" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/costs/by-agent/",
+            "description": "All-time completed task cost grouped by agent."
+          }
+        },
+        {
+          "name": "Cost By Creator (Me vs Team)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/costs/by-creator/?start_date=2026-07-01&end_date=2026-07-04",
+              "query": [
+                { "key": "start_date", "value": "2026-07-01", "description": "YYYY-MM-DD (defaults to start of month)" },
+                { "key": "end_date",   "value": "2026-07-04", "description": "YYYY-MM-DD (defaults to today)" }
+              ]
+            },
+            "description": "Cost breakdown per person. Each row has is_me flag. Summary shows my_cost_eur vs team_cost_eur."
+          }
+        },
+        {
+          "name": "Cost Range (by date + group)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/costs/range/?start_date=2026-07-01&end_date=2026-07-04&group_by=agent",
+              "query": [
+                { "key": "start_date", "value": "2026-07-01", "description": "YYYY-MM-DD — required" },
+                { "key": "end_date",   "value": "2026-07-04", "description": "YYYY-MM-DD — required" },
+                { "key": "group_by",   "value": "agent",       "description": "agent | creator | workspace" }
+              ]
+            },
+            "description": "Flexible cost report. group_by=agent for per-agent breakdown, group_by=creator for per-person, group_by=workspace for the whole workspace total."
+          }
         },
         {
           "name": "Get Budget",
-          "request": { "method": "GET", "url": "{{base_url}}/costs/budget/" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/costs/budget/",
+            "description": "Returns the current workspace budget (null if none set)."
+          }
         },
         {
-          "name": "Set Budget",
+          "name": "Create Budget",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/costs/budget/",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"period\": \"monthly\",\n  \"limit_usd\": 10.00,\n  \"alert_threshold_pct\": 80\n}"
+              "raw": "{\n  \"limit_usd\": 10.00,\n  \"alert_threshold_pct\": 80\n}"
             },
-            "description": "Set or update the monthly budget cap. Stored in USD internally; all cost responses return EUR (×0.92). Call again to update — it upserts."
+            "description": "Creates the budget. Returns 400 if a budget already exists — use PATCH /costs/budget/update/ to change it."
+          }
+        },
+        {
+          "name": "Update Budget",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/costs/budget/update/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit_usd\": 20.00,\n  \"alert_threshold_pct\": 90\n}"
+            },
+            "description": "Update limit or alert threshold of the existing budget. Returns 404 if no budget exists yet."
           }
         }
       ]
