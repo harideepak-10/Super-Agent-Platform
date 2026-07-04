@@ -125,7 +125,7 @@ def task_result(request, pk):
         "status": task.status,
         "result": task.result,
         "error_message": task.error_message,
-        "cost_usd": str(task.cost_usd),
+        "cost_eur": round(float(task.cost_usd or 0) * 0.92, 4),
         "total_tokens": task.total_tokens,
         "steps_taken": task.steps_taken,
     })

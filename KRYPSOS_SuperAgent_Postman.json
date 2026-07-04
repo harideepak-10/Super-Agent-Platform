@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "krypsos-superagent-v1",
     "name": "KRYPSOS Super Agent Platform",
-    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ — token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSocket (Live Task Events):\nConnect to: wss://super-agent-platform.onrender.com/ws/tasks/<task_id>/\nHeader: Authorization: Bearer {{token}}\nEvents received: task_started, llm_called, tool_called, tool_result, approval_needed, task_completed\n\nTypical Flow:\n1. POST /agents/create/ → save agent_id\n2. POST /tasks/create/ → save task_id, connect WebSocket\n3. If task status = waiting_approval → GET /approvals/pending/ → POST /approvals/{id}/decide/\n4. GET /tasks/{task_id}/ to see final result",
+    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ — token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSocket (Live Task Events):\nConnect to: wss://super-agent-platform.onrender.com/ws/tasks/<task_id>/\nHeader: Authorization: Bearer {{token}}\nEvents received: task_started, llm_called, tool_called, tool_result, approval_needed, task_completed\n\nTypical Flow:\n1. GET /agents/templates/ → pick a template, note the slug\n2. POST /agents/templates/<slug>/activate/ → save agent_id\n3. POST /tasks/create/ → pass agent_id, save task_id, connect WebSocket\n4. If task status = waiting_approval → GET /approvals/pending/ → POST /approvals/{id}/decide/\n5. GET /tasks/{task_id}/ to see final result",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -17,7 +17,8 @@
     { "key": "notification_id", "value": "", "type": "string" },
     { "key": "profile_id", "value": "", "type": "string" },
     { "key": "user_id", "value": "", "type": "string" },
-    { "key": "rule_id", "value": "", "type": "string" }
+    { "key": "rule_id", "value": "", "type": "string" },
+    { "key": "invite_id", "value": "", "type": "string" }
   ],
   "auth": {
     "type": "bearer",
@@ -171,19 +172,6 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"old_password\": \"currentpassword\",\n  \"new_password\": \"newpassword123\"\n}" }
           }
-        },
-        {
-          "name": "Get Profile Settings",
-          "request": { "method": "GET", "url": "{{base_url}}/profile/settings/" }
-        },
-        {
-          "name": "Update Profile Settings",
-          "request": {
-            "method": "PATCH",
-            "url": "{{base_url}}/profile/settings/",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email_notifications\": true,\n  \"push_notifications\": true\n}" }
-          }
         }
       ]
     },
@@ -205,18 +193,18 @@
       "item": [
         {
           "name": "List Agents",
-          "request": { "method": "GET", "url": "{{base_url}}/agents/" }
+          "request": { "method": "GET", "url": "{{base_url}}/agents/", "description": "Returns all active agents in the workspace." }
         },
         {
-          "name": "Create Agent Form Config",
+          "name": "List Agent Templates",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/agents/create-form/",
-            "description": "Returns all form options (agent types, tools, models, guardrails). Call this before rendering the Create Agent screen."
+            "url": "{{base_url}}/agents/templates/",
+            "description": "Returns all ready-made agent templates. Each template shows tools, description, icon, and whether it's already added to the workspace."
           }
         },
         {
-          "name": "Create Agent",
+          "name": "Activate Agent Template",
           "event": [
             {
               "listen": "test",
@@ -230,26 +218,14 @@
           ],
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/agents/create/",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Email Agent\",\n  \"agent_type\": \"email\",\n  \"description\": \"Handles inbox triage and replies\",\n  \"llm_model\": \"llama-3.1-8b-instant\",\n  \"tools\": [\"read_email\", \"classify_text\", \"create_draft\"],\n  \"max_steps\": 20,\n  \"max_cost_usd\": 1.00\n}"
-            }
+            "url": "{{base_url}}/agents/templates/email-agent/activate/",
+            "description": "Available slugs: email-agent, research-agent, document-agent, calendar-agent, reporting-agent\nReturns 201 if created, 200 if already exists.",
+            "body": { "mode": "raw", "raw": "{}" }
           }
         },
         {
           "name": "Get Agent Detail",
           "request": { "method": "GET", "url": "{{base_url}}/agents/{{agent_id}}/" }
-        },
-        {
-          "name": "Update Agent",
-          "request": {
-            "method": "PATCH",
-            "url": "{{base_url}}/agents/{{agent_id}}/update/",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"max_steps\": 30,\n  \"tools\": [\"read_email\", \"classify_text\", \"create_draft\", \"send_email\"]\n}" }
-          }
         },
         {
           "name": "Delete Agent",
@@ -323,7 +299,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"prompt\": \"Read my latest 5 emails and summarise them\",\n  \"agent_id\": \"{{agent_id}}\",\n  \"priority\": \"routine\"\n}"
+              "raw": "{\n  \"prompt\": \"Send an email to harideepak.s10@gmail.com saying the Q2 report is ready.\",\n  \"agent\": \"{{agent_id}}\"\n}"
             }
           }
         },
@@ -360,7 +336,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{}" }
           }
-        },
+        }
       ]
     },
     {
@@ -492,12 +468,21 @@
           "request": { "method": "GET", "url": "{{base_url}}/costs/by-agent/" }
         },
         {
-          "name": "Budget Detail",
+          "name": "Get Budget",
           "request": { "method": "GET", "url": "{{base_url}}/costs/budget/" }
         },
         {
-          "name": "Cost Tracker (Mobile)",
-          "request": { "method": "GET", "url": "{{base_url}}/costs/tracker/" }
+          "name": "Set Budget",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/costs/budget/",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period\": \"monthly\",\n  \"limit_usd\": 10.00,\n  \"alert_threshold_pct\": 80\n}"
+            },
+            "description": "Set or update the monthly budget cap. Stored in USD internally; all cost responses return EUR (×0.92). Call again to update — it upserts."
+          }
         }
       ]
     },
@@ -606,16 +591,34 @@
             "method": "POST",
             "url": "{{base_url}}/team/invite/",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"colleague@example.com\",\n  \"role\": \"member\"\n}" }
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"colleague@example.com\",\n  \"role\": \"member\"\n}" },
+            "description": "Invite a user who already has an account. No email sent — they see it in-app via GET /team/invites/. Roles: owner, admin, member, viewer."
+          }
+        },
+        {
+          "name": "My Pending Invites",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/team/invites/",
+            "description": "Returns all pending invites for the logged-in user. Call this on app load to show invite notifications."
           }
         },
         {
           "name": "Accept Invite",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/team/accept-invite/",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"token\": \"<invite_token_from_email>\"\n}" }
+            "url": "{{base_url}}/team/invites/{{invite_id}}/accept/",
+            "body": { "mode": "raw", "raw": "{}" },
+            "description": "Accept a pending invite. Logged-in user is added to the workspace."
+          }
+        },
+        {
+          "name": "Reject Invite",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/team/invites/{{invite_id}}/reject/",
+            "body": { "mode": "raw", "raw": "{}" },
+            "description": "Reject a pending invite."
           }
         },
         {

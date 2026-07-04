@@ -30,7 +30,7 @@ class TestCostSummary:
         _, _, client = create_user_with_workspace()
         res = client.get("/api/v1/costs/summary/")
         assert res.status_code == 200
-        assert res.data["monthly"]["total_cost_usd"] == 0
+        assert res.data["monthly"]["total_cost_eur"] == 0
 
     def test_summary_requires_auth(self, api_client):
         res = api_client.get("/api/v1/costs/summary/")

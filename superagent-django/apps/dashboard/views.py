@@ -118,29 +118,32 @@ def _cost_today_stats(workspace):
 
     today = date.today()
 
+    _USD_TO_EUR = 0.92
     daily = DailyCost.objects.filter(workspace=workspace, date=today).first()
-    cost_today = float(daily.total_cost_usd) if daily else 0.0
+    cost_today_usd = float(daily.total_cost_usd) if daily else 0.0
+    cost_today = round(cost_today_usd * _USD_TO_EUR, 4)
 
     budget = Budget.objects.filter(workspace=workspace).order_by("-created_at").first()
-    limit = float(budget.limit_usd) if budget else 0.0
+    limit = round(float(budget.limit_usd) * _USD_TO_EUR, 2) if budget else 0.0
     period = budget.period if budget else None
+    limit_usd = float(budget.limit_usd) if budget else 0.0
 
-    pct_used = round((cost_today / limit * 100), 1) if limit > 0 else 0.0
+    pct_used = round((cost_today_usd / limit_usd * 100), 1) if limit_usd > 0 else 0.0
     alert_status = "ok"
-    if limit > 0:
+    if limit_usd > 0:
         if pct_used >= 95:
             alert_status = "critical"
         elif pct_used >= 80:
             alert_status = "warning"
 
     return {
-        "amount": round(cost_today, 2),
-        "currency": "USD",
+        "amount": cost_today,
+        "currency": "EUR",
         "limit": limit,
         "limit_period": period,
         "percentage_used": pct_used,
         "alert_status": alert_status,
-        "label": f"${cost_today:.2f}" + (f" of ${limit:.0f} limit" if limit > 0 else ""),
+        "label": f"€{cost_today:.2f}" + (f" of €{limit:.0f} limit" if limit > 0 else ""),
     }
 
 
@@ -224,7 +227,7 @@ def _recent_activity(workspace, limit=10):
             "time_ago_seconds": int(age_seconds),
             "updated_at": task.updated_at.isoformat(),
             "steps_taken": task.steps_taken,
-            "cost_usd": float(task.cost_usd),
+            "cost_eur": round(float(task.cost_usd or 0) * 0.92, 4),
         })
 
     return result

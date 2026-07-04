@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from .models import Task, TaskStep
 
+_USD_TO_EUR = 0.92
+
 
 class TaskStepSerializer(serializers.ModelSerializer):
     class Meta:
@@ -16,22 +18,26 @@ class TaskSerializer(serializers.ModelSerializer):
     steps = TaskStepSerializer(many=True, read_only=True)
     created_by_email = serializers.EmailField(source="created_by.email", read_only=True)
     agent_name = serializers.CharField(source="agent.name", read_only=True, allow_null=True)
+    cost_eur = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = [
             "id", "workspace", "agent", "agent_name", "created_by", "created_by_email",
             "prompt", "status", "result", "error_message",
-            "steps_taken", "total_tokens", "cost_usd",
+            "steps_taken", "total_tokens", "cost_eur",
             "started_at", "completed_at", "created_at", "updated_at",
             "steps",
         ]
         read_only_fields = [
             "id", "workspace", "created_by", "status", "result", "error_message",
-            "steps_taken", "total_tokens", "cost_usd",
+            "steps_taken", "total_tokens",
             "started_at", "completed_at", "created_at", "updated_at",
             "celery_task_id",
         ]
+
+    def get_cost_eur(self, obj):
+        return round(float(obj.cost_usd or 0) * _USD_TO_EUR, 4)
 
 
 class CreateTaskSerializer(serializers.Serializer):
@@ -44,11 +50,15 @@ class CreateTaskSerializer(serializers.Serializer):
 class TaskListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views — no steps."""
     agent_name = serializers.CharField(source="agent.name", read_only=True, allow_null=True)
+    cost_eur = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = [
             "id", "agent", "agent_name", "prompt", "status",
-            "steps_taken", "total_tokens", "cost_usd",
+            "steps_taken", "total_tokens", "cost_eur",
             "priority", "started_at", "completed_at", "created_at",
         ]
+
+    def get_cost_eur(self, obj):
+        return round(float(obj.cost_usd or 0) * _USD_TO_EUR, 4)

@@ -292,10 +292,10 @@ def profile_settings(request):
     if workspace:
         from django.db.models import Sum
         agg = DailyCost.objects.filter(workspace=workspace, date__gte=month_start).aggregate(total=Sum("total_cost_usd"))
-        monthly_cost = float(agg["total"] or 0)
+        monthly_cost = round(float(agg["total"] or 0) * 0.92, 4)
         budget = Budget.objects.filter(workspace=workspace, period=Budget.Period.MONTHLY).first()
         if budget:
-            budget_label = "€%.2f / month" % float(budget.limit_usd)
+            budget_label = "€%.2f / month" % round(float(budget.limit_usd) * 0.92, 2)
 
     member_count = 0
     if workspace:
