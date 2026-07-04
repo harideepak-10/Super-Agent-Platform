@@ -30,8 +30,10 @@ def _word_q(fields, query):
 
     word_qs = []
     for word in words:
-        # \b ensures whole-word match: "read" won't match "ready" or "already"
-        pattern = r'\b' + re.escape(word) + r'\b'
+        # (^|[^a-zA-Z]) ensures whole-word match without using \b which means
+        # "backspace" in PostgreSQL POSIX regex (not word boundary like Python).
+        # "read" matches "Read my emails" but NOT "ready" or "already".
+        pattern = r'(^|[^a-zA-Z0-9])' + re.escape(word) + r'([^a-zA-Z0-9]|$)'
         field_q = reduce(lambda a, b: a | b, [Q(**{f + "__iregex": pattern}) for f in fields])
         word_qs.append(field_q)
 
