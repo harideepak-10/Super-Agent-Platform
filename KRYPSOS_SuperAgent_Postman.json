@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "krypsos-superagent-v1",
     "name": "KRYPSOS Super Agent Platform",
-    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ — token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSocket (Live Task Events):\nConnect to: wss://super-agent-platform.onrender.com/ws/tasks/<task_id>/\nHeader: Authorization: Bearer {{token}}\nEvents received: task_started, llm_called, tool_called, tool_result, approval_needed, task_completed\n\nTypical Flow:\n1. GET /agents/templates/ → pick a template, note the slug\n2. POST /agents/templates/<slug>/activate/ → save agent_id\n3. POST /tasks/create/ → pass agent_id, save task_id, connect WebSocket\n4. If task status = waiting_approval → GET /approvals/pending/ → POST /approvals/{id}/decide/\n5. GET /tasks/{task_id}/ to see final result",
+    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ — token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSocket (Live Task Events):\nConnect to: wss://super-agent-platform.onrender.com/ws/tasks/<task_id>/\nHeader: Authorization: Bearer {{token}}\nEvents received: task_started, llm_called, tool_called, tool_result, approval_needed, task_completed\n\nTypical Flow:\n1. GET /agents/templates/ → pick a template, note its numeric ID (1–5)\n2. GET /agents/templates/<id>/ → preview template detail before activating\n3. POST /agents/templates/<id>/activate/ → save agent_id\n4. GET /agents/<agent_id>/overview/ → see activated agent stats and recent runs\n5. POST /tasks/create/ → pass agent_id, save task_id, connect WebSocket\n6. If task status = waiting_approval → GET /approvals/pending/ → POST /approvals/{id}/decide/\n7. GET /tasks/{task_id}/ to see final result\n\nTemplate IDs: 1=Email, 2=Research, 3=Document, 4=Calendar, 5=Reporting\nAll costs are returned in EUR (×0.92 from USD stored in DB).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -788,9 +788,9 @@
             "method": "GET",
             "url": {
               "raw": "{{base_url}}/search/?q=send email",
-              "query": [{ "key": "q", "value": "send email", "description": "Words matched individually with OR — 'send email' finds anything with 'send' OR 'email'" }]
+              "query": [{ "key": "q", "value": "send email", "description": "All words must appear — 'send email' returns results that contain BOTH 'send' AND 'email' as whole words" }]
             },
-            "description": "Searches tasks (prompt, result, agent name), agents (name, type, description), and audit events simultaneously. Returns grouped results."
+            "description": "Searches tasks (prompt, result, agent name), agents (name, type, description), and audit events simultaneously. Returns grouped results with count per group.\n\nWhole-word AND matching: 'send email' finds entries containing both words. 'read' will NOT match 'ready' or 'already'."
           }
         },
         {
@@ -798,13 +798,13 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/search/tasks/?q=send email&status=failed",
+              "raw": "{{base_url}}/search/tasks/?q=send email",
               "query": [
-                { "key": "q", "value": "send email", "description": "Words matched individually — 'send email' finds tasks with 'send' OR 'email' in prompt/result/agent name/status" },
+                { "key": "q", "value": "send email", "description": "All words must appear — 'send email' finds tasks containing BOTH 'send' AND 'email' as whole words in prompt/result/agent name/status" },
                 { "key": "status", "value": "failed", "description": "Optional: completed | failed | running | waiting_approval", "disabled": true }
               ]
             },
-            "description": "Search tasks by keyword. Multi-word queries match any word — so 'send an email' finds all tasks containing 'send', 'an', or 'email'."
+            "description": "Search tasks by keyword. Multi-word queries use AND — 'send email' finds tasks that contain both words.\n\nWhole-word matching: 'read' matches 'Read my emails' but NOT 'Q2 report ready'."
           }
         },
         {
@@ -814,10 +814,10 @@
             "url": {
               "raw": "{{base_url}}/search/agents/?q=email agent",
               "query": [
-                { "key": "q", "value": "email agent", "description": "Words matched individually across name, agent_type, description" }
+                { "key": "q", "value": "email agent", "description": "All words must appear — 'email agent' finds agents whose name/type/description contain BOTH words" }
               ]
             },
-            "description": "Search agents by keyword. 'email agent' finds any agent whose name, type, or description contains 'email' OR 'agent'."
+            "description": "Search agents by keyword. Multi-word queries use AND — 'email agent' finds agents that contain both words across name, agent_type, and description.\n\nWhole-word matching: 'email' matches 'Email Agent' but NOT 'emailagent'."
           }
         }
       ]
