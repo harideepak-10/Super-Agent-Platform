@@ -147,7 +147,7 @@ def _cost_today_stats(workspace):
     }
 
 
-def _urgent_approvals(workspace, limit=3):
+def _urgent_approvals(workspace, limit=2):
     """Most recent pending approvals — shown as action cards on home screen."""
     from apps.approvals.models import Approval
 
@@ -161,11 +161,13 @@ def _urgent_approvals(workspace, limit=3):
     result = []
     for ap in approvals:
         age_seconds = (datetime.now(timezone.utc) - ap.created_at).total_seconds()
+        agent_name = ap.task.agent.name if ap.task.agent else "Agent"
         result.append({
             "id": str(ap.id),
             "task_id": str(ap.task_id),
-            "agent_name": ap.task.agent.name if ap.task.agent else "Agent",
+            "agent_name": agent_name,
             "agent_type": ap.task.agent.agent_type if ap.task.agent else "custom",
+            "message": f"{agent_name} wants your approval",
             "tool_name": ap.tool_name,
             "tool_input": ap.tool_input,
             "task_prompt": ap.task.prompt[:120],
@@ -275,6 +277,6 @@ def dashboard(request):
             "agents_running": _agent_stats(workspace),
             "cost_today":     _cost_today_stats(workspace),
         },
-        "urgent_approvals": _urgent_approvals(workspace, limit=5),
-        "recent_activity":  _recent_activity(workspace, limit=15),
+        "urgent_approvals": _urgent_approvals(workspace, limit=2),
+        "recent_activity":  _recent_activity(workspace, limit=3),
     })
