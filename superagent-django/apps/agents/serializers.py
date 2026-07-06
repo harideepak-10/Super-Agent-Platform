@@ -11,11 +11,11 @@ class AgentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Agent
         fields = [
-            "id", "workspace", "name", "agent_type", "description", "system_prompt",
+            "id", "template_id", "workspace", "name", "agent_type", "description", "system_prompt",
             "max_steps", "max_cost_usd", "max_cost_eur", "llm_model", "tools", "is_active",
             "created_by", "created_by_email", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "workspace", "created_by", "max_cost_eur", "created_at", "updated_at"]
+        read_only_fields = ["id", "template_id", "workspace", "created_by", "max_cost_eur", "created_at", "updated_at"]
 
     def get_max_cost_eur(self, obj):
         return round(float(obj.max_cost_usd or 0) * _USD_TO_EUR, 4)

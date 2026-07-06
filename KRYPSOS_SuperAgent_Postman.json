@@ -204,6 +204,14 @@
           }
         },
         {
+          "name": "Agent Template Detail (by ID)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents/templates/1/",
+            "description": "Full detail of a template before activating it.\n\nTemplate IDs:\n  1 — Email Agent\n  2 — Research Agent\n  3 — Document Agent\n  4 — Calendar Agent\n  5 — Reporting Agent\n\nReturns: name, description, capabilities (what_it_does), tools, max_cost_eur, already_added flag, and activated_agent_id if already in workspace."
+          }
+        },
+        {
           "name": "Activate Agent Template (by ID)",
           "event": [
             {
@@ -226,6 +234,14 @@
         {
           "name": "Get Agent Detail",
           "request": { "method": "GET", "url": "{{base_url}}/agents/{{agent_id}}/" }
+        },
+        {
+          "name": "Agent Overview (Detail Screen)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/agents/{{agent_id}}/overview/",
+            "description": "Full Agent Detail screen data: stats (tasks_today, success_rate, total_cost_eur), capability bullets (what_it_does), tool chips, recent_runs (last 3 tasks with time_ago + cost_label), and action URLs."
+          }
         },
         {
           "name": "Delete Agent",

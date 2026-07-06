@@ -145,6 +145,116 @@ def _human_ago(dt):
 
 
 # ---------------------------------------------------------------------------
+# Agent Overview — Detail screen (stats + capabilities + recent runs)
+# ---------------------------------------------------------------------------
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def agent_overview(request, pk):
+    """
+    GET /api/v1/agents/<id>/overview/
+
+    Returns everything needed for the Agent Detail screen:
+      - stats: tasks_today, success_rate, total_cost_eur
+      - what_it_does: capability bullet points
+      - tools: tool chips
+      - recent_runs: last 3 completed tasks with time ago + cost
+      - meta: name, type, description, template_id, is_active
+    """
+    from django.utils import timezone
+    from django.db.models import Count, Sum, Q as DQ
+    from apps.tasks.models import Task
+
+    workspace = _get_workspace(request)
+    agent = get_object_or_404(Agent, id=pk, workspace=workspace)
+
+    today = timezone.now().date()
+
+    # ── Stats ─────────────────────────────────────────────────────────────────
+    tasks_today = Task.objects.filter(agent=agent, created_at__date=today).count()
+
+    finished = Task.objects.filter(
+        agent=agent,
+        status__in=[Task.Status.COMPLETED, Task.Status.FAILED]
+    ).aggregate(
+        total=Count("id"),
+        completed=Count("id", filter=DQ(status=Task.Status.COMPLETED)),
+        total_cost=Sum("cost_usd"),
+    )
+    total_finished = finished["total"] or 0
+    completed_count = finished["completed"] or 0
+    success_rate = round(completed_count / total_finished * 100, 1) if total_finished else 0.0
+    total_cost_eur = round(float(finished["total_cost"] or 0) * 0.92, 2)
+
+    # ── Capabilities (from template or fallback to description) ───────────────
+    template = _TEMPLATE_ID_MAP.get(agent.template_id) if agent.template_id else None
+    capabilities = template["capabilities"] if template else [agent.description] if agent.description else []
+
+    # ── Recent runs ───────────────────────────────────────────────────────────
+    recent_tasks = (
+        Task.objects.filter(agent=agent)
+        .exclude(status__in=[Task.Status.QUEUED, Task.Status.RUNNING])
+        .order_by("-updated_at")[:3]
+    )
+
+    STATUS_COLOR = {
+        Task.Status.COMPLETED:        "#22C55E",
+        Task.Status.FAILED:           "#EF4444",
+        Task.Status.CANCELLED:        "#6B7280",
+        Task.Status.WAITING_APPROVAL: "#F59E0B",
+    }
+
+    recent_runs = []
+    for t in recent_tasks:
+        age_seconds = int((timezone.now() - t.updated_at).total_seconds())
+        if age_seconds < 3600:
+            time_ago = "%dm" % (age_seconds // 60 or 1)
+        elif age_seconds < 86400:
+            time_ago = "%dh" % (age_seconds // 3600)
+        else:
+            time_ago = "%dd" % (age_seconds // 86400)
+
+        recent_runs.append({
+            "task_id":    str(t.id),
+            "prompt":     t.prompt[:60],
+            "status":     t.status,
+            "status_color": STATUS_COLOR.get(t.status, "#6B7280"),
+            "time_ago":   time_ago,
+            "cost_eur":   round(float(t.cost_usd or 0) * 0.92, 4),
+            "cost_label": "€%.2f" % (float(t.cost_usd or 0) * 0.92),
+        })
+
+    return Response({
+        "id":          str(agent.id),
+        "template_id": agent.template_id,
+        "name":        agent.name,
+        "agent_type":  agent.agent_type,
+        "description": agent.description,
+        "is_active":   agent.is_active,
+
+        "stats": {
+            "tasks_today":    tasks_today,
+            "success_rate":   success_rate,
+            "success_label":  "%.1f%%" % success_rate,
+            "total_cost_eur": total_cost_eur,
+            "cost_label":     "€%.2f" % total_cost_eur,
+        },
+
+        "what_it_does": capabilities,
+
+        "tools": [_tool_card(tn) for tn in (agent.tools or [])],
+
+        "recent_runs": recent_runs,
+
+        "actions": {
+            "live_log_url":   "/api/v1/agents/%s/live/" % agent.id,
+            "audit_log_url":  "/api/v1/agents/%s/audit-log/" % agent.id,
+            "all_tasks_url":  "/api/v1/agents/%s/tasks/" % agent.id,
+        },
+    })
+
+
+# ---------------------------------------------------------------------------
 # Live Activity
 # ---------------------------------------------------------------------------
 
@@ -421,6 +531,12 @@ _AGENT_TEMPLATES = [
         "border_color":"#F59E0B",
         "badge":       "Popular",
         "badge_color": "#22C55E",
+        "capabilities": [
+            "Reads and organises your inbox",
+            "Classifies emails by priority and type",
+            "Sends replies and automated responses",
+            "Creates email drafts for review",
+        ],
         "tools":       ["read_email", "classify_text", "send_email", "create_draft"],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
@@ -443,6 +559,12 @@ _AGENT_TEMPLATES = [
         "border_color":"#3B82F6",
         "badge":       None,
         "badge_color": None,
+        "capabilities": [
+            "Searches the web for up-to-date information",
+            "Browses and reads relevant web pages",
+            "Generates structured research reports",
+            "Summarises findings into key insights",
+        ],
         "tools":       ["web_search", "browse_web", "generate_report"],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
@@ -463,6 +585,12 @@ _AGENT_TEMPLATES = [
         "border_color":"#14B8A6",
         "badge":       None,
         "badge_color": None,
+        "capabilities": [
+            "Parses PDF and DOCX documents",
+            "Extracts structured data and tables",
+            "Summarises content into key points",
+            "Exports data as CSV or structured reports",
+        ],
         "tools":       ["file_read", "generate_report", "export_csv"],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
@@ -483,6 +611,12 @@ _AGENT_TEMPLATES = [
         "border_color":"#10B981",
         "badge":       None,
         "badge_color": None,
+        "capabilities": [
+            "Reads upcoming events and meetings",
+            "Schedules new meetings on your calendar",
+            "Checks availability and avoids conflicts",
+            "Sends meeting invites and confirmations",
+        ],
         "tools":       ["cal_read", "cal_write", "web_search"],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
@@ -503,6 +637,12 @@ _AGENT_TEMPLATES = [
         "border_color":"#8B5CF6",
         "badge":       None,
         "badge_color": None,
+        "capabilities": [
+            "Generates business performance reports",
+            "Summarises data into actionable insights",
+            "Exports reports as CSV or structured files",
+            "Searches the web for benchmark comparisons",
+        ],
         "tools":       ["generate_report", "export_csv", "web_search"],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
@@ -554,6 +694,49 @@ def agent_templates(request):
     return Response(result)
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def agent_template_detail(request, template_id):
+    """
+    GET /api/v1/agents/templates/<id>/
+    Full detail of a ready-made template before activating it.
+    """
+    workspace = _get_workspace(request)
+    template = _TEMPLATE_ID_MAP.get(template_id)
+    if not template:
+        return Response({"detail": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    already_added = False
+    activated_agent_id = None
+    if workspace:
+        existing = Agent.objects.filter(
+            workspace=workspace, agent_type=template["agent_type"], is_active=True
+        ).first()
+        if existing:
+            already_added = True
+            activated_agent_id = str(existing.id)
+
+    return Response({
+        "id":            template["id"],
+        "slug":          template["slug"],
+        "name":          template["name"],
+        "agent_type":    template["agent_type"],
+        "description":   template["description"],
+        "icon":          template["icon"],
+        "icon_bg":       template["icon_bg"],
+        "border_color":  template["border_color"],
+        "badge":         template["badge"],
+        "badge_color":   template["badge_color"],
+        "what_it_does":  template["capabilities"],
+        "tools":         [_tool_card(tn) for tn in template["tools"]],
+        "llm_model":     template["llm_model"],
+        "max_steps":     template["max_steps"],
+        "max_cost_eur":  round(template["max_cost_usd"] * 0.92, 2),
+        "already_added": already_added,
+        "activated_agent_id": activated_agent_id,
+    })
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def agent_template_activate(request, template_id):
@@ -590,6 +773,7 @@ def agent_template_activate(request, template_id):
     agent = Agent.objects.create(
         workspace=workspace,
         created_by=request.user,
+        template_id=template["id"],
         name=template["name"],
         agent_type=template["agent_type"],
         description=template["description"],

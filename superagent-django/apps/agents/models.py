@@ -27,6 +27,9 @@ class Agent(models.Model):
     # Enabled tools
     tools = models.JSONField(default=list)
 
+    # Set when created from a ready-made template (1=Email, 2=Research, 3=Document, 4=Calendar, 5=Reporting)
+    template_id = models.PositiveSmallIntegerField(null=True, blank=True)
+
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="created_agents"
