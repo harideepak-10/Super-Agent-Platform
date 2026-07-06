@@ -782,6 +782,8 @@ def run_agent_task(self, task_id: str):
         task.cost_usd = cost["total_cost_usd"]
         task.total_tokens = llm.total_tokens
         task.save()
+        from apps.notifications.utils import notify_task_complete
+        notify_task_complete(task)
         return {"status": "completed", "task_id": task_id}
 
     except ApprovalRequired as exc:
@@ -805,6 +807,8 @@ def run_agent_task(self, task_id: str):
         task.steps_taken = cost["total_steps"]
         task.cost_usd = cost["total_cost_usd"]
         task.save(update_fields=["status", "steps_taken", "cost_usd"])
+        from apps.notifications.utils import notify_approval_needed
+        notify_approval_needed(task, approval)
         return {"status": "waiting_approval", "approval_id": str(approval.id)}
 
     except (StepLimitReached, CostLimitReached, RedZoneBlocked) as exc:
@@ -816,6 +820,8 @@ def run_agent_task(self, task_id: str):
         task.steps_taken = cost["total_steps"]
         task.cost_usd = cost["total_cost_usd"]
         task.save()
+        from apps.notifications.utils import notify_task_failed
+        notify_task_failed(task)
         return {"status": "failed", "error": str(exc)}
 
     except Exception as exc:
@@ -824,6 +830,8 @@ def run_agent_task(self, task_id: str):
         task.error_message = str(exc)[:500]
         task.completed_at = timezone.now()
         task.save(update_fields=["status", "error_message", "completed_at"])
+        from apps.notifications.utils import notify_task_failed
+        notify_task_failed(task)
         raise
 
 
@@ -852,6 +860,8 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         )
         task.completed_at = timezone.now()
         task.save(update_fields=["status", "error_message", "completed_at"])
+        from apps.notifications.utils import notify_task_failed
+        notify_task_failed(task)
         return {"status": "rejected", "task_id": task_id}
 
     snapshot = approval.resume_snapshot
@@ -946,6 +956,8 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_usd"]
         task.total_tokens = (task.total_tokens or 0) + llm.total_tokens
         task.save()
+        from apps.notifications.utils import notify_task_complete
+        notify_task_complete(task)
         return {"status": "completed", "task_id": task_id}
 
     except ApprovalRequired as exc:
@@ -968,6 +980,8 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.steps_taken = (task.steps_taken or 0) + cost["total_steps"]
         task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_usd"]
         task.save(update_fields=["status", "steps_taken", "cost_usd"])
+        from apps.notifications.utils import notify_approval_needed
+        notify_approval_needed(task, new_approval)
         return {"status": "waiting_approval", "approval_id": str(new_approval.id)}
 
     except Exception as exc:
@@ -976,4 +990,6 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.error_message = str(exc)[:500]
         task.completed_at = timezone.now()
         task.save(update_fields=["status", "error_message", "completed_at"])
+        from apps.notifications.utils import notify_task_failed
+        notify_task_failed(task)
         raise

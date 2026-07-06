@@ -75,6 +75,8 @@ def invite_member(request):
     )
 
     log_event(request, "team_invited", "invitation", str(invitation.id), workspace, {"email": email})
+    from apps.notifications.utils import notify_team_invite
+    notify_team_invite(invitation)
     return Response(TeamInvitationSerializer(invitation).data, status=status.HTTP_201_CREATED)
 
 

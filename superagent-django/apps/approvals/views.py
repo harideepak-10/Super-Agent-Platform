@@ -154,6 +154,9 @@ def approval_decide(request, pk):
     event = "approval_granted" if approved else "approval_rejected"
     log_event(request, event, "approval", str(approval.id), workspace)
 
+    from apps.notifications.utils import notify_approval_decided
+    notify_approval_decided(approval)
+
     _run_in_thread(resume_agent_task, str(approval.task_id), str(approval.id), approved, note)
 
     return Response(ApprovalSerializer(approval).data)
