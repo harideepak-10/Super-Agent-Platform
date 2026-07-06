@@ -45,7 +45,7 @@ def profile_detail(request, pk):
 
     if request.method == "DELETE":
         profile.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response({"detail": "Customer profile deleted."}, status=status.HTTP_200_OK)
 
     serializer = CustomerProfileSerializer(profile, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
