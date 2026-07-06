@@ -37,7 +37,7 @@ def notification_detail(request, pk):
 
     if request.method == "DELETE":
         notification.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response({"detail": "Notification deleted."}, status=status.HTTP_200_OK)
 
     if request.method == "PATCH":
         # Mark single notification as read
