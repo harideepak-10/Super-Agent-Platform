@@ -97,7 +97,7 @@ class AgentLiveConsumer(AsyncWebsocketConsumer):
             await self.close(code=4001)
             return
 
-        self.agent_id = self.scope["url_route"]["kwargs"]["agent_id"]
+        self.agent_id = str(self.scope["url_route"]["kwargs"]["agent_id"])
         self.group_name = f"agent_live_{self.agent_id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
