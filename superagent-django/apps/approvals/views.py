@@ -437,7 +437,7 @@ def approval_history(request):
     """
     workspace = _get_workspace(request)
 
-    qs = (
+    base_qs = (
         Approval.objects
         .exclude(status=Approval.Status.PENDING)
         .filter(task__workspace=workspace)
@@ -445,7 +445,12 @@ def approval_history(request):
         .order_by("-reviewed_at")
     )
 
-    decision = request.query_params.get("decision")
+    # Always calculate totals from the unfiltered base
+    approved_count = base_qs.filter(status=Approval.Status.APPROVED).count()
+    rejected_count = base_qs.filter(status=Approval.Status.REJECTED).count()
+
+    qs = base_qs
+    decision = (request.query_params.get("decision") or "").strip().lower()
     if decision == "approved":
         qs = qs.filter(status=Approval.Status.APPROVED)
     elif decision == "rejected":
@@ -494,9 +499,6 @@ def approval_history(request):
             "requested_ago": _human_ago(ap.created_at),
             "created_at":    ap.created_at.isoformat(),
         })
-
-    approved_count  = qs.filter(status=Approval.Status.APPROVED).count()
-    rejected_count  = qs.filter(status=Approval.Status.REJECTED).count()
 
     return Response({
         "total":          len(items),
