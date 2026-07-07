@@ -619,7 +619,26 @@ class DjangoAgent(BaseAgent):
         )
 
     def _log(self, event_type: str, details: dict) -> None:
-        """Override to push each step to WebSocket channel layer in real-time."""
+        """Override to push standardised WS events to the channel layer in real-time.
+
+        Standardised event shapes
+        ─────────────────────────
+        step_started   — LLM thinking or tool about to run
+        step_finished  — tool result received
+        status_changed — task status transition
+        step_output    — partial/streaming output (reserved for future streaming)
+
+        Every event has a common envelope:
+        {
+          "event":      "<event_name>",
+          "task_id":    "<uuid>",
+          "agent_name": "<name>",
+          "step":       <int | null>,
+          "title":      "<human label>",
+          "detail":     "<one-liner>",
+          "data":       { ...raw details... }
+        }
+        """
         super()._log(event_type, details)
         import json as _json
         import logging as _logging
@@ -628,19 +647,56 @@ class DjangoAgent(BaseAgent):
             from channels.layers import get_channel_layer
             from asgiref.sync import async_to_sync
             channel_layer = get_channel_layer()
-            _ws_logger.info("WS_PUSH task=%s event=%s layer=%s", self.task_id, event_type, type(channel_layer).__name__)
-            if channel_layer and self.task_id:
-                try:
-                    safe_details = _json.loads(_json.dumps(details, default=str))
-                except Exception:
-                    safe_details = {"raw": str(details)}
-                group_name = "task_{}".format(self.task_id)
-                async_to_sync(channel_layer.group_send)(group_name, {
-                    "type": "task_update",
-                    "event": event_type,
-                    "data": safe_details,
-                })
-                _ws_logger.info("WS_PUSH_OK task=%s event=%s", self.task_id, event_type)
+            if not channel_layer or not self.task_id:
+                return
+
+            try:
+                safe_details = _json.loads(_json.dumps(details, default=str))
+            except Exception:
+                safe_details = {"raw": str(details)}
+
+            tname = details.get("tool_name", "")
+            title, detail = _step_title_detail(event_type, tname, details)
+
+            # Map internal event_type → standardised WS event name
+            _WS_EVENT_MAP = {
+                "llm_called":      "step_started",
+                "tool_called":     "step_started",
+                "tool_result":     "step_finished",
+                "approval_needed": "status_changed",
+                "task_completed":  "status_changed",
+                "task_failed":     "status_changed",
+                "task_resumed":    "step_finished",
+            }
+            ws_event = _WS_EVENT_MAP.get(event_type, event_type)
+
+            # status_changed carries the new status explicitly
+            new_status = None
+            if event_type == "approval_needed":
+                new_status = "waiting_approval"
+            elif event_type == "task_completed":
+                new_status = "completed"
+            elif event_type == "task_failed":
+                new_status = "failed"
+
+            payload = {
+                "event":      ws_event,
+                "task_id":    self.task_id,
+                "agent_name": self.name,
+                "step":       details.get("step"),
+                "title":      title,
+                "detail":     detail,
+                "data":       safe_details,
+            }
+            if new_status:
+                payload["status"] = new_status
+
+            group_name = "task_{}".format(self.task_id)
+            async_to_sync(channel_layer.group_send)(group_name, {
+                "type": "task_update",
+                **payload,
+            })
+            _ws_logger.info("WS_PUSH_OK task=%s ws_event=%s", self.task_id, ws_event)
         except Exception as _exc:
             _ws_logger.error("WS_PUSH_ERR task=%s event=%s err=%s", self.task_id, event_type, _exc, exc_info=True)
 
@@ -649,10 +705,66 @@ class DjangoAgent(BaseAgent):
 # HELPER — save audit_log entries as TaskStep records
 # =============================================================================
 
+# Human-readable labels for every tool
+_TOOL_LABELS = {
+    "send_email":      ("Sending email",           "Sending message to recipient"),
+    "read_email":      ("Reading emails",           "Fetching from Gmail inbox"),
+    "create_draft":    ("Creating email draft",     "Drafting message"),
+    "web_search":      ("Searching the web",        "Looking up information online"),
+    "browse_web":      ("Browsing webpage",         "Reading page content"),
+    "classify_text":   ("Classifying content",      "Analysing and categorising text"),
+    "generate_report": ("Generating report",        "Creating structured document"),
+    "file_read":       ("Reading file",             "Loading file contents"),
+    "file_write":      ("Writing file",             "Saving to file"),
+    "export_csv":      ("Exporting CSV",            "Creating spreadsheet export"),
+    "cal_read":        ("Reading calendar",         "Fetching upcoming events"),
+    "cal_write":       ("Creating calendar event",  "Adding event to calendar"),
+    "delete_file":     ("Deleting file",            "Removing file permanently"),
+    "upload_to_drive": ("Uploading to Drive",       "Saving file to Google Drive"),
+}
+
+
+def _step_title_detail(event_type, tname, details):
+    """Return (title, detail) for a step."""
+    if event_type == "llm_called":
+        return "Thinking", "Planning next action (step {})".format(details.get("step", ""))
+    if event_type in ("task_completed", "task_resumed"):
+        result_preview = str(details.get("result", ""))[:80]
+        return "Task complete", result_preview
+    if event_type == "approval_needed":
+        title, _ = _TOOL_LABELS.get(tname, ("Awaiting approval", ""))
+        return "Waiting for approval", "{} requires your review".format(title)
+    if event_type == "tool_called":
+        title, default_detail = _TOOL_LABELS.get(tname, ("Running tool", tname))
+        # Try to extract a meaningful detail from tool_input
+        raw_in = details.get("tool_input", "")
+        try:
+            inp = json.loads(raw_in) if isinstance(raw_in, str) else raw_in
+            if tname in ("send_email", "create_draft") and isinstance(inp, dict):
+                detail = "To {}".format(inp.get("to") or inp.get("recipient", ""))
+            elif tname in ("web_search",) and isinstance(inp, dict):
+                detail = "Query: {}".format(inp.get("query", ""))[:80]
+            elif tname in ("browse_web",) and isinstance(inp, dict):
+                detail = inp.get("url", "")[:80]
+            elif tname in ("file_read", "file_write", "delete_file") and isinstance(inp, dict):
+                detail = inp.get("path", "")[:80]
+            else:
+                detail = default_detail
+        except Exception:
+            detail = default_detail
+        return title, detail
+    if event_type == "tool_result":
+        title, _ = _TOOL_LABELS.get(tname, ("Got result", ""))
+        return "Got result", "{} completed".format(title)
+    return event_type.replace("_", " ").title(), ""
+
+
 def _save_audit_steps(task, audit_log, step_offset=0):
     from .models import TaskStep
 
+    agent_name = task.agent.name if task.agent else "Agent"
     saved = 0
+
     for i, entry in enumerate(audit_log):
         event_type = entry.get("event_type", "")
         details    = entry.get("details", {})
@@ -661,10 +773,11 @@ def _save_audit_steps(task, audit_log, step_offset=0):
         if TaskStep.objects.filter(task=task, step_number=step_num).exists():
             continue
 
+        tname, tinput, toutput = "", None, None
+
         if event_type == "llm_called":
             stype = TaskStep.StepType.THOUGHT
             content = "Thinking... (step {})".format(details.get("step", i + 1))
-            tname, tinput, toutput = "", None, None
 
         elif event_type == "tool_called":
             stype = TaskStep.StepType.TOOL_CALL
@@ -675,14 +788,12 @@ def _save_audit_steps(task, audit_log, step_offset=0):
                 tinput = json.loads(raw_in) if isinstance(raw_in, str) else raw_in
             except Exception:
                 tinput = {"raw": str(raw_in)}
-            toutput = None
 
         elif event_type == "tool_result":
             stype = TaskStep.StepType.TOOL_RESULT
             tname = details.get("tool_name", "")
             raw_out = details.get("result", "")
             content = str(raw_out)[:500]
-            tinput = None
             try:
                 toutput = (
                     json.loads(raw_out)
@@ -695,19 +806,18 @@ def _save_audit_steps(task, audit_log, step_offset=0):
         elif event_type in ("task_completed", "task_resumed"):
             stype = TaskStep.StepType.FINAL_ANSWER
             content = str(details.get("result", details.get("task", "Completed")))[:2000]
-            tname, tinput, toutput = "", None, None
 
         elif event_type == "approval_needed":
             stype = TaskStep.StepType.TOOL_CALL
             tname = details.get("tool_name", "")
             content = "Approval required for: {}".format(tname)
             tinput = {"raw": str(details.get("tool_input", ""))}
-            toutput = None
 
         else:
             stype = TaskStep.StepType.THOUGHT
             content = "{}: {}".format(event_type, json.dumps(details)[:200])
-            tname, tinput, toutput = "", None, None
+
+        title, detail = _step_title_detail(event_type, tname, details)
 
         TaskStep.objects.create(
             task=task,
@@ -719,6 +829,9 @@ def _save_audit_steps(task, audit_log, step_offset=0):
             tool_output=toutput,
             tool_zone="yellow" if tname in _HIGH_ZONE_TOOLS else "green",
             tokens_used=0,
+            agent_name=agent_name,
+            title=title,
+            detail=detail,
         )
         saved += 1
 

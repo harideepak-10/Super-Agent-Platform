@@ -41,6 +41,15 @@ class Task(models.Model):
     total_tokens = models.PositiveIntegerField(default=0)
     cost_usd = models.DecimalField(max_digits=8, decimal_places=6, default=0)
 
+    # Generic output files — populated by any agent that produces files
+    # e.g. Document Agent → Drive links, Email Agent → [] (empty)
+    # Shape: [{"name": "...", "url": "...", "type": "pdf|csv|drive|email|..."}]
+    deliverables = models.JSONField(default=list, blank=True)
+
+    # Optional estimate of total steps — used to compute progress_percent
+    # Orchestrator sets this when splitting a task across agents
+    total_steps_estimate = models.PositiveIntegerField(null=True, blank=True)
+
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -74,6 +83,14 @@ class TaskStep(models.Model):
 
     # Safety zone of the tool (green/yellow/red)
     tool_zone = models.CharField(max_length=10, blank=True)
+
+    # Generic fields — work for Email Agent now, Orchestrator/Document Agent later
+    # agent_name: which agent handled this step (task agent for now, sub-agent name for Orchestrator)
+    agent_name = models.CharField(max_length=255, blank=True)
+    # title: short human-readable label e.g. "Sending email", "Searching the web"
+    title = models.CharField(max_length=255, blank=True)
+    # detail: one-line description e.g. "To harideepak@...", "Query: AI news 2026"
+    detail = models.TextField(blank=True)
 
     tokens_used = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

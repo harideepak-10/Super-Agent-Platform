@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "krypsos-superagent-v1",
     "name": "KRYPSOS Super Agent Platform",
-    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ — token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSocket (Live Task Events):\nConnect to: wss://super-agent-platform.onrender.com/ws/tasks/<task_id>/\nHeader: Authorization: Bearer {{token}}\nEvents received: task_started, llm_called, tool_called, tool_result, approval_needed, task_completed\n\nTypical Flow:\n1. GET /agents/templates/ → pick a template, note its numeric ID (1–5)\n2. GET /agents/templates/<id>/ → preview template detail before activating\n3. POST /agents/templates/<id>/activate/ → save agent_id\n4. GET /agents/<agent_id>/overview/ → see activated agent stats and recent runs\n5. POST /tasks/create/ → pass agent_id, save task_id, connect WebSocket\n6. If task status = waiting_approval → GET /approvals/pending/ → POST /approvals/{id}/decide/\n7. GET /tasks/{task_id}/ to see final result\n\nTemplate IDs: 1=Email, 2=Research, 3=Document, 4=Calendar, 5=Reporting\nAll costs are returned in EUR (×0.92 from USD stored in DB).",
+    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ — token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSockets (3 channels):\n  wss://.../ws/tasks/<task_id>/        — live task step stream\n  wss://.../ws/notifications/          — personal notification push\n  wss://.../ws/agents/<agent_id>/live/ — agent live activity stream\nAll channels: Authorization: Bearer {{token}} header required\nKeep-alive: send {\"type\":\"ping\"} → server replies {\"type\":\"pong\"}\n\nTypical Flow:\n1. GET /agents/templates/ → pick a template, note its numeric ID (1–5)\n2. GET /agents/templates/<id>/ → preview template detail before activating\n3. POST /agents/templates/<id>/activate/ → save agent_id\n4. GET /agents/<agent_id>/overview/ → see activated agent stats and recent runs\n5. POST /tasks/create/ → pass agent_id, save task_id, connect WebSocket\n6. If task status = waiting_approval → GET /approvals/pending/ → POST /approvals/{id}/decide/\n7. GET /tasks/{task_id}/ to see final result\n\nTemplate IDs: 1=Email, 2=Research, 3=Document, 4=Calendar, 5=Reporting\nAll costs are returned in EUR (×0.92 from USD stored in DB).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -14,7 +14,7 @@
     { "key": "approval_id", "value": "", "type": "string" },
     { "key": "integration_id", "value": "", "type": "string" },
     { "key": "member_id", "value": "", "type": "string" },
-    { "key": "notification_id", "value": "", "type": "string" },
+    { "key": "notification_id", "value": "", "type": "string", "description": "Set from Get Notification response" },
     { "key": "profile_id", "value": "", "type": "string" },
     { "key": "user_id", "value": "", "type": "string" },
     { "key": "rule_id", "value": "", "type": "string" },
@@ -321,7 +321,11 @@
         },
         {
           "name": "Get Task Detail",
-          "request": { "method": "GET", "url": "{{base_url}}/tasks/{{task_id}}/" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/tasks/{{task_id}}/",
+            "description": "Returns full task detail including new generic fields:\n\n  progress_percent     — 0–100. Computed from steps_taken/max_steps. 100 only when completed.\n  deliverables         — files produced by the task. [] for Email Agent. [{name, url, type}] for Document Agent.\n  total_steps_estimate — set by Orchestrator when splitting across agents.\n\nExample response:\n{\n  \"progress_percent\": 45,\n  \"deliverables\": [],\n  \"total_steps_estimate\": null\n}"
+          }
         },
         {
           "name": "Cancel Task",
@@ -337,7 +341,7 @@
           "request": {
             "method": "GET",
             "url": "{{base_url}}/tasks/{{task_id}}/steps/",
-            "description": "Returns all ReAct loop steps (thoughts, tool calls, results, final answer)."
+            "description": "Returns all ReAct loop steps. Each step now includes generic fields that work for any agent:\n\n  agent_name — which agent handled this step (Email Agent name for now; sub-agent name when Orchestrator is live)\n  title      — short human-readable label e.g. 'Sending email', 'Searching the web'\n  detail     — one-liner e.g. 'To harideepak@...', 'Query: AI news 2026'\n\nExample step:\n{\n  \"step_number\": 3,\n  \"step_type\": \"tool_call\",\n  \"agent_name\": \"Email Agent\",\n  \"title\": \"Sending email\",\n  \"detail\": \"To harideepak@krypsos.tech\",\n  \"tool_name\": \"send_email\"\n}"
           }
         },
         {
@@ -712,19 +716,81 @@
       "item": [
         {
           "name": "List Notifications",
-          "request": { "method": "GET", "url": "{{base_url}}/notifications/" }
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/notifications/",
+              "query": [
+                { "key": "unread", "value": "true", "description": "Pass 'true' to return only unread notifications", "disabled": true }
+              ]
+            },
+            "description": "Returns up to 50 notifications for the logged-in user, newest first.\n\nNotification types:\n  task_complete — agent finished a task\n  task_failed — agent task failed or approval rejected\n  approval_needed — agent is waiting for your approval\n  approval_decided — your approval was approved or rejected by a reviewer\n  team_invite — someone invited you to a workspace\n  budget_alert — spending near the limit\n  integration_error — connected app has an issue"
+          }
+        },
+        {
+          "name": "List Unread Notifications",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/notifications/?unread=true",
+              "query": [
+                { "key": "unread", "value": "true" }
+              ]
+            },
+            "description": "Returns only unread notifications."
+          }
+        },
+        {
+          "name": "Get Notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) { pm.collectionVariables.set('notification_id', json.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/notifications/{{notification_id}}/",
+            "description": "Get a single notification detail."
+          }
+        },
+        {
+          "name": "Mark Notification as Read",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/notifications/{{notification_id}}/",
+            "description": "Mark a single notification as read. Call this when the user opens/taps a notification. Sets is_read=true and saves read_at timestamp. No body required."
+          }
+        },
+        {
+          "name": "Delete Notification",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/notifications/{{notification_id}}/",
+            "description": "Permanently delete a single notification."
+          }
         },
         {
           "name": "Mark All Read",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/notifications/mark-all-read/",
-            "body": { "mode": "raw", "raw": "{}" }
+            "body": { "mode": "raw", "raw": "{}" },
+            "description": "Mark all notifications as read at once. Call when user opens the notifications screen."
           }
         },
         {
           "name": "Get Notification Settings",
-          "request": { "method": "GET", "url": "{{base_url}}/notifications/settings/" }
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/notifications/settings/",
+            "description": "Get the user's notification preferences."
+          }
         },
         {
           "name": "Update Notification Settings",
@@ -732,12 +798,12 @@
             "method": "PATCH",
             "url": "{{base_url}}/notifications/settings/",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"approval_alerts\": true,\n  \"task_completed\": true,\n  \"task_failed\": true\n}" }
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email_on_task_complete\": true,\n  \"email_on_task_failed\": true,\n  \"email_on_approval_needed\": true,\n  \"email_on_budget_alert\": true,\n  \"push_enabled\": true\n}"
+            },
+            "description": "Toggle which notification types the user receives. All fields are optional — send only what you want to change."
           }
-        },
-        {
-          "name": "Get Notification",
-          "request": { "method": "GET", "url": "{{base_url}}/notifications/{{notification_id}}/" }
         }
       ]
     },
@@ -879,6 +945,35 @@
             "url": "{{base_url}}/memory/{{profile_id}}/interactions/",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"type\": \"email\",\n  \"summary\": \"Discussed Q3 invoice payment\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 - WebSockets",
+      "item": [
+        {
+          "name": "WS — Task Live Stream",
+          "request": {
+            "method": "GET",
+            "url": "wss://super-agent-platform.onrender.com/ws/tasks/{{task_id}}/",
+            "description": "Connect after creating a task to receive real-time step-by-step updates.\n\nAuth: Add header  Authorization: Bearer {{token}}\nKeep-alive: send {\"type\": \"ping\"} → server replies {\"type\": \"pong\"}\n\n── STANDARDISED EVENT ENVELOPE ──\nEvery event has this shape:\n{\n  \"event\":      \"<event_name>\",\n  \"task_id\":    \"<uuid>\",\n  \"agent_name\": \"Email Agent\",\n  \"step\":       3,\n  \"title\":      \"Sending email\",\n  \"detail\":     \"To harideepak@krypsos.tech\",\n  \"data\":       { ...raw details... }\n}\nstatus_changed events also include: \"status\": \"completed|failed|waiting_approval\"\n\n── EVENT NAMES ──\n  step_started    — LLM thinking OR tool about to run\n  step_finished   — tool result received\n  status_changed  — task status changed (approval_needed / completed / failed)\n  step_output     — partial streaming output (reserved for future use)\n\n── EXAMPLE EVENTS ──\nstep_started (thinking):\n  { \"event\": \"step_started\", \"title\": \"Thinking\", \"detail\": \"Planning next action (step 1)\" }\n\nstep_started (tool call):\n  { \"event\": \"step_started\", \"title\": \"Sending email\", \"detail\": \"To harideepak@krypsos.tech\" }\n\nstep_finished:\n  { \"event\": \"step_finished\", \"title\": \"Got result\", \"detail\": \"Sending email completed\" }\n\nstatus_changed (approval needed):\n  { \"event\": \"status_changed\", \"status\": \"waiting_approval\", \"title\": \"Waiting for approval\", \"detail\": \"Send Email requires your review\" }\n\nstatus_changed (completed):\n  { \"event\": \"status_changed\", \"status\": \"completed\", \"title\": \"Task complete\", \"detail\": \"<result preview>\" }\n\nTypical use: connect immediately after POST /tasks/create/, use title+detail to drive UI labels, use status_changed to update progress bar and status chip."
+          }
+        },
+        {
+          "name": "WS — Notifications Stream",
+          "request": {
+            "method": "GET",
+            "url": "wss://super-agent-platform.onrender.com/ws/notifications/",
+            "description": "Personal notification channel — one connection per logged-in user.\n\nAuth: Add header  Authorization: Bearer {{token}}\n\nEvents received:\n  connected    — handshake confirmed\n  notification — new notification pushed, contains full notification object in 'data'\n\nNotification types in data:\n  task_complete     — agent finished a task\n  task_failed       — agent task failed\n  approval_needed   — agent needs your approval\n  approval_decided  — your approval was approved or rejected\n  team_invite       — someone invited you to a workspace\n\nKeep-alive: send {\"type\": \"ping\"} → server replies {\"type\": \"pong\"}\n\nTypical use: connect on app launch, update notification badge count in real-time without polling."
+          }
+        },
+        {
+          "name": "WS — Agent Live Stream",
+          "request": {
+            "method": "GET",
+            "url": "wss://super-agent-platform.onrender.com/ws/agents/{{agent_id}}/live/",
+            "description": "Streams live thought / action / observation events for a specific agent.\n\nAuth: Add header  Authorization: Bearer {{token}}\n\nEvents received:\n  connected    — handshake confirmed\n  agent_event  — thought, tool call, or observation from the running agent\n\nKeep-alive: send {\"type\": \"ping\"} → server replies {\"type\": \"pong\"}\n\nTypical use: power the Agent Live Activity screen — show what the agent is thinking and doing right now."
           }
         }
       ]

@@ -79,10 +79,9 @@ class TaskLiveConsumer(AsyncWebsocketConsumer):
 
     # Handler: receives from Celery task via group_send
     async def task_update(self, event):
-        await self.send(json.dumps({
-            "type": event.get("event", "update"),
-            "data": event.get("data", {}),
-        }))
+        # Forward the full standardised payload — strip the internal "type" key
+        payload = {k: v for k, v in event.items() if k != "type"}
+        await self.send(json.dumps(payload, default=str))
 
 
 class AgentLiveConsumer(AsyncWebsocketConsumer):
