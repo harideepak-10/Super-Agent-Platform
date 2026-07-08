@@ -28,7 +28,10 @@ class Agent(models.Model):
     tools = models.JSONField(default=list)
 
     # Set when created from a ready-made template (1=Email, 2=Research, 3=Document, 4=Calendar, 5=Reporting)
-    template_id = models.PositiveSmallIntegerField(null=True, blank=True)
+    template_id      = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Tracks which template version this agent was last synced to.
+    # If template.version > template_version, the agent will be auto-synced at next task run.
+    template_version = models.PositiveSmallIntegerField(default=0)
 
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(

@@ -519,37 +519,73 @@ def agent_audit_log(request, pk):
 # Agent Templates — ready-made agents users can add with one tap
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# TEMPLATE VERSIONING
+# Bump `version` whenever you change tools/system_prompt/llm_model/max_steps.
+# The sync mechanism uses this to auto-update existing agent instances.
+# ---------------------------------------------------------------------------
+
+# Fields that sync automatically when template version increases:
+_SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_usd"]
+
 _AGENT_TEMPLATES = [
     {
         "id":          1,
+        "version":     3,       # ← bump this whenever template changes
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
-        "description": "Reads your inbox, classifies emails, and sends replies. Requires Gmail connected.",
+        "description": "Full email lifecycle — read, summarise, reply, schedule, manage inbox, create meetings. Requires Gmail connected.",
         "icon":        "mail",
         "icon_bg":     "#B45309",
         "border_color":"#F59E0B",
         "badge":       "Popular",
         "badge_color": "#22C55E",
         "capabilities": [
-            "Reads and organises your inbox",
-            "Classifies emails by priority and type",
-            "Sends replies and automated responses",
-            "Creates email drafts for review",
+            "Reads, searches and summarises inbox & spam",
+            "Sends replies, forwards, schedules future emails",
+            "Downloads and reads email attachments (PDF/DOCX/CSV)",
+            "Extracts invoice data, detects follow-ups needed",
+            "Creates and saves Gmail drafts for review",
+            "Labels, moves and manages inbox organisation",
+            "Creates Google Calendar meetings with attendees",
+            "Maintains persistent customer memory & preferences",
         ],
-        "tools":       ["read_email", "classify_text", "send_email", "create_draft"],
-        "llm_model":   "llama-3.3-70b-versatile",
+        "tools": [
+            # Read
+            "read_email", "summarize_emails", "download_attachment",
+            "read_attachment_content", "extract_data_from_attachment",
+            # Inbox management
+            "mark_as_read", "label_email", "move_to_folder", "delete_email",
+            # Compose
+            "create_draft", "create_gmail_draft",
+            "reply_to_email", "forward_email", "schedule_email", "send_email",
+            # Intelligence
+            "extract_invoice_data", "detect_follow_up_needed",
+            # Calendar
+            "create_meeting",
+            # Customer memory
+            "list_customer_profiles", "search_customer_by_email",
+        ],
+        "llm_model":    "llama-3.3-70b-versatile",
         "system_prompt": (
-            "You are an email management agent. You can read emails, classify them, "
-            "send replies, and create drafts. When asked to send an email, always call "
-            "the send_email tool directly with to, subject, and body fields. "
-            "Never say you cannot send emails — use the tool."
+            "You are EmailAgent, the KRYPSOS AI assistant for professional email management. "
+            "You manage the complete email lifecycle: read, search, summarise, classify, "
+            "draft, reply, forward, schedule, manage inbox, download attachments, "
+            "extract invoice data, detect follow-ups, create calendar meetings, "
+            "and maintain customer memory. "
+            "YELLOW zone tools (send_email, reply_to_email, forward_email, schedule_email, "
+            "delete_email, create_meeting) always require human approval before executing. "
+            "GREEN zone tools run automatically. "
+            "Always check customer memory before drafting a reply. "
+            "Use current_time to resolve relative times like 'at 11' or 'tomorrow'."
         ),
-        "max_steps":   20,
+        "max_steps":    25,
         "max_cost_usd": 1.0,
     },
     {
         "id":          2,
+        "version":     1,
         "slug":        "research-agent",
         "name":        "Research Agent",
         "agent_type":  "research",
@@ -576,32 +612,37 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
+        "version":     2,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
-        "description": "Reads files, extracts information, and exports summaries as CSV or reports.",
+        "description": "Creates PDFs, Word docs, CSV exports, and uploads to Google Drive.",
         "icon":        "file-text",
         "icon_bg":     "#0F766E",
         "border_color":"#14B8A6",
         "badge":       None,
         "badge_color": None,
         "capabilities": [
-            "Parses PDF and DOCX documents",
-            "Extracts structured data and tables",
-            "Summarises content into key points",
-            "Exports data as CSV or structured reports",
+            "Generates structured PDFs and Word documents",
+            "Exports data as CSV spreadsheets",
+            "Uploads documents to Google Drive",
+            "Reads and summarises existing files",
         ],
-        "tools":       ["file_read", "generate_report", "export_csv"],
+        "tools":       ["generate_content", "create_pdf", "create_docx", "export_csv", "upload_to_drive", "file_read", "generate_report"],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
-            "You are a document processing agent. Read files, extract key information, "
-            "and generate structured summaries or CSV exports as needed."
+            "You are a document processing agent. Generate structured PDFs, Word docs, "
+            "and CSV exports from user-provided content or data. "
+            "upload_to_drive is YELLOW zone — requires human approval before uploading. "
+            "Always call generate_content first to structure the document, "
+            "then create_pdf or create_docx to build the file."
         ),
         "max_steps":   15,
         "max_cost_usd": 1.0,
     },
     {
         "id":          4,
+        "version":     2,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -613,21 +654,24 @@ _AGENT_TEMPLATES = [
         "badge_color": None,
         "capabilities": [
             "Reads upcoming events and meetings",
-            "Schedules new meetings on your calendar",
-            "Checks availability and avoids conflicts",
-            "Sends meeting invites and confirmations",
+            "Schedules new meetings with Google Meet links",
+            "Sends meeting invites to attendees",
+            "Looks up attendee emails from customer memory",
         ],
-        "tools":       ["cal_read", "cal_write", "web_search"],
+        "tools":       ["cal_read", "create_meeting", "search_customer_by_email", "web_search"],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
-            "You are a calendar management agent. Read calendar events and schedule meetings "
-            "when asked. Always confirm before creating or modifying events."
+            "You are a calendar management agent. Read calendar events and create meetings. "
+            "create_meeting is YELLOW zone — always requires human approval before creating. "
+            "Use search_customer_by_email to resolve names to email addresses. "
+            "Use current_time to resolve relative times."
         ),
         "max_steps":   15,
         "max_cost_usd": 1.0,
     },
     {
         "id":          5,
+        "version":     1,
         "slug":        "reporting-agent",
         "name":        "Reporting Agent",
         "agent_type":  "reporting",
@@ -654,8 +698,31 @@ _AGENT_TEMPLATES = [
     },
 ]
 
-_TEMPLATE_MAP  = {t["slug"]: t for t in _AGENT_TEMPLATES}
-_TEMPLATE_ID_MAP = {t["id"]: t for t in _AGENT_TEMPLATES}
+_TEMPLATE_MAP    = {t["slug"]: t for t in _AGENT_TEMPLATES}
+_TEMPLATE_ID_MAP = {t["id"]:   t for t in _AGENT_TEMPLATES}
+
+
+def sync_agent_from_template(agent, template: dict) -> bool:
+    """Sync an Agent instance from its template dict.
+
+    Updates system_prompt, tools, llm_model, max_steps, max_cost_usd,
+    and template_version. Returns True if any field was changed.
+    """
+    changed = False
+    for field in _SYNC_FIELDS:
+        new_val = template.get(field)
+        if new_val is not None and getattr(agent, field) != new_val:
+            setattr(agent, field, new_val)
+            changed = True
+
+    new_version = template.get("version", 0)
+    if agent.template_version != new_version:
+        agent.template_version = new_version
+        changed = True
+
+    if changed:
+        agent.save(update_fields=_SYNC_FIELDS + ["template_version"])
+    return changed
 
 
 @api_view(["GET"])
@@ -787,6 +854,99 @@ def agent_template_activate(request, template_id):
     log_event(request, "agent_created", "agent", str(agent.id), workspace,
               {"template_id": template_id, "template": template["slug"]})
     return Response(AgentSerializer(agent).data, status=status.HTTP_201_CREATED)
+
+
+# ---------------------------------------------------------------------------
+# Template Sync
+# ---------------------------------------------------------------------------
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def agent_template_sync(request, template_id):
+    """
+    POST /api/v1/agents/templates/<id>/sync/
+
+    Force-sync all Agent instances (in the current workspace) that were
+    created from this template to the latest template version.
+
+    Synced fields: system_prompt, tools, llm_model, max_steps, max_cost_usd.
+    NOT synced: name, description (user may have customised these).
+
+    Returns:
+        {
+            "synced":    2,       # number of agents updated
+            "skipped":   0,       # already on latest version
+            "template":  "email-agent",
+            "version":   3
+        }
+    """
+    workspace = _get_workspace(request)
+    if not workspace:
+        return Response({"detail": "No workspace found."}, status=status.HTTP_400_BAD_REQUEST)
+
+    template = _TEMPLATE_ID_MAP.get(template_id)
+    if not template:
+        return Response({"detail": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    agents = Agent.objects.filter(workspace=workspace, template_id=template_id, is_active=True)
+    synced  = 0
+    skipped = 0
+    for agent in agents:
+        if sync_agent_from_template(agent, template):
+            synced += 1
+        else:
+            skipped += 1
+
+    return Response({
+        "synced":   synced,
+        "skipped":  skipped,
+        "template": template["slug"],
+        "version":  template["version"],
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def agent_sync_all_templates(request):
+    """
+    POST /api/v1/agents/sync-all-templates/
+
+    Sync ALL template-based agents in the workspace to their latest versions.
+    Call this after deploying code changes that update any template.
+
+    Returns:
+        {
+            "results": [
+                {"template": "email-agent", "version": 3, "synced": 1, "skipped": 0},
+                ...
+            ],
+            "total_synced": 2
+        }
+    """
+    workspace = _get_workspace(request)
+    if not workspace:
+        return Response({"detail": "No workspace found."}, status=status.HTTP_400_BAD_REQUEST)
+
+    results = []
+    total_synced = 0
+    for template in _AGENT_TEMPLATES:
+        agents = Agent.objects.filter(workspace=workspace, template_id=template["id"], is_active=True)
+        synced  = 0
+        skipped = 0
+        for agent in agents:
+            if sync_agent_from_template(agent, template):
+                synced += 1
+            else:
+                skipped += 1
+        results.append({
+            "template": template["slug"],
+            "version":  template["version"],
+            "synced":   synced,
+            "skipped":  skipped,
+        })
+        total_synced += synced
+
+    return Response({"results": results, "total_synced": total_synced})
 
 
 # ---------------------------------------------------------------------------

@@ -1627,6 +1627,23 @@ def run_agent_task(self, task_id: str):
     agent_model = task.agent
     workspace_id = task.workspace_id
 
+    # ── Auto-sync agent from template if template has been updated ──────────
+    if agent_model and agent_model.template_id:
+        try:
+            from apps.agents.views import _TEMPLATE_ID_MAP, sync_agent_from_template
+            tmpl = _TEMPLATE_ID_MAP.get(agent_model.template_id)
+            if tmpl and tmpl.get("version", 0) > (agent_model.template_version or 0):
+                synced = sync_agent_from_template(agent_model, tmpl)
+                if synced:
+                    agent_model.refresh_from_db()
+                    _logger.info(
+                        "AUTO_SYNC task=%s agent=%s template=%s→v%s",
+                        task_id, agent_model.id, tmpl["slug"], tmpl["version"],
+                    )
+        except Exception as _sync_exc:
+            _logger.warning("AUTO_SYNC failed (non-fatal): %s", _sync_exc)
+    # ────────────────────────────────────────────────────────────────────────
+
     tools = (
         _build_tools(agent_model, workspace_id=workspace_id)
         if agent_model

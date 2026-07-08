@@ -419,6 +419,38 @@
             },
             "description": "Filterable audit log for a single agent."
           }
+        },
+        {
+          "name": "Sync Template (one)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/agents/templates/1/sync/"
+            },
+            "description": "POST /api/v1/agents/templates/<id>/sync/\n\nSyncs all agents in your workspace that were created from this template to the latest version.\nFields synced: system_prompt, tools, llm_model, max_steps, max_cost_usd.\nFields NOT synced: name, description (user may have customised).\n\nTemplate IDs: 1=Email, 2=Research, 3=Document, 4=Calendar, 5=Reporting\n\nReturns: {synced, skipped, template, version}\n\nWhen to use:\n- After deploying code changes that update a template\n- To force-refresh an agent that has stale config"
+          }
+        },
+        {
+          "name": "Sync All Templates",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/agents/sync-all-templates/"
+            },
+            "description": "POST /api/v1/agents/sync-all-templates/\n\nSyncs ALL template-based agents in the workspace to their latest versions in one call.\n\nReturns: {results: [{template, version, synced, skipped}], total_synced}\n\nTip: Call this once after every deploy to ensure all users' agents are up to date.\nAlternatively agents auto-sync at task runtime \u2014 so this is just a manual override."
+          }
         }
       ]
     },
