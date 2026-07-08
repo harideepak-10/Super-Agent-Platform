@@ -1934,6 +1934,66 @@
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Find the latest email about an invoice and forward it to accounts@example.com with a note: 'Please process this invoice.'\"\n}"
             }
           }
+        },
+        {
+          "name": "\ud83d\udce7 Read Spam Folder [GREEN]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/"
+            },
+            "description": "Tests: search_emails with 'in:spam' query\nGREEN \u2014 runs automatically\nAgent uses search_emails with query='in:spam' to read spam folder",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Check my spam folder and summarize any emails that look legitimate and not actual spam.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "\ud83d\udcbe Draft Reply + Save to Gmail Drafts [GREEN]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/"
+            },
+            "description": "Tests: read_emails \u2192 get_customer_memory \u2192 draft_reply \u2192 create_gmail_draft\nAll GREEN \u2014 no approval needed\nDraft is saved to Gmail's Drafts folder (visible in Gmail app)\nUser can review and send from Gmail, or approve via agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Read my latest unread email, draft a professional reply, and save it to my Gmail Drafts folder so I can review and send it myself.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "\ud83d\udcbe Save Specific Draft to Gmail [GREEN]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/"
+            },
+            "description": "Tests: create_gmail_draft directly\nGREEN \u2014 saves to Gmail Drafts without any approval\nCheck Gmail Drafts folder to see the saved draft",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Save a draft email to vendor@example.com with subject 'PO Confirmation' and body: 'Dear Sir, This is to confirm receipt of your purchase order. We will process it within 2 business days. Regards, Team KRYPSOS'\"\n}"
+            }
+          }
         }
       ]
     },

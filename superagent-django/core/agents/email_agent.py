@@ -36,6 +36,7 @@ from core.tools.gmail.summarize_emails import SummarizeEmailsTool
 from core.tools.gmail.extract_action_items import ExtractActionItemsTool
 from core.tools.gmail.classify_email import ClassifyEmailTool
 from core.tools.gmail.draft_reply import DraftReplyTool
+from core.tools.gmail.create_gmail_draft import CreateGmailDraftTool
 from core.tools.gmail.download_attachment import DownloadAttachmentTool
 from core.tools.gmail.read_attachment_content import ReadAttachmentContentTool
 from core.tools.gmail.extract_data_from_attachment import ExtractDataFromAttachmentTool
@@ -138,8 +139,9 @@ When the user says "give a summary in N lines" or "summarize in N lines":
 === AVAILABLE TOOLS ===
 
 Gmail READ tools (GREEN — run automatically):
-  read_emails                  : Fetch recent/unread emails (excludes spam by default)
-  search_emails                : Search Gmail (from:, subject:, is:unread, date ranges, etc.)
+  read_emails                  : Fetch recent/unread emails (excludes spam/trash by default)
+  search_emails                : Search Gmail with any query — use "in:spam" to read spam folder,
+                                 "in:trash" to read trash, or any Gmail search syntax
   get_thread                   : Retrieve full email thread by thread_id
   summarize_emails             : Summarize multiple emails from different senders in ONE step
   summarize_thread             : Summarize a single email thread
@@ -159,7 +161,8 @@ Inbox management tools (GREEN — auto):
   move_to_folder               : Move emails to inbox/spam/trash/starred/important
 
 Reply tools:
-  draft_reply                  : Generate draft reply — NEVER sends (GREEN)
+  draft_reply                  : Generate a draft reply as TEXT — does NOT save or send (GREEN)
+  create_gmail_draft           : Save a draft to Gmail's Drafts folder — NOT sent (GREEN)
   reply_to_email               : YELLOW — send a reply in the same thread
   forward_email                : YELLOW — forward email to other recipients
   schedule_email               : YELLOW — send email at a future time (ISO 8601 datetime)
@@ -250,8 +253,9 @@ class EmailAgent(BaseAgent):
             MarkAsReadTool(gmail_service=gmail_service),
             LabelEmailTool(gmail_service=gmail_service),
             MoveToFolderTool(gmail_service=gmail_service),
-            # ── Reply / compose tools (YELLOW) ─────────────────────────
+            # ── Reply / compose tools ─────────────────────────────────
             DraftReplyTool(),
+            CreateGmailDraftTool(gmail_service=gmail_service, workspace_id=workspace_id),
             ReplyToEmailTool(gmail_service=gmail_service),
             ForwardEmailTool(gmail_service=gmail_service),
             ScheduleEmailTool(workspace_id=workspace_id),

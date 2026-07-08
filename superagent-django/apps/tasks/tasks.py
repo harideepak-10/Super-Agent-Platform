@@ -779,6 +779,41 @@ def _gmail_service_for_workspace(workspace_id):
         return None
 
 
+class CreateGmailDraftTool(BaseTool):
+    """Save a draft to Gmail's Drafts folder (GREEN — no approval needed)."""
+    name = "create_gmail_draft"
+    description = (
+        "Save an email as a draft in Gmail's Drafts folder. GREEN zone — no approval needed. "
+        "NOT sent — user reviews from Gmail or agent sends via send_email (YELLOW). "
+        "Input JSON: {\"to\": \"...\", \"subject\": \"...\", \"body\": \"...\", "
+        "\"cc\": \"...(optional)\", \"thread_id\": \"...(optional)\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.create_gmail_draft import CreateGmailDraftTool as CoreTool
+        return CoreTool(
+            gmail_service=_gmail_service_for_workspace(self._workspace_id),
+            workspace_id=self._workspace_id,
+        ).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "to":                  {"type": "string"},
+                "subject":             {"type": "string"},
+                "body":                {"type": "string"},
+                "cc":                  {"type": "string"},
+                "thread_id":           {"type": "string"},
+                "reply_to_message_id": {"type": "string"},
+            }, "required": ["to", "subject", "body"]},
+        }}
+
+
 class MarkAsReadTool(BaseTool):
     """Mark emails as read."""
     name = "mark_as_read"
@@ -1182,6 +1217,7 @@ _TOOL_REGISTRY: dict = {
     "summarize_emails":         SummarizeEmailsTool,
     "download_attachment":      DownloadAttachmentTool,
     "create_draft":             CreateDraftTool,
+    "create_gmail_draft":       CreateGmailDraftTool,
     # Email inbox management
     "mark_as_read":             MarkAsReadTool,
     "label_email":              LabelEmailTool,
@@ -1365,6 +1401,7 @@ _TOOL_LABELS = {
     "summarize_emails":         ("Summarising emails",         "Building summary of all emails"),
     "download_attachment":      ("Downloading attachment",     "Saving attachment from Gmail"),
     "create_draft":             ("Creating email draft",       "Drafting message"),
+    "create_gmail_draft":       ("Saving Gmail draft",         "Saving draft to Gmail Drafts folder"),
     # Inbox management
     "mark_as_read":             ("Marking as read",            "Updating read status in Gmail"),
     "label_email":              ("Labelling email",            "Adding/removing Gmail labels"),
