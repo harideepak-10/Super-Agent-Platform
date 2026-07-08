@@ -21,6 +21,7 @@ class TaskSerializer(serializers.ModelSerializer):
     agent_name = serializers.CharField(source="agent.name", read_only=True, allow_null=True)
     cost_eur = serializers.SerializerMethodField()
     progress_percent = serializers.SerializerMethodField()
+    approval_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -28,7 +29,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "id", "workspace", "agent", "agent_name", "created_by", "created_by_email",
             "prompt", "priority", "status", "result", "error_message",
             "steps_taken", "total_steps_estimate", "total_tokens", "cost_eur",
-            "progress_percent", "deliverables",
+            "progress_percent", "deliverables", "approval_id",
             "started_at", "completed_at", "created_at", "updated_at",
             "steps",
         ]
@@ -58,6 +59,12 @@ class TaskSerializer(serializers.ModelSerializer):
         pct = round((obj.steps_taken / estimate) * 100)
         return min(pct, 95)  # cap at 95% — only 100 on completed
 
+    def get_approval_id(self, obj):
+        if obj.status == Task.Status.WAITING_APPROVAL:
+            approval = obj.approvals.filter(status="pending").order_by("-created_at").first()
+            return str(approval.id) if approval else None
+        return None
+
 
 class CreateTaskSerializer(serializers.Serializer):
     prompt    = serializers.CharField(max_length=500)
@@ -71,13 +78,14 @@ class TaskListSerializer(serializers.ModelSerializer):
     agent_name = serializers.CharField(source="agent.name", read_only=True, allow_null=True)
     cost_eur = serializers.SerializerMethodField()
     progress_percent = serializers.SerializerMethodField()
+    approval_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = [
             "id", "agent", "agent_name", "prompt", "status",
             "steps_taken", "total_steps_estimate", "total_tokens", "cost_eur",
-            "priority", "progress_percent", "deliverables",
+            "priority", "progress_percent", "deliverables", "approval_id",
             "started_at", "completed_at", "created_at",
         ]
 
@@ -98,3 +106,9 @@ class TaskListSerializer(serializers.ModelSerializer):
             estimate = 20
         pct = round((obj.steps_taken / estimate) * 100)
         return min(pct, 95)
+
+    def get_approval_id(self, obj):
+        if obj.status == Task.Status.WAITING_APPROVAL:
+            approval = obj.approvals.filter(status="pending").order_by("-created_at").first()
+            return str(approval.id) if approval else None
+        return None

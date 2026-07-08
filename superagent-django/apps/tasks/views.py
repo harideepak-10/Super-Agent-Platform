@@ -131,6 +131,24 @@ def task_result(request, pk):
     })
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def task_pending_approvals(request):
+    """
+    GET /api/v1/tasks/pending-approvals/
+    Returns all tasks currently waiting for user approval, with approval_id included.
+    """
+    workspace = _get_workspace(request)
+    if not workspace:
+        return Response([], status=status.HTTP_200_OK)
+    tasks = Task.objects.filter(
+        workspace=workspace,
+        status=Task.Status.WAITING_APPROVAL,
+    ).order_by("-created_at")
+    serializer = TaskListSerializer(tasks, many=True)
+    return Response(serializer.data)
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def task_retry(request, pk):
