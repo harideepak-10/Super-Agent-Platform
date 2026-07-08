@@ -43,10 +43,11 @@ class SearchCustomerByEmailTool(BaseTool):
 
     name: str = "search_customer_by_email"
     description: str = (
-        "Look up a customer profile by their email address. "
-        "Input JSON: {\"email\": \"...\", \"workspace_id\": \"...(optional)\"}. "
+        "Look up a customer profile by email address OR name. "
+        "Input JSON: {\"email\": \"arun@example.com\"} to search by email, "
+        "OR {\"name\": \"Arun\"} to search by name (partial match). "
         "Returns the full profile if found, or found=false if unknown. "
-        "Use this before drafting a reply to check if you know this customer."
+        "Use this to resolve names to email addresses before creating a meeting."
     )
     zone: ToolZone = ToolZone.GREEN
 
@@ -57,16 +58,44 @@ class SearchCustomerByEmailTool(BaseTool):
             return json.dumps({"error": "Invalid input."})
 
         email        = (data.get("email") or "").strip().lower()
+        name_query   = (data.get("name") or "").strip()
         workspace_id = data.get("workspace_id", "")
 
-        if not email:
-            return json.dumps({"error": "'email' is required."})
+        if not email and not name_query:
+            return json.dumps({"error": "Either 'email' or 'name' is required."})
 
         try:
             from apps.memory.models import CustomerProfile
-            qs = CustomerProfile.objects.filter(email=email)
+
+            if email:
+                qs = CustomerProfile.objects.filter(email=email)
+            else:
+                # Name search — case-insensitive partial match on name or company
+                qs = CustomerProfile.objects.filter(name__icontains=name_query)
+
             if workspace_id:
                 qs = qs.filter(workspace_id=workspace_id)
+
+            # If name search returns multiple, return all matches
+            if name_query and not email:
+                profiles = list(qs[:5])
+                if not profiles:
+                    return json.dumps({"found": False, "profile": None, "matches": []})
+                results = [
+                    {
+                        "id":    str(p.id),
+                        "email": p.email,
+                        "name":  p.name or "",
+                        "company": p.company or "",
+                        "communication_style": p.communication_style or "",
+                    }
+                    for p in profiles
+                ]
+                return json.dumps({
+                    "found":   True,
+                    "matches": results,
+                    "profile": results[0],   # best match = first
+                }, ensure_ascii=False, default=str)
 
             profile = qs.first()
             if not profile:

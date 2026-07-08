@@ -419,7 +419,7 @@ def drive_callback(request):
 # Google Calendar OAuth flow
 # ---------------------------------------------------------------------------
 
-_CALENDAR_SCOPES = "https://www.googleapis.com/auth/calendar.events"
+_CALENDAR_SCOPES = "https://www.googleapis.com/auth/calendar"
 
 
 def _calendar_redirect_uri(request):

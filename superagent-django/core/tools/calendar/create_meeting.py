@@ -20,7 +20,7 @@ from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
 
-_CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
+_CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
 
 class CreateMeetingTool(BaseTool):
@@ -148,7 +148,7 @@ class CreateMeetingTool(BaseTool):
                 "dateTime": end_time_str,
                 "timeZone": tz_name,
             },
-            "attendees":    attendee_objs,
+            "attendees": attendee_objs,
             "reminders": {
                 "useDefault": False,
                 "overrides": [
@@ -156,33 +156,40 @@ class CreateMeetingTool(BaseTool):
                     {"method": "popup",  "minutes": 10},
                 ],
             },
-            # Add Google Meet conference link
-            "conferenceData": {
-                "createRequest": {
-                    "requestId": f"krypsos-{int(datetime.now(timezone.utc).timestamp())}",
-                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                }
-            },
         }
         if location:
             event_body["location"] = location
 
         try:
             service = self._get_service()
-            event = service.events().insert(
-                calendarId="primary",
-                body=event_body,
-                conferenceDataVersion=1,
-                sendUpdates="all",     # sends email invitations to attendees
-            ).execute()
 
-            # Extract Google Meet link if created
+            # Try with Google Meet link first; fall back without it if Meet isn't enabled
             meet_link = ""
-            conference = event.get("conferenceData", {})
-            for ep in conference.get("entryPoints", []):
-                if ep.get("entryPointType") == "video":
-                    meet_link = ep.get("uri", "")
-                    break
+            try:
+                event_body["conferenceData"] = {
+                    "createRequest": {
+                        "requestId": f"krypsos-{int(datetime.now(timezone.utc).timestamp())}",
+                        "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                    }
+                }
+                event = service.events().insert(
+                    calendarId="primary",
+                    body=event_body,
+                    conferenceDataVersion=1,
+                    sendUpdates="all",
+                ).execute()
+                for ep in event.get("conferenceData", {}).get("entryPoints", []):
+                    if ep.get("entryPointType") == "video":
+                        meet_link = ep.get("uri", "")
+                        break
+            except Exception:
+                # Meet not enabled for this account — create without conference data
+                event_body.pop("conferenceData", None)
+                event = service.events().insert(
+                    calendarId="primary",
+                    body=event_body,
+                    sendUpdates="all",
+                ).execute()
 
             logger.info(
                 "CreateMeetingTool: event created title=%r id=%s attendees=%s",

@@ -841,6 +841,7 @@ def agent_template_activate(request, template_id):
         workspace=workspace,
         created_by=request.user,
         template_id=template["id"],
+        template_version=template.get("version", 0),   # track version at activation
         name=template["name"],
         agent_type=template["agent_type"],
         description=template["description"],
