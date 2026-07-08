@@ -1206,6 +1206,214 @@ class CreateMeetingTool(BaseTool):
         }}
 
 
+class ListEventsTool(BaseTool):
+    """List Google Calendar events (GREEN)."""
+    name = "list_events"
+    description = (
+        "List upcoming Google Calendar events. "
+        "Input JSON: {\"days_ahead\": 7, \"max_results\": 20} or {\"date\": \"2026-07-09\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.list_events import ListEventsTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "days_ahead":  {"type": "integer"},
+                "max_results": {"type": "integer"},
+                "date":        {"type": "string"},
+            }},
+        }}
+
+
+class GetEventTool(BaseTool):
+    """Get full details of a specific Calendar event (GREEN)."""
+    name = "get_event"
+    description = (
+        "Get full details of a specific Calendar event. "
+        "Input JSON: {\"event_id\": \"...\"} or {\"title\": \"Q3 Review\"} or {\"title\": \"...\", \"date\": \"2026-07-09\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.get_event import GetEventTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "event_id": {"type": "string"},
+                "title":    {"type": "string"},
+                "date":     {"type": "string"},
+            }},
+        }}
+
+
+class FindFreeSlotsTool(BaseTool):
+    """Find free time slots in Google Calendar (GREEN)."""
+    name = "find_free_slots"
+    description = (
+        "Find available time slots in Google Calendar. "
+        "Input JSON: {\"date\": \"2026-07-09\", \"duration_mins\": 60} or {\"days_ahead\": 3, \"duration_mins\": 60}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.find_free_slots import FindFreeSlotsTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "date":          {"type": "string"},
+                "days_ahead":    {"type": "integer"},
+                "duration_mins": {"type": "integer"},
+                "work_start":    {"type": "integer"},
+                "work_end":      {"type": "integer"},
+            }},
+        }}
+
+
+class UpdateEventTool(BaseTool):
+    """Update/reschedule a Google Calendar event (YELLOW)."""
+    name = "update_event"
+    description = (
+        "Update or reschedule an existing Google Calendar event. REQUIRES human approval (YELLOW zone). "
+        "Input JSON: {\"event_id\": \"...\", \"start_time\": \"...(optional)\", \"duration_mins\": 60, "
+        "\"title\": \"...(optional)\", \"add_attendees\": [...](optional)}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.update_event import UpdateEventTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "event_id":      {"type": "string"},
+                "title":         {"type": "string"},
+                "start_time":    {"type": "string"},
+                "duration_mins": {"type": "integer"},
+                "description":   {"type": "string"},
+                "location":      {"type": "string"},
+                "add_attendees": {"type": "array", "items": {"type": "string"}},
+                "timezone":      {"type": "string"},
+            }, "required": ["event_id"]},
+        }}
+
+
+class DeleteEventTool(BaseTool):
+    """Delete/cancel a Google Calendar event (YELLOW)."""
+    name = "delete_event"
+    description = (
+        "Cancel or delete a Google Calendar event. REQUIRES human approval (YELLOW zone). "
+        "Input JSON: {\"event_id\": \"...\", \"notify\": true, \"reason\": \"...(optional)\"}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.delete_event import DeleteEventTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "event_id": {"type": "string"},
+                "notify":   {"type": "boolean"},
+                "reason":   {"type": "string"},
+            }, "required": ["event_id"]},
+        }}
+
+
+class RespondToInviteTool(BaseTool):
+    """Accept/decline/tentative a meeting invitation (YELLOW)."""
+    name = "respond_to_invite"
+    description = (
+        "Accept, decline, or tentatively accept a meeting invitation. REQUIRES human approval (YELLOW zone). "
+        "Input JSON: {\"event_id\": \"...\", \"response\": \"accepted|declined|tentative\", "
+        "\"comment\": \"...(optional)\"}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.respond_to_invite import RespondToInviteTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "event_id": {"type": "string"},
+                "response": {"type": "string", "enum": ["accepted", "declined", "tentative"]},
+                "comment":  {"type": "string"},
+            }, "required": ["event_id", "response"]},
+        }}
+
+
+class SetReminderTool(BaseTool):
+    """Set reminders on an event or create standalone reminder (GREEN)."""
+    name = "set_reminder"
+    description = (
+        "Add/update reminders on a Calendar event, or create a standalone reminder. GREEN zone. "
+        "Update: {\"event_id\": \"...\", \"reminders\": [{\"method\": \"popup\", \"minutes\": 15}]}. "
+        "Create: {\"title\": \"...\", \"remind_at\": \"2026-07-10T09:00:00\", \"reminders\": [...]}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.set_reminder import SetReminderTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "event_id":    {"type": "string"},
+                "title":       {"type": "string"},
+                "remind_at":   {"type": "string"},
+                "description": {"type": "string"},
+                "timezone":    {"type": "string"},
+                "reminders":   {
+                    "type": "array",
+                    "items": {"type": "object", "properties": {
+                        "method":  {"type": "string"},
+                        "minutes": {"type": "integer"},
+                    }},
+                },
+            }},
+        }}
+
+
 # =============================================================================
 # TOOL REGISTRY
 # =============================================================================
@@ -1236,8 +1444,16 @@ _TOOL_REGISTRY: dict = {
     # Customer memory
     "list_customer_profiles":   ListCustomerProfilesTool,
     "search_customer_by_email": SearchCustomerByEmailTool,
-    # Calendar
+    # Calendar READ
+    "list_events":              ListEventsTool,
+    "get_event":                GetEventTool,
+    "find_free_slots":          FindFreeSlotsTool,
+    "set_reminder":             SetReminderTool,
+    # Calendar WRITE
     "create_meeting":           CreateMeetingTool,
+    "update_event":             UpdateEventTool,
+    "delete_event":             DeleteEventTool,
+    "respond_to_invite":        RespondToInviteTool,
     # Document tools
     "generate_content":         GenerateContentTool,
     "create_pdf":               CreatePdfTool,
@@ -1260,6 +1476,7 @@ _HIGH_ZONE_TOOLS = {
     "send_email", "reply_to_email", "forward_email", "schedule_email",
     "delete_email", "delete_file", "cal_write", "file_write",
     "create_meeting", "upload_to_drive",
+    "update_event", "delete_event", "respond_to_invite",
 }
 
 
@@ -1421,7 +1638,14 @@ _TOOL_LABELS = {
     "list_customer_profiles":   ("Listing customers",          "Loading customer profiles"),
     "search_customer_by_email": ("Looking up customer",        "Searching customer by email"),
     # Calendar
+    "list_events":              ("Listing events",             "Fetching upcoming Calendar events"),
+    "get_event":                ("Getting event details",      "Loading full event information"),
+    "find_free_slots":          ("Checking availability",      "Finding free time slots"),
+    "set_reminder":             ("Setting reminder",           "Adding reminder to event"),
     "create_meeting":           ("Creating meeting",           "Scheduling Google Calendar event"),
+    "update_event":             ("Updating event",             "Rescheduling Calendar event"),
+    "delete_event":             ("Cancelling event",           "Removing event from Calendar"),
+    "respond_to_invite":        ("Responding to invite",       "Sending RSVP for meeting"),
     # Document tools
     "generate_content":         ("Generating content",         "Writing document content"),
     "create_pdf":               ("Creating PDF",               "Building PDF document"),

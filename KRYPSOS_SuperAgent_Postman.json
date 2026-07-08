@@ -2117,6 +2117,155 @@
           }
         }
       ]
+    },
+    {
+      "name": "17 - Calendar Agent Tasks",
+      "description": "Test all Calendar Agent tools.\n\nActivate Calendar Agent first: POST /agents/templates/4/activate/\nThen paste agent_id into the collection variable.\n\nGREEN tools run automatically.\nYELLOW tools (create_meeting, update_event, delete_event, respond_to_invite) need approval:\n  GET /approvals/pending/ → POST /approvals/{id}/decide/",
+      "item": [
+        {
+          "name": "📅 List Today's Events",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"What meetings do I have today?\"\n}"
+            }
+          }
+        },
+        {
+          "name": "📅 List Events Next 7 Days",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Show me all my meetings for the next 7 days.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "🔍 Get Event Details",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Get details of my meeting called 'Q3 Review' — who is attending and is there a Meet link?\"\n}"
+            }
+          }
+        },
+        {
+          "name": "🕐 Find Free Slots Tomorrow",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"What free 1-hour slots do I have tomorrow for a meeting?\"\n}"
+            }
+          }
+        },
+        {
+          "name": "📅 Create Meeting [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Schedule a 1-hour meeting tomorrow at 11am with Arun. Title it 'Project Kickoff'.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "✏️ Reschedule Meeting [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Reschedule the 'Project Kickoff' meeting to 3pm tomorrow.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "🗑️ Cancel Meeting [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Cancel the 'Project Kickoff' meeting and let all attendees know it's been cancelled.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "✅ Accept Meeting Invite [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Accept the invite for 'Q3 Review' meeting.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "🔔 Set Reminder on Event",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Set a reminder 30 minutes before the 'Project Kickoff' meeting via email, and a popup 10 minutes before.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "🔔 Create Standalone Reminder",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a reminder for me tomorrow at 9am to follow up with Arun about the invoice.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "📅 Full Flow: Find Slot + Create Meeting",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
+            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Find a free 1-hour slot for me and Arun tomorrow afternoon, then schedule a meeting called 'Invoice Discussion' at the best available time.\"\n}"
+            }
+          }
+        }
+      ]
     }
   ]
 }

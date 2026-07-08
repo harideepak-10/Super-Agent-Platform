@@ -642,31 +642,61 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          4,
-        "version":     2,
+        "version":     3,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
-        "description": "Reads your calendar and schedules meetings. Requires Google Calendar connected.",
+        "description": "Full Google Calendar management — view, schedule, reschedule, cancel, RSVP, and set reminders.",
         "icon":        "calendar",
         "icon_bg":     "#065F46",
         "border_color":"#10B981",
         "badge":       None,
         "badge_color": None,
         "capabilities": [
-            "Reads upcoming events and meetings",
-            "Schedules new meetings with Google Meet links",
-            "Sends meeting invites to attendees",
+            "Lists and views upcoming events",
+            "Finds free time slots for meetings",
+            "Creates meetings with Google Meet links and attendee invites",
+            "Reschedules and updates existing events",
+            "Cancels events and notifies attendees",
+            "Accepts/declines meeting invitations",
+            "Sets popup and email reminders on any event",
             "Looks up attendee emails from customer memory",
         ],
-        "tools":       ["cal_read", "create_meeting", "search_customer_by_email", "web_search"],
+        "tools": [
+            "list_events",
+            "get_event",
+            "find_free_slots",
+            "set_reminder",
+            "create_meeting",
+            "update_event",
+            "delete_event",
+            "respond_to_invite",
+            "search_customer_by_email",
+            "web_search",
+        ],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
-            "You are a calendar management agent. Read calendar events and create meetings. "
-            "create_meeting is YELLOW zone — always requires human approval before creating. "
-            "Use search_customer_by_email to resolve names to email addresses. "
-            "Use current_time to resolve relative times."
+            "You are CalendarAgent, the KRYPSOS AI assistant for Google Calendar management.\n\n"
+            "## READ tools (GREEN — run automatically):\n"
+            "- list_events: list upcoming events\n"
+            "- get_event: full event details by ID or title\n"
+            "- find_free_slots: check availability\n"
+            "- set_reminder: add reminder to event or create standalone reminder\n\n"
+            "## WRITE tools (YELLOW — require human approval):\n"
+            "- create_meeting: create event with Meet link + invite attendees\n"
+            "- update_event: reschedule or modify event\n"
+            "- delete_event: cancel event, notify attendees\n"
+            "- respond_to_invite: accept/decline/tentative RSVP\n\n"
+            "## Lookup:\n"
+            "- search_customer_by_email: find attendee email by name\n"
+            "- web_search: timezone or location lookup\n\n"
+            "## Rules:\n"
+            "1. Always call current_time first when user mentions relative times.\n"
+            "2. Use search_customer_by_email if you only have a name, not email.\n"
+            "3. For YELLOW tools, explain what you will do and wait for approval.\n"
+            "4. Default timezone: Asia/Kolkata (IST)."
         ),
-        "max_steps":   15,
+        "max_steps":   20,
         "max_cost_usd": 1.0,
     },
     {
@@ -1016,9 +1046,17 @@ def agent_create_form(request):
                 {"name": "read_email",     "label": "Gmail Read",    "icon": "mail",         "risk": "safe"},
                 {"name": "send_email",     "label": "Gmail Send",    "icon": "send",         "risk": "high"},
                 {"name": "browse_web",     "label": "Browse Web",    "icon": "globe",        "risk": "safe"},
-                {"name": "cal_read",       "label": "Cal Read",      "icon": "calendar",     "risk": "safe"},
-                {"name": "cal_write",      "label": "Cal Write",     "icon": "calendar",     "risk": "medium"},
-                {"name": "classify_text",  "label": "Classify Text", "icon": "tag",          "risk": "safe"},
+                {"name": "cal_read",          "label": "Cal Read",         "icon": "calendar",   "risk": "safe"},
+                {"name": "cal_write",         "label": "Cal Write",        "icon": "calendar",   "risk": "medium"},
+                {"name": "list_events",       "label": "List Events",      "icon": "calendar",   "risk": "safe"},
+                {"name": "get_event",         "label": "Get Event",        "icon": "calendar",   "risk": "safe"},
+                {"name": "find_free_slots",   "label": "Free Slots",       "icon": "clock",      "risk": "safe"},
+                {"name": "set_reminder",      "label": "Set Reminder",     "icon": "bell",       "risk": "safe"},
+                {"name": "create_meeting",    "label": "Create Meeting",   "icon": "calendar",   "risk": "medium"},
+                {"name": "update_event",      "label": "Update Event",     "icon": "edit-2",     "risk": "medium"},
+                {"name": "delete_event",      "label": "Delete Event",     "icon": "trash-2",    "risk": "medium"},
+                {"name": "respond_to_invite", "label": "RSVP",             "icon": "check",      "risk": "medium"},
+                {"name": "classify_text",     "label": "Classify Text",    "icon": "tag",        "risk": "safe"},
                 {"name": "create_draft",   "label": "Create Draft",  "icon": "edit-3",       "risk": "safe"},
                 {"name": "export_csv",     "label": "Export CSV",    "icon": "download",     "risk": "safe"},
                 {"name": "generate_report","label": "Gen Report",    "icon": "file-text",    "risk": "safe"},

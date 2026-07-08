@@ -20,7 +20,7 @@ from core.tools.base_tool import BaseTool, ToolZone
 logger = logging.getLogger(__name__)
 
 _DEFAULT_LIMIT = 10
-_DEFAULT_FILTER = "is:unread"
+_DEFAULT_FILTER = "is:unread -in:spam -in:trash"
 _BODY_PREVIEW_CHARS = 200
 
 
@@ -173,7 +173,8 @@ class ReadEmailsTool(BaseTool):
         full_body = ReadEmailsTool._extract_body(payload)
         body_preview = full_body[:_BODY_PREVIEW_CHARS].replace("\n", " ")
 
-        has_attachments = ReadEmailsTool._has_attachments(payload)
+        attachments = ReadEmailsTool._extract_attachments(payload, msg.get("id", ""))
+        has_attachments = len(attachments) > 0
 
         return {
             "id": msg.get("id", ""),
@@ -183,6 +184,7 @@ class ReadEmailsTool(BaseTool):
             "body_preview": body_preview,
             "full_body": full_body,
             "has_attachments": has_attachments,
+            "attachments": attachments,  # [{filename, attachment_id, mime_type, size_bytes}]
         }
 
     @staticmethod
@@ -228,15 +230,44 @@ class ReadEmailsTool(BaseTool):
 
     @staticmethod
     def _has_attachments(payload: dict[str, Any]) -> bool:
-        """Return True if any part of the message has a non-empty filename.
-
-        Args:
-            payload: Gmail message payload dict.
-
-        Returns:
-            True if the message has at least one attachment.
-        """
+        """Return True if any part of the message has a non-empty filename."""
         for part in payload.get("parts", []):
             if part.get("filename"):
                 return True
         return False
+
+    @staticmethod
+    def _extract_attachments(payload: dict[str, Any], message_id: str) -> list[dict[str, Any]]:
+        """Extract attachment metadata from a Gmail message payload.
+
+        Returns a list of dicts, each with:
+            filename      : original filename
+            attachment_id : Gmail attachment ID (pass to download_attachment)
+            mime_type     : file MIME type
+            size_bytes    : attachment size in bytes
+            message_id    : parent message ID (needed by download_attachment)
+        """
+        attachments = []
+
+        def _walk(parts):
+            for part in parts:
+                filename = part.get("filename", "")
+                body = part.get("body", {})
+                attachment_id = body.get("attachmentId", "")
+
+                if filename and attachment_id:
+                    attachments.append({
+                        "filename":      filename,
+                        "attachment_id": attachment_id,
+                        "mime_type":     part.get("mimeType", "application/octet-stream"),
+                        "size_bytes":    body.get("size", 0),
+                        "message_id":    message_id,
+                    })
+
+                # Recurse into nested parts
+                sub_parts = part.get("parts", [])
+                if sub_parts:
+                    _walk(sub_parts)
+
+        _walk(payload.get("parts", []))
+        return attachments
