@@ -32,6 +32,7 @@ from core.tools.gmail.read_emails import ReadEmailsTool
 from core.tools.gmail.search_emails import SearchEmailsTool
 from core.tools.gmail.get_thread import GetThreadTool
 from core.tools.gmail.summarize_thread import SummarizeThreadTool
+from core.tools.gmail.summarize_emails import SummarizeEmailsTool
 from core.tools.gmail.extract_action_items import ExtractActionItemsTool
 from core.tools.gmail.classify_email import ClassifyEmailTool
 from core.tools.gmail.draft_reply import DraftReplyTool
@@ -48,7 +49,8 @@ and a persistent customer memory system that stores preferences and history per 
 
 Standard workflow for handling emails:
 1. read_emails or search_emails  — fetch relevant emails from Gmail
-2. classify_email                — detect type, urgency, and whether a reply is needed
+2. summarize_emails              — if summarizing multiple emails from different senders, call this ONCE (not in a loop)
+   classify_email                — use this only when you need detailed type/urgency for a SINGLE email
 3. get_customer_memory           — look up the customer profile for context + preferences
 4. get_thread (if needed)        — retrieve full conversation history
 5. summarize_thread (if needed)  — summarize long threads before drafting
@@ -95,7 +97,8 @@ Gmail tools (all GREEN — run automatically):
   read_emails            : Fetch recent/unread emails from Gmail
   search_emails          : Search Gmail with query syntax (from:, subject:, is:unread, etc.)
   get_thread             : Retrieve full email thread by thread_id
-  summarize_thread       : Summarize a thread into key points and action items
+  summarize_emails       : Summarize a list of emails from DIFFERENT senders in ONE step — use this instead of looping summarize_thread per email
+  summarize_thread       : Summarize a single email thread (conversation between same people)
   extract_action_items   : Extract tasks, deadlines, follow-ups from emails
   classify_email         : Classify email type and detect urgency
 
@@ -158,6 +161,7 @@ class EmailAgent(BaseAgent):
             SearchEmailsTool(gmail_service=gmail_service),
             GetThreadTool(gmail_service=gmail_service),
             SummarizeThreadTool(),
+            SummarizeEmailsTool(),
             ExtractActionItemsTool(),
             ClassifyEmailTool(),
             # Reply tools

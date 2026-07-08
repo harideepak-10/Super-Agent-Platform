@@ -4,7 +4,7 @@ services:
     name: krypsos-api
     runtime: python
     rootDir: superagent-django
-    buildCommand: pip install -r requirements/production.txt && python manage.py collectstatic --noinput
+    buildCommand: pip install -r requirements/production.txt && python manage.py migrate --noinput && python manage.py collectstatic --noinput
     startCommand: daphne -b 0.0.0.0 -p $PORT superagent.asgi:application
     healthCheckPath: /api/v1/auth/health/
     envVars:

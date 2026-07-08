@@ -203,6 +203,39 @@ class ReadEmailTool(BaseTool):
         }}
 
 
+class SummarizeEmailsTool(BaseTool):
+    """Thin wrapper — delegates to core SummarizeEmailsTool (no Gmail credentials needed)."""
+    name = "summarize_emails"
+    description = (
+        "Summarize a list of emails from different senders into a clean numbered report in one step. "
+        "Input JSON: {\"emails\": [...]} — the list returned by read_emails. "
+        "Returns formatted_summary ready to show the user, plus structured summaries per email."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass  # no credentials needed
+
+    def run(self, input_str: str) -> str:
+        from core.tools.gmail.summarize_emails import SummarizeEmailsTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "emails": {
+                        "type": "array",
+                        "description": "List of email objects returned by read_emails.",
+                        "items": {"type": "object"},
+                    }
+                },
+                "required": ["emails"],
+            },
+        }}
+
+
 class SendEmailTool(BaseTool):
     name = "send_email"
     description = "Send an email. Input JSON: {\"to\": \"recipient@email.com\", \"subject\": \"...\", \"body\": \"...\"}."
@@ -556,9 +589,10 @@ class UploadToDriveTool(BaseTool):
 # =============================================================================
 
 _TOOL_REGISTRY: dict = {
-    "send_email":      SendEmailTool,      # first — most commonly needed
-    "read_email":      ReadEmailTool,
-    "create_draft":    CreateDraftTool,
+    "send_email":        SendEmailTool,        # first — most commonly needed
+    "read_email":        ReadEmailTool,
+    "summarize_emails":  SummarizeEmailsTool,
+    "create_draft":      CreateDraftTool,
     "web_search":      WebSearchTool,
     "browse_web":      BrowseWebTool,
     "classify_text":   ClassifyTextTool,
@@ -708,8 +742,9 @@ class DjangoAgent(BaseAgent):
 # Human-readable labels for every tool
 _TOOL_LABELS = {
     "send_email":      ("Sending email",           "Sending message to recipient"),
-    "read_email":      ("Reading emails",           "Fetching from Gmail inbox"),
-    "create_draft":    ("Creating email draft",     "Drafting message"),
+    "read_email":        ("Reading emails",           "Fetching from Gmail inbox"),
+    "summarize_emails":  ("Summarising emails",      "Building summary of all emails"),
+    "create_draft":      ("Creating email draft",    "Drafting message"),
     "web_search":      ("Searching the web",        "Looking up information online"),
     "browse_web":      ("Browsing webpage",         "Reading page content"),
     "classify_text":   ("Classifying content",      "Analysing and categorising text"),
