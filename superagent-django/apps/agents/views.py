@@ -639,11 +639,11 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          4,
-        "version":     3,
+        "version":     4,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
-        "description": "Full Google Calendar management — view, schedule, reschedule, cancel, RSVP, and set reminders.",
+        "description": "Full Google Calendar management — view, schedule, reschedule, cancel, RSVP, reminders, recurring events, conflict detection, and smart scheduling.",
         "icon":        "calendar",
         "icon_bg":     "#065F46",
         "border_color":"#10B981",
@@ -651,23 +651,33 @@ _AGENT_TEMPLATES = [
         "badge_color": None,
         "capabilities": [
             "Lists and views upcoming events",
-            "Finds free time slots for meetings",
+            "Finds free time slots and suggests best meeting times for all attendees",
+            "Checks attendee availability before booking",
+            "Detects scheduling conflicts in your calendar",
             "Creates meetings with Google Meet links and attendee invites",
+            "Creates recurring (daily/weekly/monthly) events",
             "Reschedules and updates existing events",
             "Cancels events and notifies attendees",
             "Accepts/declines meeting invitations",
             "Sets popup and email reminders on any event",
-            "Looks up attendee emails from customer memory",
+            "Blocks focus time / Do Not Disturb periods",
+            "Sends meeting summaries and agendas to attendees",
         ],
         "tools": [
             "list_events",
             "get_event",
             "find_free_slots",
             "set_reminder",
+            "check_attendee_availability",
+            "detect_conflicts",
+            "suggest_meeting_time",
             "create_meeting",
+            "create_recurring_event",
             "update_event",
             "delete_event",
             "respond_to_invite",
+            "block_focus_time",
+            "send_meeting_summary",
             "search_customer_by_email",
             "web_search",
         ],
@@ -677,21 +687,29 @@ _AGENT_TEMPLATES = [
             "## READ tools (GREEN — run automatically):\n"
             "- list_events: list upcoming events\n"
             "- get_event: full event details by ID or title\n"
-            "- find_free_slots: check availability\n"
+            "- find_free_slots: check your own availability\n"
+            "- check_attendee_availability: check if ALL attendees are free for a proposed time\n"
+            "- detect_conflicts: find overlapping events in your calendar\n"
+            "- suggest_meeting_time: find best slot for all attendees automatically\n"
             "- set_reminder: add reminder to event or create standalone reminder\n\n"
             "## WRITE tools (YELLOW — require human approval):\n"
             "- create_meeting: create event with Meet link + invite attendees\n"
+            "- create_recurring_event: create daily/weekly/monthly repeating event\n"
             "- update_event: reschedule or modify event\n"
             "- delete_event: cancel event, notify attendees\n"
-            "- respond_to_invite: accept/decline/tentative RSVP\n\n"
+            "- respond_to_invite: accept/decline/tentative RSVP\n"
+            "- block_focus_time: create focus/DND block\n"
+            "- send_meeting_summary: email summary/agenda to all attendees\n\n"
             "## Lookup:\n"
             "- search_customer_by_email: find attendee email by name\n"
             "- web_search: timezone or location lookup\n\n"
             "## Rules:\n"
             "1. Always call current_time first when user mentions relative times.\n"
             "2. Use search_customer_by_email if you only have a name, not email.\n"
-            "3. For YELLOW tools, explain what you will do and wait for approval.\n"
-            "4. Default timezone: Asia/Kolkata (IST)."
+            "3. Use suggest_meeting_time before create_meeting when scheduling with others.\n"
+            "4. Use check_attendee_availability to verify a specific proposed time.\n"
+            "5. For YELLOW tools, explain what you will do and wait for approval.\n"
+            "6. Default timezone: Asia/Kolkata (IST)."
         ),
         "max_steps":   20,
         "max_cost_usd": 1.0,

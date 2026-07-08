@@ -31,9 +31,15 @@ from core.tools.calendar.get_event import GetEventTool
 from core.tools.calendar.find_free_slots import FindFreeSlotsTool
 from core.tools.calendar.set_reminder import SetReminderTool
 from core.tools.calendar.create_meeting import CreateMeetingTool
+from core.tools.calendar.create_recurring_event import CreateRecurringEventTool
 from core.tools.calendar.update_event import UpdateEventTool
 from core.tools.calendar.delete_event import DeleteEventTool
 from core.tools.calendar.respond_to_invite import RespondToInviteTool
+from core.tools.calendar.check_attendee_availability import CheckAttendeeAvailabilityTool
+from core.tools.calendar.detect_conflicts import DetectConflictsTool
+from core.tools.calendar.block_focus_time import BlockFocusTimeTool
+from core.tools.calendar.send_meeting_summary import SendMeetingSummaryTool
+from core.tools.calendar.suggest_meeting_time import SuggestMeetingTimeTool
 from core.tools.memory.search_customer_by_email import SearchCustomerByEmailTool
 
 
@@ -124,11 +130,17 @@ class CalendarAgent(BaseAgent):
             GetEventTool(**cal_kwargs),
             FindFreeSlotsTool(**cal_kwargs),
             SetReminderTool(**cal_kwargs),
+            CheckAttendeeAvailabilityTool(**cal_kwargs),
+            DetectConflictsTool(**cal_kwargs),
+            SuggestMeetingTimeTool(**cal_kwargs),
             # --- Calendar WRITE (YELLOW) ---
             CreateMeetingTool(**cal_kwargs),
+            CreateRecurringEventTool(**cal_kwargs),
             UpdateEventTool(**cal_kwargs),
             DeleteEventTool(**cal_kwargs),
             RespondToInviteTool(**cal_kwargs),
+            BlockFocusTimeTool(**cal_kwargs),
+            SendMeetingSummaryTool(**cal_kwargs),
             # --- Lookup ---
             SearchCustomerByEmailTool(workspace_id=workspace_id),
         ]

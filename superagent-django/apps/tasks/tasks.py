@@ -1206,6 +1206,193 @@ class CreateMeetingTool(BaseTool):
         }}
 
 
+class CreateRecurringEventTool(BaseTool):
+    """Create a repeating Google Calendar event (YELLOW)."""
+    name = "create_recurring_event"
+    description = (
+        "Create a repeating Calendar event (daily/weekly/monthly). REQUIRES human approval (YELLOW). "
+        "Input JSON: {\"title\": \"Weekly Standup\", \"start_time\": \"2026-07-13T09:00:00\", "
+        "\"frequency\": \"weekly\", \"days_of_week\": [\"monday\"], \"count\": 10, \"duration_mins\": 30}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.create_recurring_event import CreateRecurringEventTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "title":         {"type": "string"},
+                "start_time":    {"type": "string"},
+                "duration_mins": {"type": "integer"},
+                "frequency":     {"type": "string", "enum": ["daily", "weekly", "monthly", "yearly"]},
+                "interval":      {"type": "integer"},
+                "days_of_week":  {"type": "array", "items": {"type": "string"}},
+                "count":         {"type": "integer"},
+                "until":         {"type": "string"},
+                "attendees":     {"type": "array", "items": {"type": "string"}},
+                "description":   {"type": "string"},
+                "timezone":      {"type": "string"},
+            }, "required": ["title", "start_time", "frequency"]},
+        }}
+
+
+class CheckAttendeeAvailabilityTool(BaseTool):
+    """Check if all attendees are free for a proposed time (GREEN)."""
+    name = "check_attendee_availability"
+    description = (
+        "Check if all attendees are free for a proposed meeting time. GREEN — auto. "
+        "Input JSON: {\"attendees\": [\"email@...\"], \"start_time\": \"2026-07-09T11:00:00\", \"duration_mins\": 60}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.check_attendee_availability import CheckAttendeeAvailabilityTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "attendees":     {"type": "array", "items": {"type": "string"}},
+                "start_time":    {"type": "string"},
+                "duration_mins": {"type": "integer"},
+                "timezone":      {"type": "string"},
+            }, "required": ["attendees", "start_time"]},
+        }}
+
+
+class DetectConflictsTool(BaseTool):
+    """Find overlapping events in Google Calendar (GREEN)."""
+    name = "detect_conflicts"
+    description = (
+        "Find overlapping events in your Google Calendar. GREEN — auto. "
+        "Input JSON: {\"days_ahead\": 7} or {\"date\": \"2026-07-09\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.detect_conflicts import DetectConflictsTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "days_ahead": {"type": "integer"},
+                "date":       {"type": "string"},
+            }},
+        }}
+
+
+class BlockFocusTimeTool(BaseTool):
+    """Create a focus/DND block in Calendar (YELLOW)."""
+    name = "block_focus_time"
+    description = (
+        "Create a focus time / Do Not Disturb block in Google Calendar. REQUIRES human approval (YELLOW). "
+        "Input JSON: {\"start_time\": \"2026-07-09T10:00:00\", \"duration_mins\": 120, \"title\": \"Deep Work\"}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.block_focus_time import BlockFocusTimeTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "title":         {"type": "string"},
+                "start_time":    {"type": "string"},
+                "duration_mins": {"type": "integer"},
+                "date":          {"type": "string"},
+                "work_start":    {"type": "integer"},
+                "work_end":      {"type": "integer"},
+                "frequency":     {"type": "string", "enum": ["daily", "weekly", "monthly"]},
+                "days_of_week":  {"type": "array", "items": {"type": "string"}},
+                "count":         {"type": "integer"},
+                "timezone":      {"type": "string"},
+            }},
+        }}
+
+
+class SendMeetingSummaryTool(BaseTool):
+    """Email meeting summary/agenda to all attendees (YELLOW)."""
+    name = "send_meeting_summary"
+    description = (
+        "Email a meeting summary or agenda to all attendees via Gmail. REQUIRES human approval (YELLOW). "
+        "Input JSON: {\"event_id\": \"...\", \"summary\": \"Key points...\", "
+        "\"mode\": \"summary\", \"action_items\": [\"Arun: Send invoice\"]}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.send_meeting_summary import SendMeetingSummaryTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "event_id":     {"type": "string"},
+                "summary":      {"type": "string"},
+                "subject":      {"type": "string"},
+                "mode":         {"type": "string", "enum": ["summary", "agenda"]},
+                "action_items": {"type": "array", "items": {"type": "string"}},
+                "next_meeting": {"type": "string"},
+            }, "required": ["event_id", "summary"]},
+        }}
+
+
+class SuggestMeetingTimeTool(BaseTool):
+    """Find best available slot for all attendees (GREEN)."""
+    name = "suggest_meeting_time"
+    description = (
+        "Find the best time slot where all attendees are free. GREEN — auto. "
+        "Input JSON: {\"attendees\": [\"email@...\"], \"duration_mins\": 60, \"days_ahead\": 3}. "
+        "Returns top ranked free slots. Follow up with create_meeting to book."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.suggest_meeting_time import SuggestMeetingTimeTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "attendees":     {"type": "array", "items": {"type": "string"}},
+                "duration_mins": {"type": "integer"},
+                "days_ahead":    {"type": "integer"},
+                "work_start":    {"type": "integer"},
+                "work_end":      {"type": "integer"},
+                "top_n":         {"type": "integer"},
+                "timezone":      {"type": "string"},
+            }, "required": ["attendees"]},
+        }}
+
+
 class ListEventsTool(BaseTool):
     """List Google Calendar events (GREEN)."""
     name = "list_events"
@@ -1445,15 +1632,21 @@ _TOOL_REGISTRY: dict = {
     "list_customer_profiles":   ListCustomerProfilesTool,
     "search_customer_by_email": SearchCustomerByEmailTool,
     # Calendar READ
-    "list_events":              ListEventsTool,
-    "get_event":                GetEventTool,
-    "find_free_slots":          FindFreeSlotsTool,
-    "set_reminder":             SetReminderTool,
+    "list_events":                  ListEventsTool,
+    "get_event":                    GetEventTool,
+    "find_free_slots":              FindFreeSlotsTool,
+    "set_reminder":                 SetReminderTool,
+    "check_attendee_availability":  CheckAttendeeAvailabilityTool,
+    "detect_conflicts":             DetectConflictsTool,
+    "suggest_meeting_time":         SuggestMeetingTimeTool,
     # Calendar WRITE
-    "create_meeting":           CreateMeetingTool,
-    "update_event":             UpdateEventTool,
-    "delete_event":             DeleteEventTool,
-    "respond_to_invite":        RespondToInviteTool,
+    "create_meeting":               CreateMeetingTool,
+    "create_recurring_event":       CreateRecurringEventTool,
+    "update_event":                 UpdateEventTool,
+    "delete_event":                 DeleteEventTool,
+    "respond_to_invite":            RespondToInviteTool,
+    "block_focus_time":             BlockFocusTimeTool,
+    "send_meeting_summary":         SendMeetingSummaryTool,
     # Document tools
     "generate_content":         GenerateContentTool,
     "create_pdf":               CreatePdfTool,
@@ -1477,6 +1670,7 @@ _HIGH_ZONE_TOOLS = {
     "delete_email", "delete_file", "cal_write", "file_write",
     "create_meeting", "upload_to_drive",
     "update_event", "delete_event", "respond_to_invite",
+    "create_recurring_event", "block_focus_time", "send_meeting_summary",
 }
 
 
@@ -1642,10 +1836,16 @@ _TOOL_LABELS = {
     "get_event":                ("Getting event details",      "Loading full event information"),
     "find_free_slots":          ("Checking availability",      "Finding free time slots"),
     "set_reminder":             ("Setting reminder",           "Adding reminder to event"),
-    "create_meeting":           ("Creating meeting",           "Scheduling Google Calendar event"),
-    "update_event":             ("Updating event",             "Rescheduling Calendar event"),
-    "delete_event":             ("Cancelling event",           "Removing event from Calendar"),
-    "respond_to_invite":        ("Responding to invite",       "Sending RSVP for meeting"),
+    "create_meeting":               ("Creating meeting",            "Scheduling Google Calendar event"),
+    "create_recurring_event":       ("Creating recurring event",    "Setting up repeating meeting"),
+    "update_event":                 ("Updating event",              "Rescheduling Calendar event"),
+    "delete_event":                 ("Cancelling event",            "Removing event from Calendar"),
+    "respond_to_invite":            ("Responding to invite",        "Sending RSVP for meeting"),
+    "block_focus_time":             ("Blocking focus time",         "Creating Do Not Disturb block"),
+    "send_meeting_summary":         ("Sending meeting summary",     "Emailing notes to attendees"),
+    "check_attendee_availability":  ("Checking availability",       "Checking if attendees are free"),
+    "detect_conflicts":             ("Detecting conflicts",         "Finding overlapping events"),
+    "suggest_meeting_time":         ("Suggesting meeting time",     "Finding best slot for all attendees"),
     # Document tools
     "generate_content":         ("Generating content",         "Writing document content"),
     "create_pdf":               ("Creating PDF",               "Building PDF document"),
