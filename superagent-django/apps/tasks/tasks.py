@@ -203,6 +203,64 @@ class ReadEmailTool(BaseTool):
         }}
 
 
+class DownloadAttachmentTool(BaseTool):
+    """Download a Gmail attachment and save it locally."""
+    name = "download_attachment"
+    description = (
+        "Download an email attachment from Gmail and save it to a local file. "
+        "Input JSON: {\"message_id\": \"...\", \"attachment_id\": \"...\", \"filename\": \"...(optional)\"}. "
+        "Get message_id and attachment_id from the 'attachments' list in read_emails response. "
+        "Returns file_path of the saved file."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def _gmail_service(self):
+        if not self._workspace_id:
+            return None
+        try:
+            from apps.integrations.models import Integration
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+            integration = Integration.objects.filter(
+                workspace_id=self._workspace_id,
+                provider=Integration.Provider.GMAIL,
+                status=Integration.Status.ACTIVE,
+            ).first()
+            if not integration or not integration.access_token:
+                return None
+            import os
+            creds = Credentials(
+                token=integration.access_token,
+                refresh_token=integration.refresh_token,
+                client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+                client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+                token_uri="https://oauth2.googleapis.com/token",
+            )
+            return build("gmail", "v1", credentials=creds)
+        except Exception:
+            return None
+
+    def run(self, input_str: str) -> str:
+        from core.tools.gmail.download_attachment import DownloadAttachmentTool as CoreTool
+        return CoreTool(gmail_service=self._gmail_service()).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "message_id":    {"type": "string"},
+                    "attachment_id": {"type": "string"},
+                    "filename":      {"type": "string"},
+                },
+                "required": ["message_id", "attachment_id"],
+            },
+        }}
+
+
 class SummarizeEmailsTool(BaseTool):
     """Thin wrapper — delegates to core SummarizeEmailsTool (no Gmail credentials needed)."""
     name = "summarize_emails"
@@ -691,31 +749,482 @@ class UploadToDriveTool(BaseTool):
 
 
 # =============================================================================
+# NEW EMAIL AGENT TOOL WRAPPERS
+# =============================================================================
+
+def _gmail_service_for_workspace(workspace_id):
+    """Helper: build a Gmail service from the workspace's active integration."""
+    if not workspace_id:
+        return None
+    try:
+        from apps.integrations.models import Integration
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        integration = Integration.objects.filter(
+            workspace_id=workspace_id,
+            provider=Integration.Provider.GMAIL,
+            status=Integration.Status.ACTIVE,
+        ).first()
+        if not integration or not integration.access_token:
+            return None
+        creds = Credentials(
+            token=integration.access_token,
+            refresh_token=integration.refresh_token,
+            client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            token_uri="https://oauth2.googleapis.com/token",
+        )
+        return build("gmail", "v1", credentials=creds)
+    except Exception:
+        return None
+
+
+class MarkAsReadTool(BaseTool):
+    """Mark emails as read."""
+    name = "mark_as_read"
+    description = (
+        "Mark one or more emails as read. "
+        "Input JSON: {\"message_ids\": [\"...\", \"...\"]} or {\"message_id\": \"...\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.mark_as_read import MarkAsReadTool as CoreTool
+        return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "message_ids": {"type": "array", "items": {"type": "string"}},
+                "message_id":  {"type": "string"},
+            }},
+        }}
+
+
+class LabelEmailTool(BaseTool):
+    """Add or remove Gmail labels."""
+    name = "label_email"
+    description = (
+        "Add or remove Gmail labels from emails. "
+        "Input JSON: {\"message_ids\": [...], \"add_labels\": [\"Invoice\"], \"remove_labels\": [\"UNREAD\"]}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.label_email import LabelEmailTool as CoreTool
+        return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "message_ids":    {"type": "array", "items": {"type": "string"}},
+                "add_labels":     {"type": "array", "items": {"type": "string"}},
+                "remove_labels":  {"type": "array", "items": {"type": "string"}},
+            }, "required": ["message_ids"]},
+        }}
+
+
+class MoveToFolderTool(BaseTool):
+    """Move emails to a Gmail folder."""
+    name = "move_to_folder"
+    description = (
+        "Move emails to a Gmail folder. "
+        "Input JSON: {\"message_ids\": [...], \"folder\": \"inbox|spam|trash|starred|important\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.move_to_folder import MoveToFolderTool as CoreTool
+        return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "message_ids": {"type": "array", "items": {"type": "string"}},
+                "folder":      {"type": "string"},
+            }, "required": ["message_ids", "folder"]},
+        }}
+
+
+class DeleteEmailTool(BaseTool):
+    """Move email to trash (YELLOW)."""
+    name = "delete_email"
+    description = (
+        "Move emails to Gmail trash. REQUIRES human approval (YELLOW zone). "
+        "Input JSON: {\"message_ids\": [...]}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.delete_email import DeleteEmailTool as CoreTool
+        return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "message_ids": {"type": "array", "items": {"type": "string"}},
+            }, "required": ["message_ids"]},
+        }}
+
+
+class ReplyToEmailTool(BaseTool):
+    """Reply to an email thread (YELLOW)."""
+    name = "reply_to_email"
+    description = (
+        "Send a reply in the same thread. REQUIRES human approval (YELLOW zone). "
+        "Input JSON: {\"message_id\": \"...\", \"thread_id\": \"...\", \"to\": \"...\", "
+        "\"subject\": \"...\", \"body\": \"...\", \"cc\": \"...(optional)\"}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.reply_to_email import ReplyToEmailTool as CoreTool
+        return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "message_id": {"type": "string"},
+                "thread_id":  {"type": "string"},
+                "to":         {"type": "string"},
+                "subject":    {"type": "string"},
+                "body":       {"type": "string"},
+                "cc":         {"type": "string"},
+            }, "required": ["message_id", "to", "subject", "body"]},
+        }}
+
+
+class ForwardEmailTool(BaseTool):
+    """Forward an email (YELLOW)."""
+    name = "forward_email"
+    description = (
+        "Forward an email to other recipients. REQUIRES human approval (YELLOW zone). "
+        "Input JSON: {\"message_id\": \"...\", \"to\": [\"email@...\"], \"note\": \"...(optional)\"}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.forward_email import ForwardEmailTool as CoreTool
+        return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "message_id": {"type": "string"},
+                "to":         {"type": "array", "items": {"type": "string"}},
+                "note":       {"type": "string"},
+            }, "required": ["message_id", "to"]},
+        }}
+
+
+class ScheduleEmailTool(BaseTool):
+    """Schedule an email for future delivery (YELLOW)."""
+    name = "schedule_email"
+    description = (
+        "Schedule an email to be sent at a future time. REQUIRES human approval (YELLOW zone). "
+        "Input JSON: {\"to\": \"...\", \"subject\": \"...\", \"body\": \"...\", "
+        "\"send_at\": \"2026-07-09T09:00:00\"}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.schedule_email import ScheduleEmailTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "to":      {"type": "string"},
+                "subject": {"type": "string"},
+                "body":    {"type": "string"},
+                "cc":      {"type": "string"},
+                "send_at": {"type": "string", "description": "ISO 8601 datetime"},
+            }, "required": ["to", "subject", "body", "send_at"]},
+        }}
+
+
+class ExtractInvoiceDataTool(BaseTool):
+    """Extract invoice data from email body."""
+    name = "extract_invoice_data"
+    description = (
+        "Extract invoice number, amount, due date, vendor, and payment status from email text. "
+        "Input JSON: {\"email_body\": \"...\", \"subject\": \"...(optional)\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.gmail.extract_invoice_data import ExtractInvoiceDataTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "email_body": {"type": "string"},
+                "subject":    {"type": "string"},
+            }, "required": ["email_body"]},
+        }}
+
+
+class DetectFollowUpTool(BaseTool):
+    """Detect emails needing follow-up."""
+    name = "detect_follow_up_needed"
+    description = (
+        "Scan inbox for emails that haven't been replied to in N days. "
+        "Input JSON: {\"days\": 3, \"max_results\": 10}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.gmail.detect_follow_up import DetectFollowUpTool as CoreTool
+        return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "days":        {"type": "integer"},
+                "max_results": {"type": "integer"},
+            }},
+        }}
+
+
+class ReadAttachmentContentTool(BaseTool):
+    """Read text from a downloaded attachment."""
+    name = "read_attachment_content"
+    description = (
+        "Read text content from a downloaded attachment (PDF, DOCX, CSV, TXT). "
+        "Input JSON: {\"file_path\": \"...\", \"max_chars\": 8000}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.gmail.read_attachment_content import ReadAttachmentContentTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_path": {"type": "string"},
+                "max_chars": {"type": "integer"},
+            }, "required": ["file_path"]},
+        }}
+
+
+class ExtractDataFromAttachmentTool(BaseTool):
+    """Extract structured data from an attachment."""
+    name = "extract_data_from_attachment"
+    description = (
+        "Extract amounts, dates, emails, phones, and tables from a downloaded attachment. "
+        "Input JSON: {\"file_path\": \"...\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.gmail.extract_data_from_attachment import ExtractDataFromAttachmentTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_path": {"type": "string"},
+            }, "required": ["file_path"]},
+        }}
+
+
+class ListCustomerProfilesTool(BaseTool):
+    """List customer profiles in the workspace."""
+    name = "list_customer_profiles"
+    description = (
+        "List all known customer profiles in the workspace. "
+        "Input JSON: {\"workspace_id\": \"...\", \"limit\": 20}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        try:
+            data = json.loads(input_str) if isinstance(input_str, str) else input_str
+        except Exception:
+            data = {}
+        if self._workspace_id and not data.get("workspace_id"):
+            data["workspace_id"] = self._workspace_id
+        from core.tools.memory.list_customer_profiles import ListCustomerProfilesTool as CoreTool
+        return CoreTool().run(json.dumps(data))
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "workspace_id": {"type": "string"},
+                "limit":        {"type": "integer"},
+            }, "required": ["workspace_id"]},
+        }}
+
+
+class SearchCustomerByEmailTool(BaseTool):
+    """Look up a customer profile by email address."""
+    name = "search_customer_by_email"
+    description = (
+        "Look up a customer profile by their email address. "
+        "Input JSON: {\"email\": \"...\"}. Returns the full profile or found=false."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        try:
+            data = json.loads(input_str) if isinstance(input_str, str) else input_str
+        except Exception:
+            data = {}
+        if self._workspace_id and not data.get("workspace_id"):
+            data["workspace_id"] = self._workspace_id
+        from core.tools.memory.search_customer_by_email import SearchCustomerByEmailTool as CoreTool
+        return CoreTool().run(json.dumps(data))
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "email":        {"type": "string"},
+                "workspace_id": {"type": "string"},
+            }, "required": ["email"]},
+        }}
+
+
+class CreateMeetingTool(BaseTool):
+    """Create a Google Calendar event with attendees (YELLOW)."""
+    name = "create_meeting"
+    description = (
+        "Create a Google Calendar event and send invitations. REQUIRES human approval (YELLOW zone). "
+        "Input JSON: {\"title\": \"...\", \"start_time\": \"2026-07-08T11:00:00\", "
+        "\"attendees\": [\"email@...\"], \"duration_mins\": 60, "
+        "\"description\": \"...(optional)\", \"timezone\": \"Asia/Kolkata\"}."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.calendar.create_meeting import CreateMeetingTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "title":         {"type": "string"},
+                "start_time":    {"type": "string"},
+                "duration_mins": {"type": "integer"},
+                "attendees":     {"type": "array", "items": {"type": "string"}},
+                "description":   {"type": "string"},
+                "location":      {"type": "string"},
+                "timezone":      {"type": "string"},
+            }, "required": ["title", "start_time", "attendees"]},
+        }}
+
+
+# =============================================================================
 # TOOL REGISTRY
 # =============================================================================
 
 _TOOL_REGISTRY: dict = {
-    "send_email":        SendEmailTool,        # first — most commonly needed
-    "read_email":        ReadEmailTool,
-    "summarize_emails":  SummarizeEmailsTool,
-    "create_draft":      CreateDraftTool,
-    "web_search":      WebSearchTool,
-    "browse_web":      BrowseWebTool,
-    "classify_text":   ClassifyTextTool,
-    "generate_report":   GenerateReportTool,
-    "generate_content":  GenerateContentTool,
-    "create_pdf":        CreatePdfTool,
-    "create_docx":       CreateDocxTool,
-    "file_read":         FileReadTool,
-    "file_write":        FileWriteTool,
-    "export_csv":        ExportCsvTool,
-    "cal_read":        CalReadTool,
-    "cal_write":       CalWriteTool,
-    "delete_file":     DeleteFileTool,
-    "upload_to_drive": UploadToDriveTool,
+    # Email core
+    "send_email":               SendEmailTool,
+    "read_email":               ReadEmailTool,
+    "summarize_emails":         SummarizeEmailsTool,
+    "download_attachment":      DownloadAttachmentTool,
+    "create_draft":             CreateDraftTool,
+    # Email inbox management
+    "mark_as_read":             MarkAsReadTool,
+    "label_email":              LabelEmailTool,
+    "move_to_folder":           MoveToFolderTool,
+    "delete_email":             DeleteEmailTool,
+    # Email compose
+    "reply_to_email":           ReplyToEmailTool,
+    "forward_email":            ForwardEmailTool,
+    "schedule_email":           ScheduleEmailTool,
+    # Email intelligence
+    "extract_invoice_data":     ExtractInvoiceDataTool,
+    "detect_follow_up_needed":  DetectFollowUpTool,
+    # Attachment tools
+    "read_attachment_content":  ReadAttachmentContentTool,
+    "extract_data_from_attachment": ExtractDataFromAttachmentTool,
+    # Customer memory
+    "list_customer_profiles":   ListCustomerProfilesTool,
+    "search_customer_by_email": SearchCustomerByEmailTool,
+    # Calendar
+    "create_meeting":           CreateMeetingTool,
+    # Document tools
+    "generate_content":         GenerateContentTool,
+    "create_pdf":               CreatePdfTool,
+    "create_docx":              CreateDocxTool,
+    "upload_to_drive":          UploadToDriveTool,
+    # General
+    "web_search":               WebSearchTool,
+    "browse_web":               BrowseWebTool,
+    "classify_text":            ClassifyTextTool,
+    "generate_report":          GenerateReportTool,
+    "file_read":                FileReadTool,
+    "file_write":               FileWriteTool,
+    "export_csv":               ExportCsvTool,
+    "cal_read":                 CalReadTool,
+    "cal_write":                CalWriteTool,
+    "delete_file":              DeleteFileTool,
 }
 
-_HIGH_ZONE_TOOLS = {"send_email", "delete_file", "cal_write", "file_write"}
+_HIGH_ZONE_TOOLS = {
+    "send_email", "reply_to_email", "forward_email", "schedule_email",
+    "delete_email", "delete_file", "cal_write", "file_write",
+    "create_meeting", "upload_to_drive",
+}
 
 
 def _build_tools(agent_model, workspace_id=None):
@@ -850,24 +1359,48 @@ class DjangoAgent(BaseAgent):
 
 # Human-readable labels for every tool
 _TOOL_LABELS = {
-    "send_email":      ("Sending email",           "Sending message to recipient"),
-    "read_email":        ("Reading emails",           "Fetching from Gmail inbox"),
-    "summarize_emails":  ("Summarising emails",      "Building summary of all emails"),
-    "create_draft":      ("Creating email draft",    "Drafting message"),
-    "web_search":      ("Searching the web",        "Looking up information online"),
-    "browse_web":      ("Browsing webpage",         "Reading page content"),
-    "classify_text":   ("Classifying content",      "Analysing and categorising text"),
-    "generate_report":  ("Generating report",         "Creating structured document"),
-    "generate_content": ("Generating content",        "Writing document content"),
-    "create_pdf":       ("Creating PDF",              "Building PDF document"),
-    "create_docx":      ("Creating Word document",    "Building .docx file"),
-    "file_read":       ("Reading file",             "Loading file contents"),
-    "file_write":      ("Writing file",             "Saving to file"),
-    "export_csv":      ("Exporting CSV",            "Creating spreadsheet export"),
-    "cal_read":        ("Reading calendar",         "Fetching upcoming events"),
-    "cal_write":       ("Creating calendar event",  "Adding event to calendar"),
-    "delete_file":     ("Deleting file",            "Removing file permanently"),
-    "upload_to_drive":  ("Uploading to Drive",        "Saving file to Google Drive"),
+    # Email core
+    "send_email":               ("Sending email",              "Sending message to recipient"),
+    "read_email":               ("Reading emails",             "Fetching from Gmail inbox"),
+    "summarize_emails":         ("Summarising emails",         "Building summary of all emails"),
+    "download_attachment":      ("Downloading attachment",     "Saving attachment from Gmail"),
+    "create_draft":             ("Creating email draft",       "Drafting message"),
+    # Inbox management
+    "mark_as_read":             ("Marking as read",            "Updating read status in Gmail"),
+    "label_email":              ("Labelling email",            "Adding/removing Gmail labels"),
+    "move_to_folder":           ("Moving email",               "Moving to Gmail folder"),
+    "delete_email":             ("Deleting email",             "Moving email to trash"),
+    # Compose
+    "reply_to_email":           ("Replying to email",          "Sending reply in thread"),
+    "forward_email":            ("Forwarding email",           "Forwarding to new recipients"),
+    "schedule_email":           ("Scheduling email",           "Setting up future delivery"),
+    # Intelligence
+    "extract_invoice_data":     ("Extracting invoice data",    "Parsing amounts and due dates"),
+    "detect_follow_up_needed":  ("Checking follow-ups",        "Finding emails without replies"),
+    # Attachment
+    "read_attachment_content":  ("Reading attachment",         "Extracting text from file"),
+    "extract_data_from_attachment": ("Extracting data",        "Parsing tables and amounts from file"),
+    # Customer memory
+    "list_customer_profiles":   ("Listing customers",          "Loading customer profiles"),
+    "search_customer_by_email": ("Looking up customer",        "Searching customer by email"),
+    # Calendar
+    "create_meeting":           ("Creating meeting",           "Scheduling Google Calendar event"),
+    # Document tools
+    "generate_content":         ("Generating content",         "Writing document content"),
+    "create_pdf":               ("Creating PDF",               "Building PDF document"),
+    "create_docx":              ("Creating Word document",     "Building .docx file"),
+    "upload_to_drive":          ("Uploading to Drive",         "Saving file to Google Drive"),
+    # General
+    "web_search":               ("Searching the web",          "Looking up information online"),
+    "browse_web":               ("Browsing webpage",           "Reading page content"),
+    "classify_text":            ("Classifying content",        "Analysing and categorising text"),
+    "generate_report":          ("Generating report",          "Creating structured document"),
+    "file_read":                ("Reading file",               "Loading file contents"),
+    "file_write":               ("Writing file",               "Saving to file"),
+    "export_csv":               ("Exporting CSV",              "Creating spreadsheet export"),
+    "cal_read":                 ("Reading calendar",           "Fetching upcoming events"),
+    "cal_write":                ("Creating calendar event",    "Adding event to calendar"),
+    "delete_file":              ("Deleting file",              "Removing file permanently"),
 }
 
 
@@ -983,6 +1516,52 @@ def _save_audit_steps(task, audit_log, step_offset=0):
         saved += 1
 
     return saved
+
+
+# =============================================================================
+# CELERY TASK: send_scheduled_email  (used by schedule_email tool)
+# =============================================================================
+
+@shared_task(name="apps.tasks.tasks.send_scheduled_email", max_retries=3, default_retry_delay=60)
+def send_scheduled_email(workspace_id: str, to: str, subject: str, body: str, cc: str = ""):
+    """Send a previously scheduled email via Gmail API."""
+    try:
+        from apps.integrations.models import Integration
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        integration = Integration.objects.filter(
+            workspace_id=workspace_id,
+            provider=Integration.Provider.GMAIL,
+            status=Integration.Status.ACTIVE,
+        ).first()
+        if not integration or not integration.access_token:
+            _logger.error("send_scheduled_email: no Gmail integration for workspace=%s", workspace_id)
+            return {"error": "Gmail not connected."}
+
+        creds = Credentials(
+            token=integration.access_token,
+            refresh_token=integration.refresh_token,
+            client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            token_uri="https://oauth2.googleapis.com/token",
+        )
+        service = build("gmail", "v1", credentials=creds)
+
+        import base64
+        from email.mime.text import MIMEText
+        msg = MIMEText(body)
+        msg["to"]      = to
+        msg["subject"] = subject
+        if cc:
+            msg["cc"] = cc
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        result = service.users().messages().send(userId="me", body={"raw": raw}).execute()
+        _logger.info("send_scheduled_email: sent to=%r msg_id=%s", to, result.get("id"))
+        return {"status": "sent", "to": to, "subject": subject, "msg_id": result.get("id", "")}
+    except Exception as exc:
+        _logger.exception("send_scheduled_email failed to=%r subject=%r", to, subject)
+        raise
 
 
 # =============================================================================
