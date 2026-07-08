@@ -560,27 +560,133 @@ class DeleteFileTool(BaseTool):
         }}
 
 
-class UploadToDriveTool(BaseTool):
-    name = "upload_to_drive"
-    description = "Upload to Google Drive. Input JSON: {\"filename\": \"...\", \"content\": \"...\", \"folder\": \"...\"}."
+class GenerateContentTool(BaseTool):
+    """Delegate to core GenerateContentTool."""
+    name = "generate_content"
+    description = (
+        "Generate structured document content using the LLM. "
+        "Input JSON: {\"title\": \"...\", \"doc_type\": \"report|summary|proposal|letter|table\", "
+        "\"prompt\": \"...\", \"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
+        "Returns structured sections ready to pass to create_pdf or create_docx. "
+        "Always call this first before creating any document file."
+    )
     zone = ToolZone.GREEN
 
     def __init__(self, workspace_id=None):
         pass
 
     def run(self, input_str: str) -> str:
-        return json.dumps({"note": "Google Drive not connected. Connect in Integrations.", "mock": True})
+        from core.tools.document.generate_content import GenerateContentTool as CoreTool
+        return CoreTool().run(input_str)
 
     def to_schema(self):
         return {"type": "function", "function": {
             "name": self.name, "description": self.description,
             "parameters": {"type": "object",
                 "properties": {
-                    "filename": {"type": "string"},
-                    "content": {"type": "string"},
-                    "folder": {"type": "string"},
+                    "title":       {"type": "string"},
+                    "doc_type":    {"type": "string", "enum": ["report", "summary", "proposal", "letter", "table"]},
+                    "prompt":      {"type": "string"},
+                    "source_data": {"type": "string"},
+                    "sections":    {"type": "array", "items": {"type": "string"}},
                 },
-                "required": ["filename", "content"]},
+                "required": ["title", "doc_type", "prompt"],
+            },
+        }}
+
+
+class CreatePdfTool(BaseTool):
+    """Delegate to core CreatePdfTool."""
+    name = "create_pdf"
+    description = (
+        "Create a PDF file from structured document content. "
+        "Input JSON: {\"title\": \"...\", \"sections\": [{\"heading\": \"...\", \"content\": \"...\"}]}. "
+        "Returns file_path. Pass it to upload_to_drive."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str: str) -> str:
+        from core.tools.document.create_pdf import CreatePdfTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "title":    {"type": "string"},
+                    "sections": {"type": "array", "items": {"type": "object"}},
+                    "author":   {"type": "string"},
+                },
+                "required": ["title", "sections"],
+            },
+        }}
+
+
+class CreateDocxTool(BaseTool):
+    """Delegate to core CreateDocxTool."""
+    name = "create_docx"
+    description = (
+        "Create a Word (.docx) file from structured document content. "
+        "Input JSON: {\"title\": \"...\", \"sections\": [{\"heading\": \"...\", \"content\": \"...\"}]}. "
+        "Returns file_path. Pass it to upload_to_drive."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str: str) -> str:
+        from core.tools.document.create_docx import CreateDocxTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "title":    {"type": "string"},
+                    "sections": {"type": "array", "items": {"type": "object"}},
+                    "author":   {"type": "string"},
+                },
+                "required": ["title", "sections"],
+            },
+        }}
+
+
+class UploadToDriveTool(BaseTool):
+    """Delegate to core UploadToDriveTool (YELLOW — requires approval)."""
+    name = "upload_to_drive"
+    description = (
+        "Upload a file to Google Drive. ALWAYS requires human approval (YELLOW zone). "
+        "Input JSON: {\"file_path\": \"...\", \"filename\": \"...(optional)\", "
+        "\"folder_name\": \"...(optional)\"}. "
+        "Returns drive_url saved to task deliverables. Requires Drive integration."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str: str) -> str:
+        from core.tools.document.upload_to_drive import UploadToDriveTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "file_path":   {"type": "string"},
+                    "filename":    {"type": "string"},
+                    "folder_name": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["file_path"],
+            },
         }}
 
 
@@ -596,10 +702,13 @@ _TOOL_REGISTRY: dict = {
     "web_search":      WebSearchTool,
     "browse_web":      BrowseWebTool,
     "classify_text":   ClassifyTextTool,
-    "generate_report": GenerateReportTool,
-    "file_read":       FileReadTool,
-    "file_write":      FileWriteTool,
-    "export_csv":      ExportCsvTool,
+    "generate_report":   GenerateReportTool,
+    "generate_content":  GenerateContentTool,
+    "create_pdf":        CreatePdfTool,
+    "create_docx":       CreateDocxTool,
+    "file_read":         FileReadTool,
+    "file_write":        FileWriteTool,
+    "export_csv":        ExportCsvTool,
     "cal_read":        CalReadTool,
     "cal_write":       CalWriteTool,
     "delete_file":     DeleteFileTool,
@@ -748,14 +857,17 @@ _TOOL_LABELS = {
     "web_search":      ("Searching the web",        "Looking up information online"),
     "browse_web":      ("Browsing webpage",         "Reading page content"),
     "classify_text":   ("Classifying content",      "Analysing and categorising text"),
-    "generate_report": ("Generating report",        "Creating structured document"),
+    "generate_report":  ("Generating report",         "Creating structured document"),
+    "generate_content": ("Generating content",        "Writing document content"),
+    "create_pdf":       ("Creating PDF",              "Building PDF document"),
+    "create_docx":      ("Creating Word document",    "Building .docx file"),
     "file_read":       ("Reading file",             "Loading file contents"),
     "file_write":      ("Writing file",             "Saving to file"),
     "export_csv":      ("Exporting CSV",            "Creating spreadsheet export"),
     "cal_read":        ("Reading calendar",         "Fetching upcoming events"),
     "cal_write":       ("Creating calendar event",  "Adding event to calendar"),
     "delete_file":     ("Deleting file",            "Removing file permanently"),
-    "upload_to_drive": ("Uploading to Drive",       "Saving file to Google Drive"),
+    "upload_to_drive":  ("Uploading to Drive",        "Saving file to Google Drive"),
 }
 
 

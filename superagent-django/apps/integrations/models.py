@@ -6,6 +6,7 @@ from django.conf import settings
 class Integration(models.Model):
     class Provider(models.TextChoices):
         GMAIL = "gmail", "Gmail"
+        GOOGLE_DRIVE = "google_drive", "Google Drive"
         GOOGLE_CALENDAR = "google_calendar", "Google Calendar"
         SLACK = "slack", "Slack"
         NOTION = "notion", "Notion"
