@@ -200,22 +200,68 @@ class SummarizeEmailsTool(BaseTool):
 
     @staticmethod
     def _extract_key_point(body: str) -> str:
-        """Extract a 1-2 sentence key point from the email body."""
+        """Extract a proper 2-4 sentence summary covering topic, key facts, and action needed.
+
+        Extracts:
+          - What the email is about (topic sentence)
+          - Key facts: amounts, dates, deadlines, names, order numbers
+          - Any action required from the recipient
+        """
         if not body or not body.strip():
             return "No content available."
 
-        # Collapse whitespace
+        # Clean up whitespace and split into sentences
         cleaned = re.sub(r'\s+', ' ', body).strip()
+        # Split on sentence-ending punctuation followed by space + capital letter
+        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z\d"])', cleaned)
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
 
-        # Try to end at a sentence boundary within 300 chars
-        excerpt = cleaned[:300]
-        for punct in (". ", "! ", "? "):
-            idx = excerpt.find(punct)
-            if 40 < idx < 280:
-                return excerpt[:idx + 1]
+        if not sentences:
+            return cleaned[:250] + ("..." if len(cleaned) > 250 else "")
 
-        # Fallback: hard cut at 200 chars
-        return cleaned[:200] + ("..." if len(cleaned) > 200 else "")
+        selected = []
+
+        # 1. Always include the first meaningful sentence (topic)
+        selected.append(sentences[0])
+
+        # 2. Look for sentences with key facts: amounts, dates, deadlines, IDs
+        _fact_patterns = [
+            r'\b(?:₹|Rs\.?|USD|\$|€|£)\s*[\d,]+',         # money
+            r'\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b',     # dates
+            r'\b(?:due|deadline|by|before|expire|overdue)\b',
+            r'\b(?:invoice|order|reference|ticket|id|#)\s*[\w\-]+',  # IDs
+            r'\b(?:meeting|call|appointment|schedule)\b',
+            r'\b(?:attached|attachment|document|file|report)\b',
+            r'\b(?:payment|amount|total|balance|deposit)\b',
+        ]
+        for sentence in sentences[1:]:
+            s_lower = sentence.lower()
+            if any(re.search(p, s_lower) for p in _fact_patterns):
+                if sentence not in selected:
+                    selected.append(sentence)
+                if len(selected) >= 3:
+                    break
+
+        # 3. Look for action-required sentence if not already included
+        _action_patterns = [
+            r'\b(?:please|kindly|could you|can you|request|require|need|must|should)\b',
+            r'\b(?:reply|respond|confirm|approve|review|action|let me know|follow up)\b',
+        ]
+        for sentence in sentences[1:]:
+            s_lower = sentence.lower()
+            if any(re.search(p, s_lower) for p in _action_patterns):
+                if sentence not in selected:
+                    selected.append(sentence)
+                break
+
+        # Cap at 4 sentences and join
+        result = " ".join(selected[:4])
+
+        # Final length guard — keep under 400 chars but don't cut mid-sentence
+        if len(result) > 400:
+            result = result[:400].rsplit(". ", 1)[0] + "."
+
+        return result
 
     def to_schema(self) -> dict:
         return {
