@@ -53,7 +53,6 @@ from core.tools.gmail.send_email import SendEmailTool
 from core.tools.memory.customer_memory_tool import GetCustomerMemoryTool, UpdateCustomerMemoryTool
 from core.tools.memory.list_customer_profiles import ListCustomerProfilesTool
 from core.tools.memory.search_customer_by_email import SearchCustomerByEmailTool
-from core.tools.calendar.create_meeting import CreateMeetingTool
 
 
 _SYSTEM_PROMPT = """You are EmailAgent, the KRYPSOS AI assistant for professional email management.
@@ -75,15 +74,6 @@ Standard workflow for handling emails:
 8. update_customer_memory        — record the interaction and any new preferences
 9. [Present draft to human]
 10. send_email / reply_to_email  — ONLY after explicit human approval
-
-=== MEETING WORKFLOW ===
-
-When user says "create a meeting at 11 with Arun and Sankar":
-1. current_time                  — get today's date to resolve "at 11" → absolute datetime
-2. search_customer_by_email      — look up email addresses for Arun, Sankar by name (if you don't have their emails)
-   OR ask user for emails if not in customer memory
-3. create_meeting                — pass title, start_time (ISO 8601), attendees (email list), duration_mins
-   ⚠ YELLOW zone — will trigger approval before sending invites
 
 === CUSTOMER MEMORY ===
 
@@ -171,9 +161,6 @@ Reply tools:
 Inbox management (YELLOW — require approval):
   delete_email                 : Move email to trash
 
-Calendar tools:
-  create_meeting               : YELLOW — create Calendar event + send invitations to attendees
-
 Customer memory tools (GREEN):
   get_customer_memory          : Load persistent profile for a customer email
   update_customer_memory       : Save updated preferences and notes after interaction
@@ -193,9 +180,6 @@ Attachment flow:
   read_emails -> email.attachments[{filename, attachment_id, message_id}]
              -> download_attachment -> read_attachment_content or extract_data_from_attachment
 
-Meeting flow:
-  current_time -> search_customer_by_email (resolve names to emails)
-             -> create_meeting [YELLOW] -> event created + invites sent
 """
 
 
@@ -228,7 +212,6 @@ class EmailAgent(BaseAgent):
         llm_provider: LLMProvider,
         task_id: str | None = None,
         gmail_service: Any = None,
-        calendar_service: Any = None,
         workspace_id: str | None = None,
         extra_tools: list[Any] | None = None,
     ) -> None:
@@ -262,8 +245,6 @@ class EmailAgent(BaseAgent):
             SendEmailTool(gmail_service=gmail_service),
             # ── Inbox management (YELLOW) ──────────────────────────────
             DeleteEmailTool(gmail_service=gmail_service),
-            # ── Calendar (YELLOW) ──────────────────────────────────────
-            CreateMeetingTool(workspace_id=workspace_id, calendar_service=calendar_service),
             # ── Customer memory (GREEN) ────────────────────────────────
             GetCustomerMemoryTool(),
             UpdateCustomerMemoryTool(),

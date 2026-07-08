@@ -531,11 +531,11 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     3,       # ← bump this whenever template changes
+        "version":     4,       # ← bump this whenever template changes
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
-        "description": "Full email lifecycle — read, summarise, reply, schedule, manage inbox, create meetings. Requires Gmail connected.",
+        "description": "Full email lifecycle — read, summarise, reply, schedule, manage inbox. Requires Gmail connected.",
         "icon":        "mail",
         "icon_bg":     "#B45309",
         "border_color":"#F59E0B",
@@ -548,7 +548,6 @@ _AGENT_TEMPLATES = [
             "Extracts invoice data, detects follow-ups needed",
             "Creates and saves Gmail drafts for review",
             "Labels, moves and manages inbox organisation",
-            "Creates Google Calendar meetings with attendees",
             "Maintains persistent customer memory & preferences",
         ],
         "tools": [
@@ -562,8 +561,6 @@ _AGENT_TEMPLATES = [
             "reply_to_email", "forward_email", "schedule_email", "send_email",
             # Intelligence
             "extract_invoice_data", "detect_follow_up_needed",
-            # Calendar
-            "create_meeting",
             # Customer memory
             "list_customer_profiles", "search_customer_by_email",
         ],
@@ -572,10 +569,10 @@ _AGENT_TEMPLATES = [
             "You are EmailAgent, the KRYPSOS AI assistant for professional email management. "
             "You manage the complete email lifecycle: read, search, summarise, classify, "
             "draft, reply, forward, schedule, manage inbox, download attachments, "
-            "extract invoice data, detect follow-ups, create calendar meetings, "
-            "and maintain customer memory. "
+            "extract invoice data, detect follow-ups, and maintain customer memory. "
+            "For meeting scheduling, direct the user to use the Calendar Agent. "
             "YELLOW zone tools (send_email, reply_to_email, forward_email, schedule_email, "
-            "delete_email, create_meeting) always require human approval before executing. "
+            "delete_email) always require human approval before executing. "
             "GREEN zone tools run automatically. "
             "Always check customer memory before drafting a reply. "
             "Use current_time to resolve relative times like 'at 11' or 'tomorrow'."
