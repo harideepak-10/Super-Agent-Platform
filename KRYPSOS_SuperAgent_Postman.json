@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "krypsos-superagent-v1",
     "name": "KRYPSOS Super Agent Platform",
-    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ \u2014 token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSockets (3 channels):\n  wss://.../ws/tasks/<task_id>/        \u2014 live task step stream\n  wss://.../ws/notifications/          \u2014 personal notification push\n  wss://.../ws/agents/<agent_id>/live/ \u2014 agent live activity stream\nAll channels: Authorization: Bearer {{token}} header required\nKeep-alive: send {\"type\":\"ping\"} \u2192 server replies {\"type\":\"pong\"}\n\nTypical Flow:\n1. GET /agents/templates/ \u2192 pick a template, note its numeric ID (1\u20135)\n2. GET /agents/templates/<id>/ \u2192 preview template detail before activating\n3. POST /agents/templates/<id>/activate/ \u2192 save agent_id\n4. GET /agents/<agent_id>/overview/ \u2192 see activated agent stats and recent runs\n5. POST /tasks/create/ \u2192 pass agent_id, save task_id, connect WebSocket\n6. If task status = waiting_approval \u2192 GET /approvals/pending/ \u2192 POST /approvals/{id}/decide/\n7. GET /tasks/{task_id}/ to see final result\n\nTemplate IDs: 1=Email, 2=Research, 3=Document, 4=Calendar, 5=Reporting\nAll costs are returned in EUR (\u00d70.92 from USD stored in DB).",
+    "description": "Complete API collection for KRYPSOS Super Agent AI Platform.\nBase URL: https://super-agent-platform.onrender.com/api/v1/\n\nSetup:\n1. Set the 'base_url' variable to your Render URL\n2. Call POST {{base_url}}/auth/login/ — token is auto-saved to the 'token' variable\n3. All authenticated requests use Bearer {{token}} automatically\n\nWebSockets (3 channels):\n  wss://.../ws/tasks/<task_id>/        — live task step stream\n  wss://.../ws/notifications/          — personal notification push\n  wss://.../ws/agents/<agent_id>/live/ — agent live activity stream\nAll channels: Authorization: Bearer {{token}} header required\nKeep-alive: send {\"type\":\"ping\"} → server replies {\"type\":\"pong\"}\n\nTypical Flow:\n1. GET /agents/templates/ → pick a template, note its numeric ID (1–5)\n2. GET /agents/templates/<id>/ → preview template detail before activating\n3. POST /agents/templates/<id>/activate/ → save agent_id\n4. GET /agents/<agent_id>/overview/ → see activated agent stats and recent runs\n5. POST /tasks/create/ → pass agent_id, save task_id, connect WebSocket\n6. If task status = waiting_approval → GET /approvals/pending/ → POST /approvals/{id}/decide/\n7. GET /tasks/{task_id}/ to see final result\n\nTemplate IDs: 1=Email, 2=Research, 3=Document, 4=Calendar, 5=Reporting\nAll costs are returned in EUR (×0.92 from USD stored in DB).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -300,6 +300,30 @@
               "raw": "{\n  \"old_password\": \"currentpassword\",\n  \"new_password\": \"newpassword123\"\n}"
             }
           }
+        },
+        {
+          "name": "Settings Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/profile/settings-summary/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "profile",
+                "settings-summary",
+                ""
+              ]
+            },
+            "description": "Returns the 4 settings cards for the Settings screen.\n\nconnected_apps: count + list of active integrations\ncost: total spent this month in USD\nbudget: limit, period, % used, status (ok/warning/critical)\nteam: member count + list with name, email, role, avatar"
+          }
         }
       ]
     },
@@ -340,7 +364,7 @@
           "request": {
             "method": "GET",
             "url": "{{base_url}}/agents/templates/1/",
-            "description": "Full detail of a template before activating it.\n\nTemplate IDs:\n  1 \u2014 Email Agent\n  2 \u2014 Research Agent\n  3 \u2014 Document Agent\n  4 \u2014 Calendar Agent\n  5 \u2014 Reporting Agent\n\nReturns: name, description, capabilities (what_it_does), tools, max_cost_eur, already_added flag, and activated_agent_id if already in workspace."
+            "description": "Full detail of a template before activating it.\n\nTemplate IDs:\n  1 — Email Agent\n  2 — Research Agent\n  3 — Document Agent\n  4 — Calendar Agent\n  5 — Reporting Agent\n\nReturns: name, description, capabilities (what_it_does), tools, max_cost_eur, already_added flag, and activated_agent_id if already in workspace."
           }
         },
         {
@@ -359,7 +383,7 @@
           "request": {
             "method": "POST",
             "url": "{{base_url}}/agents/templates/1/activate/",
-            "description": "Activate a ready-made agent by its numeric ID.\n\nTemplate IDs:\n  1 \u2014 Email Agent\n  2 \u2014 Research Agent\n  3 \u2014 Document Agent\n  4 \u2014 Calendar Agent\n  5 \u2014 Reporting Agent\n\nReturns 201 if created, 200 if already exists in workspace.\nAgent ID is auto-saved to the agent_id variable.",
+            "description": "Activate a ready-made agent by its numeric ID.\n\nTemplate IDs:\n  1 — Email Agent\n  2 — Research Agent\n  3 — Document Agent\n  4 — Calendar Agent\n  5 — Reporting Agent\n\nReturns 201 if created, 200 if already exists in workspace.\nAgent ID is auto-saved to the agent_id variable.",
             "body": {
               "mode": "raw",
               "raw": "{}"
@@ -449,7 +473,7 @@
             "url": {
               "raw": "{{base_url}}/agents/sync-all-templates/"
             },
-            "description": "POST /api/v1/agents/sync-all-templates/\n\nSyncs ALL template-based agents in the workspace to their latest versions in one call.\n\nReturns: {results: [{template, version, synced, skipped}], total_synced}\n\nTip: Call this once after every deploy to ensure all users' agents are up to date.\nAlternatively agents auto-sync at task runtime \u2014 so this is just a manual override."
+            "description": "POST /api/v1/agents/sync-all-templates/\n\nSyncs ALL template-based agents in the workspace to their latest versions in one call.\n\nReturns: {results: [{template, version, synced, skipped}], total_synced}\n\nTip: Call this once after every deploy to ensure all users' agents are up to date.\nAlternatively agents auto-sync at task runtime — so this is just a manual override."
           }
         }
       ]
@@ -527,7 +551,7 @@
           "request": {
             "method": "GET",
             "url": "{{base_url}}/tasks/{{task_id}}/",
-            "description": "Returns full task detail including:\n\n  progress_percent     \u2014 0\u2013100. Computed from steps_taken/max_steps. 100 only when completed.\n  deliverables         \u2014 files produced by the task. [] for Email Agent. [{name, url, type}] for Document Agent.\n  total_steps_estimate \u2014 set by Orchestrator when splitting across agents.\n  approval_id          \u2014 UUID of the current pending approval when status=waiting_approval, null otherwise.\n\nExample response (waiting_approval):\n{\n  \"status\": \"waiting_approval\",\n  \"approval_id\": \"<approval_uuid>\",\n  \"progress_percent\": 60,\n  \"deliverables\": [],\n  \"total_steps_estimate\": null\n}\n\nUse approval_id to call POST /approvals/{approval_id}/decide/"
+            "description": "Returns full task detail including:\n\n  progress_percent     — 0–100. Computed from steps_taken/max_steps. 100 only when completed.\n  deliverables         — files produced by the task. [] for Email Agent. [{name, url, type}] for Document Agent.\n  total_steps_estimate — set by Orchestrator when splitting across agents.\n  approval_id          — UUID of the current pending approval when status=waiting_approval, null otherwise.\n\nExample response (waiting_approval):\n{\n  \"status\": \"waiting_approval\",\n  \"approval_id\": \"<approval_uuid>\",\n  \"progress_percent\": 60,\n  \"deliverables\": [],\n  \"total_steps_estimate\": null\n}\n\nUse approval_id to call POST /approvals/{approval_id}/decide/"
           }
         },
         {
@@ -552,7 +576,7 @@
           "request": {
             "method": "GET",
             "url": "{{base_url}}/tasks/{{task_id}}/steps/",
-            "description": "Returns all ReAct loop steps. Each step now includes generic fields that work for any agent:\n\n  agent_name \u2014 which agent handled this step (Email Agent name for now; sub-agent name when Orchestrator is live)\n  title      \u2014 short human-readable label e.g. 'Sending email', 'Searching the web'\n  detail     \u2014 one-liner e.g. 'To harideepak@...', 'Query: AI news 2026'\n\nExample step:\n{\n  \"step_number\": 3,\n  \"step_type\": \"tool_call\",\n  \"agent_name\": \"Email Agent\",\n  \"title\": \"Sending email\",\n  \"detail\": \"To harideepak@krypsos.tech\",\n  \"tool_name\": \"send_email\"\n}"
+            "description": "Returns all ReAct loop steps. Each step now includes generic fields that work for any agent:\n\n  agent_name — which agent handled this step (Email Agent name for now; sub-agent name when Orchestrator is live)\n  title      — short human-readable label e.g. 'Sending email', 'Searching the web'\n  detail     — one-liner e.g. 'To harideepak@...', 'Query: AI news 2026'\n\nExample step:\n{\n  \"step_number\": 3,\n  \"step_type\": \"tool_call\",\n  \"agent_name\": \"Email Agent\",\n  \"title\": \"Sending email\",\n  \"detail\": \"To harideepak@krypsos.tech\",\n  \"tool_name\": \"send_email\"\n}"
           }
         },
         {
@@ -810,12 +834,12 @@
                 {
                   "key": "start_date",
                   "value": "2026-07-01",
-                  "description": "YYYY-MM-DD \u2014 required"
+                  "description": "YYYY-MM-DD — required"
                 },
                 {
                   "key": "end_date",
                   "value": "2026-07-04",
-                  "description": "YYYY-MM-DD \u2014 required"
+                  "description": "YYYY-MM-DD — required"
                 },
                 {
                   "key": "group_by",
@@ -850,7 +874,7 @@
               "mode": "raw",
               "raw": "{\n  \"limit_usd\": 10.00,\n  \"alert_threshold_pct\": 80\n}"
             },
-            "description": "Creates the budget. Returns 400 if a budget already exists \u2014 use PATCH /costs/budget/update/ to change it."
+            "description": "Creates the budget. Returns 400 if a budget already exists — use PATCH /costs/budget/update/ to change it."
           }
         },
         {
@@ -985,7 +1009,7 @@
                 ""
               ]
             },
-            "description": "Returns the Google OAuth consent URL for Google Drive.\nOpen auth_url in browser \u2192 user grants access \u2192 auto redirects to callback.\nRequired before upload_to_drive tool works."
+            "description": "Returns the Google OAuth consent URL for Google Drive.\nOpen auth_url in browser → user grants access → auto redirects to callback.\nRequired before upload_to_drive tool works."
           }
         },
         {
@@ -1035,7 +1059,7 @@
                 ""
               ]
             },
-            "description": "Returns the Google OAuth consent URL for Google Calendar.\nRequired before create_meeting tool works.\nOpen auth_url in browser \u2192 grant access \u2192 auto-saves integration."
+            "description": "Returns the Google OAuth consent URL for Google Calendar.\nRequired before create_meeting tool works.\nOpen auth_url in browser → grant access → auto-saves integration."
           }
         },
         {
@@ -1126,7 +1150,7 @@
               "mode": "raw",
               "raw": "{\n  \"email\": \"colleague@example.com\",\n  \"role\": \"member\"\n}"
             },
-            "description": "Invite a user who already has an account. No email sent \u2014 they see it in-app via GET /team/invites/. Roles: owner, admin, member, viewer."
+            "description": "Invite a user who already has an account. No email sent — they see it in-app via GET /team/invites/. Roles: owner, admin, member, viewer."
           }
         },
         {
@@ -1205,7 +1229,7 @@
                 }
               ]
             },
-            "description": "Returns up to 50 notifications for the logged-in user, newest first.\n\nNotification types:\n  task_complete \u2014 agent finished a task\n  task_failed \u2014 agent task failed or approval rejected\n  approval_needed \u2014 agent is waiting for your approval\n  approval_decided \u2014 your approval was approved or rejected by a reviewer\n  team_invite \u2014 someone invited you to a workspace\n  budget_alert \u2014 spending near the limit\n  integration_error \u2014 connected app has an issue"
+            "description": "Returns up to 50 notifications for the logged-in user, newest first.\n\nNotification types:\n  task_complete — agent finished a task\n  task_failed — agent task failed or approval rejected\n  approval_needed — agent is waiting for your approval\n  approval_decided — your approval was approved or rejected by a reviewer\n  team_invite — someone invited you to a workspace\n  budget_alert — spending near the limit\n  integration_error — connected app has an issue"
           }
         },
         {
@@ -1294,7 +1318,7 @@
               "mode": "raw",
               "raw": "{\n  \"email_on_task_complete\": true,\n  \"email_on_task_failed\": true,\n  \"email_on_approval_needed\": true,\n  \"email_on_budget_alert\": true,\n  \"push_enabled\": true\n}"
             },
-            "description": "Toggle which notification types the user receives. All fields are optional \u2014 send only what you want to change."
+            "description": "Toggle which notification types the user receives. All fields are optional — send only what you want to change."
           }
         }
       ]
@@ -1367,7 +1391,7 @@
                 {
                   "key": "q",
                   "value": "send email",
-                  "description": "All words must appear \u2014 'send email' returns results that contain BOTH 'send' AND 'email' as whole words"
+                  "description": "All words must appear — 'send email' returns results that contain BOTH 'send' AND 'email' as whole words"
                 }
               ]
             },
@@ -1384,7 +1408,7 @@
                 {
                   "key": "q",
                   "value": "send email",
-                  "description": "All words must appear \u2014 'send email' finds tasks containing BOTH 'send' AND 'email' as whole words in prompt/result/agent name/status"
+                  "description": "All words must appear — 'send email' finds tasks containing BOTH 'send' AND 'email' as whole words in prompt/result/agent name/status"
                 },
                 {
                   "key": "status",
@@ -1394,7 +1418,7 @@
                 }
               ]
             },
-            "description": "Search tasks by keyword. Multi-word queries use AND \u2014 'send email' finds tasks that contain both words.\n\nWhole-word matching: 'read' matches 'Read my emails' but NOT 'Q2 report ready'."
+            "description": "Search tasks by keyword. Multi-word queries use AND — 'send email' finds tasks that contain both words.\n\nWhole-word matching: 'read' matches 'Read my emails' but NOT 'Q2 report ready'."
           }
         },
         {
@@ -1407,11 +1431,11 @@
                 {
                   "key": "q",
                   "value": "email agent",
-                  "description": "All words must appear \u2014 'email agent' finds agents whose name/type/description contain BOTH words"
+                  "description": "All words must appear — 'email agent' finds agents whose name/type/description contain BOTH words"
                 }
               ]
             },
-            "description": "Search agents by keyword. Multi-word queries use AND \u2014 'email agent' finds agents that contain both words across name, agent_type, and description.\n\nWhole-word matching: 'email' matches 'Email Agent' but NOT 'emailagent'."
+            "description": "Search agents by keyword. Multi-word queries use AND — 'email agent' finds agents that contain both words across name, agent_type, and description.\n\nWhole-word matching: 'email' matches 'Email Agent' but NOT 'emailagent'."
           }
         }
       ]
@@ -1519,27 +1543,27 @@
       "name": "14 - WebSockets",
       "item": [
         {
-          "name": "WS \u2014 Task Live Stream",
+          "name": "WS — Task Live Stream",
           "request": {
             "method": "GET",
             "url": "wss://super-agent-platform.onrender.com/ws/tasks/{{task_id}}/",
-            "description": "Connect after creating a task to receive real-time step-by-step updates.\n\nAuth: Add header  Authorization: Bearer {{token}}\nKeep-alive: send {\"type\": \"ping\"} \u2192 server replies {\"type\": \"pong\"}\n\n\u2500\u2500 STANDARDISED EVENT ENVELOPE \u2500\u2500\nEvery event has this shape:\n{\n  \"event\":      \"<event_name>\",\n  \"task_id\":    \"<uuid>\",\n  \"agent_name\": \"Email Agent\",\n  \"step\":       3,\n  \"title\":      \"Sending email\",\n  \"detail\":     \"To harideepak@krypsos.tech\",\n  \"data\":       { ...raw details... }\n}\nstatus_changed events also include: \"status\": \"completed|failed|waiting_approval\"\n\n\u2500\u2500 EVENT NAMES \u2500\u2500\n  step_started    \u2014 LLM thinking OR tool about to run\n  step_finished   \u2014 tool result received\n  status_changed  \u2014 task status changed (approval_needed / completed / failed)\n  step_output     \u2014 partial streaming output (reserved for future use)\n\n\u2500\u2500 EXAMPLE EVENTS \u2500\u2500\nstep_started (thinking):\n  { \"event\": \"step_started\", \"title\": \"Thinking\", \"detail\": \"Planning next action (step 1)\" }\n\nstep_started (tool call):\n  { \"event\": \"step_started\", \"title\": \"Sending email\", \"detail\": \"To harideepak@krypsos.tech\" }\n\nstep_finished:\n  { \"event\": \"step_finished\", \"title\": \"Got result\", \"detail\": \"Sending email completed\" }\n\nstatus_changed (approval needed):\n  { \"event\": \"status_changed\", \"status\": \"waiting_approval\", \"title\": \"Waiting for approval\", \"detail\": \"Send Email requires your review\" }\n\nstatus_changed (completed):\n  { \"event\": \"status_changed\", \"status\": \"completed\", \"title\": \"Task complete\", \"detail\": \"<result preview>\" }\n\nTypical use: connect immediately after POST /tasks/create/, use title+detail to drive UI labels, use status_changed to update progress bar and status chip."
+            "description": "Connect after creating a task to receive real-time step-by-step updates.\n\nAuth: Add header  Authorization: Bearer {{token}}\nKeep-alive: send {\"type\": \"ping\"} → server replies {\"type\": \"pong\"}\n\n── STANDARDISED EVENT ENVELOPE ──\nEvery event has this shape:\n{\n  \"event\":      \"<event_name>\",\n  \"task_id\":    \"<uuid>\",\n  \"agent_name\": \"Email Agent\",\n  \"step\":       3,\n  \"title\":      \"Sending email\",\n  \"detail\":     \"To harideepak@krypsos.tech\",\n  \"data\":       { ...raw details... }\n}\nstatus_changed events also include: \"status\": \"completed|failed|waiting_approval\"\n\n── EVENT NAMES ──\n  step_started    — LLM thinking OR tool about to run\n  step_finished   — tool result received\n  status_changed  — task status changed (approval_needed / completed / failed)\n  step_output     — partial streaming output (reserved for future use)\n\n── EXAMPLE EVENTS ──\nstep_started (thinking):\n  { \"event\": \"step_started\", \"title\": \"Thinking\", \"detail\": \"Planning next action (step 1)\" }\n\nstep_started (tool call):\n  { \"event\": \"step_started\", \"title\": \"Sending email\", \"detail\": \"To harideepak@krypsos.tech\" }\n\nstep_finished:\n  { \"event\": \"step_finished\", \"title\": \"Got result\", \"detail\": \"Sending email completed\" }\n\nstatus_changed (approval needed):\n  { \"event\": \"status_changed\", \"status\": \"waiting_approval\", \"title\": \"Waiting for approval\", \"detail\": \"Send Email requires your review\" }\n\nstatus_changed (completed):\n  { \"event\": \"status_changed\", \"status\": \"completed\", \"title\": \"Task complete\", \"detail\": \"<result preview>\" }\n\nTypical use: connect immediately after POST /tasks/create/, use title+detail to drive UI labels, use status_changed to update progress bar and status chip."
           }
         },
         {
-          "name": "WS \u2014 Notifications Stream",
+          "name": "WS — Notifications Stream",
           "request": {
             "method": "GET",
             "url": "wss://super-agent-platform.onrender.com/ws/notifications/",
-            "description": "Personal notification channel \u2014 one connection per logged-in user.\n\nAuth: Add header  Authorization: Bearer {{token}}\n\nEvents received:\n  connected    \u2014 handshake confirmed\n  notification \u2014 new notification pushed, contains full notification object in 'data'\n\nNotification types in data:\n  task_complete     \u2014 agent finished a task\n  task_failed       \u2014 agent task failed\n  approval_needed   \u2014 agent needs your approval\n  approval_decided  \u2014 your approval was approved or rejected\n  team_invite       \u2014 someone invited you to a workspace\n\nKeep-alive: send {\"type\": \"ping\"} \u2192 server replies {\"type\": \"pong\"}\n\nTypical use: connect on app launch, update notification badge count in real-time without polling."
+            "description": "Personal notification channel — one connection per logged-in user.\n\nAuth: Add header  Authorization: Bearer {{token}}\n\nEvents received:\n  connected    — handshake confirmed\n  notification — new notification pushed, contains full notification object in 'data'\n\nNotification types in data:\n  task_complete     — agent finished a task\n  task_failed       — agent task failed\n  approval_needed   — agent needs your approval\n  approval_decided  — your approval was approved or rejected\n  team_invite       — someone invited you to a workspace\n\nKeep-alive: send {\"type\": \"ping\"} → server replies {\"type\": \"pong\"}\n\nTypical use: connect on app launch, update notification badge count in real-time without polling."
           }
         },
         {
-          "name": "WS \u2014 Agent Live Stream",
+          "name": "WS — Agent Live Stream",
           "request": {
             "method": "GET",
             "url": "wss://super-agent-platform.onrender.com/ws/agents/{{agent_id}}/live/",
-            "description": "Streams live thought / action / observation events for a specific agent.\n\nAuth: Add header  Authorization: Bearer {{token}}\n\nEvents received:\n  connected    \u2014 handshake confirmed\n  agent_event  \u2014 thought, tool call, or observation from the running agent\n\nKeep-alive: send {\"type\": \"ping\"} \u2192 server replies {\"type\": \"pong\"}\n\nTypical use: power the Agent Live Activity screen \u2014 show what the agent is thinking and doing right now."
+            "description": "Streams live thought / action / observation events for a specific agent.\n\nAuth: Add header  Authorization: Bearer {{token}}\n\nEvents received:\n  connected    — handshake confirmed\n  agent_event  — thought, tool call, or observation from the running agent\n\nKeep-alive: send {\"type\": \"ping\"} → server replies {\"type\": \"pong\"}\n\nTypical use: power the Agent Live Activity screen — show what the agent is thinking and doing right now."
           }
         }
       ]
@@ -1548,7 +1572,7 @@
       "name": "15 - Email Agent Tasks",
       "item": [
         {
-          "name": "\ud83d\udce7 Read & Summarize Unread Emails",
+          "name": "📧 Read & Summarize Unread Emails",
           "request": {
             "method": "POST",
             "header": [
@@ -1568,7 +1592,7 @@
                 ""
               ]
             },
-            "description": "Tests: read_emails \u2192 summarize_emails\nExpected: formatted summary with urgency icons \ud83d\udea8\ud83d\udd34\ud83d\udfe1\ud83d\udfe2\nAgent: Email Agent",
+            "description": "Tests: read_emails → summarize_emails\nExpected: formatted summary with urgency icons 🚨🔴🟡🟢\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Read my unread emails and give me a summary of each. Tell me who sent it, what it's about, and if any action is needed.\"\n}"
@@ -1576,7 +1600,7 @@
           }
         },
         {
-          "name": "\ud83d\udd0d Search Emails from a Sender",
+          "name": "🔍 Search Emails from a Sender",
           "request": {
             "method": "POST",
             "header": [
@@ -1596,7 +1620,7 @@
                 ""
               ]
             },
-            "description": "Tests: search_emails \u2192 summarize_emails\nAgent: Email Agent",
+            "description": "Tests: search_emails → summarize_emails\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Find all emails from vendor@example.com in the last 7 days and summarize them.\"\n}"
@@ -1604,7 +1628,7 @@
           }
         },
         {
-          "name": "\ud83d\udcce Read Attachment from Email",
+          "name": "📎 Read Attachment from Email",
           "request": {
             "method": "POST",
             "header": [
@@ -1624,7 +1648,7 @@
                 ""
               ]
             },
-            "description": "Tests: read_emails \u2192 download_attachment \u2192 read_attachment_content\nGREEN zone \u2014 runs automatically (no approval needed)\nAgent: Email Agent",
+            "description": "Tests: read_emails → download_attachment → read_attachment_content\nGREEN zone — runs automatically (no approval needed)\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Read my latest unread email, download any attachments, and tell me what's in them.\"\n}"
@@ -1632,7 +1656,7 @@
           }
         },
         {
-          "name": "\ud83e\uddfe Extract Invoice Data",
+          "name": "🧾 Extract Invoice Data",
           "request": {
             "method": "POST",
             "header": [
@@ -1652,7 +1676,7 @@
                 ""
               ]
             },
-            "description": "Tests: read_emails/search_emails \u2192 extract_invoice_data\nGREEN zone\nAgent: Email Agent",
+            "description": "Tests: read_emails/search_emails → extract_invoice_data\nGREEN zone\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Check my inbox for invoice emails and extract the invoice number, amount due, due date, and vendor name from each.\"\n}"
@@ -1660,7 +1684,7 @@
           }
         },
         {
-          "name": "\u21a9\ufe0f Draft Reply to Email [GREEN]",
+          "name": "↩️ Draft Reply to Email [GREEN]",
           "request": {
             "method": "POST",
             "header": [
@@ -1680,7 +1704,7 @@
                 ""
               ]
             },
-            "description": "Tests: read_emails \u2192 get_customer_memory \u2192 draft_reply\nAll GREEN \u2014 no approval needed\nResult is a draft text, NOT sent\nAgent: Email Agent",
+            "description": "Tests: read_emails → get_customer_memory → draft_reply\nAll GREEN — no approval needed\nResult is a draft text, NOT sent\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Read my latest unread email, look up the sender in customer memory, and draft a professional reply. Do NOT send it yet.\"\n}"
@@ -1688,7 +1712,7 @@
           }
         },
         {
-          "name": "\ud83d\udce8 Reply to Email [YELLOW \u2014 needs approval]",
+          "name": "📨 Reply to Email [YELLOW — needs approval]",
           "request": {
             "method": "POST",
             "header": [
@@ -1708,7 +1732,7 @@
                 ""
               ]
             },
-            "description": "Tests: read_emails \u2192 reply_to_email (YELLOW)\nWill pause at waiting_approval \u2014 check approval_id in response\nApprove via POST /approvals/{{approval_id}}/decide/ with {\"decision\": \"approved\"}\nAgent: Email Agent",
+            "description": "Tests: read_emails → reply_to_email (YELLOW)\nWill pause at waiting_approval — check approval_id in response\nApprove via POST /approvals/{{approval_id}}/decide/ with {\"decision\": \"approved\"}\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Read my latest unread email and send a reply saying: 'Thank you for your message, I will get back to you shortly.'\"\n}"
@@ -1716,7 +1740,7 @@
           }
         },
         {
-          "name": "\ud83d\udce4 Send New Email [YELLOW \u2014 needs approval]",
+          "name": "📤 Send New Email [YELLOW — needs approval]",
           "request": {
             "method": "POST",
             "header": [
@@ -1736,7 +1760,7 @@
                 ""
               ]
             },
-            "description": "Tests: send_email (YELLOW)\nWill pause \u2192 approve at /approvals/{{approval_id}}/decide/\nAgent: Email Agent",
+            "description": "Tests: send_email (YELLOW)\nWill pause → approve at /approvals/{{approval_id}}/decide/\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Send an email to test@example.com with subject 'Hello from KRYPSOS' and body 'This is a test email sent via the Super Agent Platform.'\"\n}"
@@ -1744,7 +1768,7 @@
           }
         },
         {
-          "name": "\u23f0 Schedule Email for Later [YELLOW]",
+          "name": "⏰ Schedule Email for Later [YELLOW]",
           "request": {
             "method": "POST",
             "header": [
@@ -1764,7 +1788,7 @@
                 ""
               ]
             },
-            "description": "Tests: current_time \u2192 schedule_email (YELLOW \u2192 Celery apply_async)\nApprove \u2192 Celery queues the actual Gmail send at the specified time\nAgent: Email Agent",
+            "description": "Tests: current_time → schedule_email (YELLOW → Celery apply_async)\nApprove → Celery queues the actual Gmail send at the specified time\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Schedule an email to boss@example.com with subject 'End of Day Report' and a brief status update body. Send it tomorrow at 9am IST.\"\n}"
@@ -1772,7 +1796,7 @@
           }
         },
         {
-          "name": "\ud83d\udcc1 Move/Label Email [GREEN]",
+          "name": "📁 Move/Label Email [GREEN]",
           "request": {
             "method": "POST",
             "header": [
@@ -1792,7 +1816,7 @@
                 ""
               ]
             },
-            "description": "Tests: search_emails \u2192 label_email \u2192 mark_as_read\nAll GREEN \u2014 runs automatically\nAgent: Email Agent",
+            "description": "Tests: search_emails → label_email → mark_as_read\nAll GREEN — runs automatically\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Find my unread invoice emails and label them 'Invoice' and mark them as read.\"\n}"
@@ -1800,7 +1824,7 @@
           }
         },
         {
-          "name": "\ud83d\udd14 Check Follow-Up Needed [GREEN]",
+          "name": "🔔 Check Follow-Up Needed [GREEN]",
           "request": {
             "method": "POST",
             "header": [
@@ -1820,7 +1844,7 @@
                 ""
               ]
             },
-            "description": "Tests: detect_follow_up_needed\nGREEN \u2014 runs automatically\nReturns list of emails sorted by days_waiting descending\nAgent: Email Agent",
+            "description": "Tests: detect_follow_up_needed\nGREEN — runs automatically\nReturns list of emails sorted by days_waiting descending\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Check if there are any emails in my inbox that I haven't replied to in the last 3 days and tell me which ones need follow-up.\"\n}"
@@ -1828,7 +1852,7 @@
           }
         },
         {
-          "name": "\ud83d\udcc5 Create Meeting [YELLOW \u2014 needs approval]",
+          "name": "📅 Create Meeting [YELLOW — needs approval]",
           "request": {
             "method": "POST",
             "header": [
@@ -1848,7 +1872,7 @@
                 ""
               ]
             },
-            "description": "Tests: current_time \u2192 create_meeting (YELLOW \u2014 Google Calendar API)\nWill pause at waiting_approval\nAfter approval: Calendar event created + Google Meet link generated + invitations sent to attendees\nAgent: Email Agent\n\nIf you only have names (not emails), say:\n'Create a meeting at 11am with Arun and Sankar'\nAgent will use search_customer_by_email to resolve names \u2192 emails from customer memory",
+            "description": "Tests: current_time → create_meeting (YELLOW — Google Calendar API)\nWill pause at waiting_approval\nAfter approval: Calendar event created + Google Meet link generated + invitations sent to attendees\nAgent: Email Agent\n\nIf you only have names (not emails), say:\n'Create a meeting at 11am with Arun and Sankar'\nAgent will use search_customer_by_email to resolve names → emails from customer memory",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a meeting tomorrow at 11am with arun@example.com and sankar@example.com. Title: 'Q3 Review'. Duration 60 minutes. Add a Google Meet link.\"\n}"
@@ -1856,7 +1880,7 @@
           }
         },
         {
-          "name": "\ud83d\uddd3\ufe0f Create Meeting by Name (Customer Memory) [YELLOW]",
+          "name": "🗓️ Create Meeting by Name (Customer Memory) [YELLOW]",
           "request": {
             "method": "POST",
             "header": [
@@ -1876,7 +1900,7 @@
                 ""
               ]
             },
-            "description": "Tests: current_time \u2192 search_customer_by_email \u2192 create_meeting (YELLOW)\nAgent resolves 'Arun' and 'Sankar' to email addresses using customer memory\nThen creates Calendar event with those emails as attendees\nAgent: Email Agent",
+            "description": "Tests: current_time → search_customer_by_email → create_meeting (YELLOW)\nAgent resolves 'Arun' and 'Sankar' to email addresses using customer memory\nThen creates Calendar event with those emails as attendees\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a meeting at 11am today with Arun and Sankar. Find their emails from customer memory.\"\n}"
@@ -1884,7 +1908,7 @@
           }
         },
         {
-          "name": "\ud83d\uddd1\ufe0f Delete Email [YELLOW \u2014 needs approval]",
+          "name": "🗑️ Delete Email [YELLOW — needs approval]",
           "request": {
             "method": "POST",
             "header": [
@@ -1904,7 +1928,7 @@
                 ""
               ]
             },
-            "description": "Tests: search_emails \u2192 delete_email (YELLOW)\nWill pause at waiting_approval\nSafety: moves to Gmail trash, NOT permanent delete\nAgent: Email Agent",
+            "description": "Tests: search_emails → delete_email (YELLOW)\nWill pause at waiting_approval\nSafety: moves to Gmail trash, NOT permanent delete\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Find all newsletter emails from the last 7 days and move them to trash.\"\n}"
@@ -1912,7 +1936,7 @@
           }
         },
         {
-          "name": "\ud83d\udccb List Customer Profiles [GREEN]",
+          "name": "📋 List Customer Profiles [GREEN]",
           "request": {
             "method": "POST",
             "header": [
@@ -1932,7 +1956,7 @@
                 ""
               ]
             },
-            "description": "Tests: list_customer_profiles\nGREEN \u2014 runs automatically\nAgent: Email Agent",
+            "description": "Tests: list_customer_profiles\nGREEN — runs automatically\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"List all customers I have in memory with their communication style and last interaction date.\"\n}"
@@ -1940,7 +1964,7 @@
           }
         },
         {
-          "name": "\ud83d\udce9 Forward Email [YELLOW]",
+          "name": "📩 Forward Email [YELLOW]",
           "request": {
             "method": "POST",
             "header": [
@@ -1960,7 +1984,7 @@
                 ""
               ]
             },
-            "description": "Tests: search_emails \u2192 forward_email (YELLOW)\nApprove via /approvals/{{approval_id}}/decide/\nAgent: Email Agent",
+            "description": "Tests: search_emails → forward_email (YELLOW)\nApprove via /approvals/{{approval_id}}/decide/\nAgent: Email Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Find the latest email about an invoice and forward it to accounts@example.com with a note: 'Please process this invoice.'\"\n}"
@@ -1968,7 +1992,7 @@
           }
         },
         {
-          "name": "\ud83d\udce7 Read Spam Folder [GREEN]",
+          "name": "📧 Read Spam Folder [GREEN]",
           "request": {
             "method": "POST",
             "header": [
@@ -1980,7 +2004,7 @@
             "url": {
               "raw": "{{base_url}}/tasks/create/"
             },
-            "description": "Tests: search_emails with 'in:spam' query\nGREEN \u2014 runs automatically\nAgent uses search_emails with query='in:spam' to read spam folder",
+            "description": "Tests: search_emails with 'in:spam' query\nGREEN — runs automatically\nAgent uses search_emails with query='in:spam' to read spam folder",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Check my spam folder and summarize any emails that look legitimate and not actual spam.\"\n}"
@@ -1988,7 +2012,7 @@
           }
         },
         {
-          "name": "\ud83d\udcbe Draft Reply + Save to Gmail Drafts [GREEN]",
+          "name": "💾 Draft Reply + Save to Gmail Drafts [GREEN]",
           "request": {
             "method": "POST",
             "header": [
@@ -2000,7 +2024,7 @@
             "url": {
               "raw": "{{base_url}}/tasks/create/"
             },
-            "description": "Tests: read_emails \u2192 get_customer_memory \u2192 draft_reply \u2192 create_gmail_draft\nAll GREEN \u2014 no approval needed\nDraft is saved to Gmail's Drafts folder (visible in Gmail app)\nUser can review and send from Gmail, or approve via agent",
+            "description": "Tests: read_emails → get_customer_memory → draft_reply → create_gmail_draft\nAll GREEN — no approval needed\nDraft is saved to Gmail's Drafts folder (visible in Gmail app)\nUser can review and send from Gmail, or approve via agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Read my latest unread email, draft a professional reply, and save it to my Gmail Drafts folder so I can review and send it myself.\"\n}"
@@ -2008,7 +2032,7 @@
           }
         },
         {
-          "name": "\ud83d\udcbe Save Specific Draft to Gmail [GREEN]",
+          "name": "💾 Save Specific Draft to Gmail [GREEN]",
           "request": {
             "method": "POST",
             "header": [
@@ -2020,7 +2044,7 @@
             "url": {
               "raw": "{{base_url}}/tasks/create/"
             },
-            "description": "Tests: create_gmail_draft directly\nGREEN \u2014 saves to Gmail Drafts without any approval\nCheck Gmail Drafts folder to see the saved draft",
+            "description": "Tests: create_gmail_draft directly\nGREEN — saves to Gmail Drafts without any approval\nCheck Gmail Drafts folder to see the saved draft",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Save a draft email to vendor@example.com with subject 'PO Confirmation' and body: 'Dear Sir, This is to confirm receipt of your purchase order. We will process it within 2 business days. Regards, Team KRYPSOS'\"\n}"
@@ -2030,10 +2054,10 @@
       ]
     },
     {
-      "name": "16 - Document Agent Tasks",
+      "name": "16 - Document Agent Tasks (Create)",
       "item": [
         {
-          "name": "\ud83d\udcc4 Create PDF Report",
+          "name": "📄 Create PDF Report",
           "request": {
             "method": "POST",
             "header": [
@@ -2053,7 +2077,7 @@
                 ""
               ]
             },
-            "description": "Tests: generate_content \u2192 create_pdf\nGREEN \u2014 runs automatically, saves to /tmp/krypsos_docs/\nAgent: Document Agent",
+            "description": "Tests: generate_content → create_pdf\nGREEN — runs automatically, saves to /tmp/krypsos_docs/\nAgent: Document Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a PDF report titled 'Q3 Sales Summary 2026' with sections: Executive Summary, Key Metrics (Revenue: \\u20b912L, Growth: 18%), Challenges, and Next Steps.\"\n}"
@@ -2061,7 +2085,7 @@
           }
         },
         {
-          "name": "\ud83d\udcdd Create Word Document",
+          "name": "📝 Create Word Document",
           "request": {
             "method": "POST",
             "header": [
@@ -2081,7 +2105,7 @@
                 ""
               ]
             },
-            "description": "Tests: generate_content \u2192 create_docx\nGREEN \u2014 runs automatically\nAgent: Document Agent",
+            "description": "Tests: generate_content → create_docx\nGREEN — runs automatically\nAgent: Document Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Write a professional proposal document for a software development project. Include: Introduction, Scope of Work, Timeline (3 months), Budget (\\u20b95L), and Terms.\"\n}"
@@ -2089,7 +2113,7 @@
           }
         },
         {
-          "name": "\u2601\ufe0f Upload Document to Drive [YELLOW]",
+          "name": "☁️ Upload Document to Drive [YELLOW]",
           "request": {
             "method": "POST",
             "header": [
@@ -2109,7 +2133,7 @@
                 ""
               ]
             },
-            "description": "Tests: generate_content \u2192 create_pdf \u2192 upload_to_drive (YELLOW)\nFirst: connect Google Drive via GET /integrations/drive/auth-url/\nWill pause at waiting_approval before Drive upload\nAgent: Document Agent",
+            "description": "Tests: generate_content → create_pdf → upload_to_drive (YELLOW)\nFirst: connect Google Drive via GET /integrations/drive/auth-url/\nWill pause at waiting_approval before Drive upload\nAgent: Document Agent",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a PDF summary report titled 'Weekly Update' and upload it to Google Drive in a folder called 'KRYPSOS Reports'.\"\n}"
@@ -2119,425 +2143,507 @@
       ]
     },
     {
-    "name": "18 - Document Agent Tasks",
-    "item": [
+      "name": "17 - Calendar Agent Tasks",
+      "item": [
         {
-            "name": "01 - List files in Drive",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Uses read_from_drive (action: list) to browse Google Drive root.\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"List all files in my Google Drive root folder.\"\n}"
-                }
+          "name": "01 - List files in Drive",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Uses read_from_drive (action: list) to browse Google Drive root.\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"List all files in my Google Drive root folder.\"\n}"
             }
+          }
         },
         {
-            "name": "02 - Download a file from Drive",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Uses read_from_drive (action: download) to fetch a specific file.\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Download the file named 'Q2_Report.pdf' from my Google Drive.\"\n}"
-                }
+          "name": "02 - Download a file from Drive",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Uses read_from_drive (action: download) to fetch a specific file.\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Download the file named 'Q2_Report.pdf' from my Google Drive.\"\n}"
             }
+          }
         },
         {
-            "name": "03 - Summarise a document",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Uses summarize_document to extract key points and action items.\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Summarise the document at /tmp/Q2_Report.pdf and list the key action items.\"\n}"
-                }
+          "name": "03 - Summarise a document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Uses summarize_document to extract key points and action items.\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Summarise the document at /tmp/Q2_Report.pdf and list the key action items.\"\n}"
             }
+          }
         },
         {
-            "name": "04 - Extract tables from PDF",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Uses extract_tables to pull tabular data from a PDF or Word document.\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Extract all tables from /tmp/financial_report.pdf and return them as CSV.\"\n}"
-                }
+          "name": "04 - Extract tables from PDF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Uses extract_tables to pull tabular data from a PDF or Word document.\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Extract all tables from /tmp/financial_report.pdf and return them as CSV.\"\n}"
             }
+          }
         },
         {
-            "name": "05 - OCR a scanned PDF",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Uses ocr_document to extract text from a scanned/image PDF.\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Run OCR on the scanned PDF at /tmp/scanned_invoice.pdf and extract all text.\"\n}"
-                }
+          "name": "05 - OCR a scanned PDF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Uses ocr_document to extract text from a scanned/image PDF.\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Run OCR on the scanned PDF at /tmp/scanned_invoice.pdf and extract all text.\"\n}"
             }
+          }
         },
         {
-            "name": "06 - Create a PDF report",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Tests: generate_content → create_pdf (GREEN)\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Write a 3-section PDF report titled 'KRYPSOS Q3 2026 Business Review' covering Sales Performance, Customer Growth, and Outlook.\"\n}"
-                }
+          "name": "06 - Create a PDF report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Tests: generate_content → create_pdf (GREEN)\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Write a 3-section PDF report titled 'KRYPSOS Q3 2026 Business Review' covering Sales Performance, Customer Growth, and Outlook.\"\n}"
             }
+          }
         },
         {
-            "name": "07 - Create a Word document",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Tests: generate_content → create_docx (GREEN)\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a Word document proposal for a new SaaS product feature: AI-powered invoice matching. Include Executive Summary, Problem Statement, and Proposed Solution sections.\"\n}"
-                }
+          "name": "07 - Create a Word document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Tests: generate_content → create_docx (GREEN)\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a Word document proposal for a new SaaS product feature: AI-powered invoice matching. Include Executive Summary, Problem Statement, and Proposed Solution sections.\"\n}"
             }
+          }
         },
         {
-            "name": "08 - Create a PowerPoint presentation",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Tests: generate_content → create_presentation (GREEN)\nTheme options: blue, green, dark, minimal\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a 5-slide PowerPoint presentation titled 'KRYPSOS Super Agent Platform' with a dark theme. Cover: Introduction, Key Features, Architecture, Use Cases, and Next Steps.\"\n}"
-                }
+          "name": "08 - Create a PowerPoint presentation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Tests: generate_content → create_presentation (GREEN)\nTheme options: blue, green, dark, minimal\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a 5-slide PowerPoint presentation titled 'KRYPSOS Super Agent Platform' with a dark theme. Cover: Introduction, Key Features, Architecture, Use Cases, and Next Steps.\"\n}"
             }
+          }
         },
         {
-            "name": "09 - Fill a Word template",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Tests: fill_template with {{FIELD}} placeholders (GREEN)\nTemplate must already exist at the given path\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Fill the invoice template at /tmp/invoice_template.docx with: client_name=Arun Kumar, invoice_number=INV-2026-042, amount=\\u20b925000, due_date=2026-07-31, company_name=KRYPSOS Tech. Save as Invoice_Arun_Kumar.docx.\"\n}"
-                }
+          "name": "09 - Fill a Word template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Tests: fill_template with {{FIELD}} placeholders (GREEN)\nTemplate must already exist at the given path\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Fill the invoice template at /tmp/invoice_template.docx with: client_name=Arun Kumar, invoice_number=INV-2026-042, amount=\\u20b925000, due_date=2026-07-31, company_name=KRYPSOS Tech. Save as Invoice_Arun_Kumar.docx.\"\n}"
             }
+          }
         },
         {
-            "name": "10 - Merge PDFs",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Tests: merge_pdfs combining multiple PDFs into one (GREEN)\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Merge the following PDFs into a single document called 'Combined_Report.pdf': /tmp/report_part1.pdf, /tmp/report_part2.pdf, /tmp/appendix.pdf\"\n}"
-                }
+          "name": "10 - Merge PDFs",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Tests: merge_pdfs combining multiple PDFs into one (GREEN)\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Merge the following PDFs into a single document called 'Combined_Report.pdf': /tmp/report_part1.pdf, /tmp/report_part2.pdf, /tmp/appendix.pdf\"\n}"
             }
+          }
         },
         {
-            "name": "11 - Compare two document versions",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Tests: compare_documents — diff two file versions (GREEN)\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Compare /tmp/contract_v1.docx and /tmp/contract_v2.docx. Show what was added or removed and the similarity score.\"\n}"
-                }
+          "name": "11 - Compare two document versions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Tests: compare_documents — diff two file versions (GREEN)\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Compare /tmp/contract_v1.docx and /tmp/contract_v2.docx. Show what was added or removed and the similarity score.\"\n}"
             }
+          }
         },
         {
-            "name": "12 - Translate a document to Tamil",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Tests: translate_document — convert PDF/DOCX to another language (GREEN)\nSupported codes: ta=Tamil, hi=Hindi, fr=French, de=German, es=Spanish, ar=Arabic\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Translate the document at /tmp/product_brochure.pdf to Tamil and save it as a Word file.\"\n}"
-                }
+          "name": "12 - Translate a document to Tamil",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Tests: translate_document — convert PDF/DOCX to another language (GREEN)\nSupported codes: ta=Tamil, hi=Hindi, fr=French, de=German, es=Spanish, ar=Arabic\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Translate the document at /tmp/product_brochure.pdf to Tamil and save it as a Word file.\"\n}"
             }
+          }
         },
         {
-            "name": "13 - Full flow: create report + upload to Drive [YELLOW]",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    },
-                    {
-                        "key": "Authorization",
-                        "value": "Bearer {{access_token}}"
-                    }
-                ],
-                "url": {
-                    "raw": "{{base_url}}/tasks/create/",
-                    "host": [
-                        "{{base_url}}"
-                    ],
-                    "path": [
-                        "tasks",
-                        "create",
-                        ""
-                    ]
-                },
-                "description": "Full flow: generate_content → create_pdf → upload_to_drive [YELLOW]\nTask will pause at waiting_approval before Drive upload.\nApprove via POST /api/v1/tasks/{task_id}/approve/{approval_id}/\nAgent: Document Agent",
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a PDF report on 'AI Trends in 2026' covering: LLM Advances, Agentic AI, Multimodal Systems, and Enterprise Adoption. Upload it to Google Drive in a folder called 'Research Reports'.\"\n}"
-                }
+          "name": "13 - Full flow: create report + upload to Drive [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Full flow: generate_content → create_pdf → upload_to_drive [YELLOW]\nTask will pause at waiting_approval before Drive upload.\nApprove via POST /api/v1/tasks/{task_id}/approve/{approval_id}/\nAgent: Document Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a PDF report on 'AI Trends in 2026' covering: LLM Advances, Agentic AI, Multimodal Systems, and Enterprise Adoption. Upload it to Google Drive in a folder called 'Research Reports'.\"\n}"
             }
+          }
         }
-    ]
-}
+      ]
+    },
+    {
+      "name": "19 - Quick Tasks",
+      "item": [
+        {
+          "name": "Get quick task list",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quick-tasks/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quick-tasks",
+                ""
+              ]
+            },
+            "description": "Returns max 4 quick tasks for the Quick Start section.\nSeeds 4 defaults on first use:\n  - Draft daily report\n  - Extract invoice data\n  - Organize Google Drive\n  - Reply to urgent emails\n\nAuto-promotion: if user submits the same prompt 3+ times,\nit is automatically added to this list."
+          }
+        },
+        {
+          "name": "Remove a quick task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/quick-tasks/{{quick_task_id}}/remove/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "quick-tasks",
+                "{{quick_task_id}}",
+                "remove",
+                ""
+              ]
+            },
+            "description": "Remove a quick task (e.g. dismiss an auto-promoted one). Frees a slot for a new one."
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 - Settings Summary",
+      "item": [
+        {
+          "name": "Get settings summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/profile/settings-summary/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "profile",
+                "settings-summary",
+                ""
+              ]
+            },
+            "description": "GET /api/v1/profile/settings-summary/\n\nReturns the 4 settings cards:\n\nconnected_apps:\n  count: number of active integrations\n  apps: [\"gmail\", \"google_calendar\", \"google_drive\"]\n\ncost:\n  this_month_usd: total cost this month\n  currency: \"USD\"\n\nbudget:\n  set: true/false\n  limit_usd: 20.00\n  period: \"monthly\"\n  used_pct: 7\n  status: \"ok\" / \"warning\" / \"critical\"\n\nteam:\n  member_count: 4\n  members: [{name, email, role, avatar_url}]"
+          }
+        }
+      ]
+    }
   ]
 }

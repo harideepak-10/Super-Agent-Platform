@@ -333,6 +333,110 @@ def profile_settings(request):
 
 
 @api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def settings_summary(request):
+    """
+    GET /api/v1/profile/settings-summary/
+
+    Returns the four key settings cards for the Settings screen.
+
+    Response::
+
+        {
+            "connected_apps": {
+                "count": 3,
+                "apps":  ["gmail", "google_calendar", "google_drive"]
+            },
+            "cost": {
+                "this_month_usd": 1.42,
+                "currency":       "USD"
+            },
+            "budget": {
+                "set":        true,
+                "limit_usd":  20.00,
+                "period":     "monthly",
+                "used_pct":   7,
+                "status":     "ok"        // "ok" | "warning" | "critical"
+            },
+            "team": {
+                "member_count": 4,
+                "members": [
+                    {"name": "Deepak", "email": "...", "role": "owner", "avatar_url": "..."},
+                    ...
+                ]
+            }
+        }
+    """
+    import datetime
+    from django.db.models import Sum
+    from apps.integrations.models import Integration
+    from apps.costs.models import DailyCost, Budget
+    from apps.team.models import TeamMembership
+
+    membership = request.user.memberships.select_related("workspace").first()
+    workspace  = membership.workspace if membership else None
+
+    if not workspace:
+        return Response({"detail": "No workspace."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # --- Connected Apps ---
+    active_integrations = Integration.objects.filter(
+        workspace=workspace, status=Integration.Status.ACTIVE
+    )
+    connected_apps = list(active_integrations.values_list("provider", flat=True).distinct())
+
+    # --- Cost (this month) ---
+    today       = datetime.date.today()
+    month_start = today.replace(day=1)
+    agg = DailyCost.objects.filter(
+        workspace=workspace, date__gte=month_start
+    ).aggregate(total=Sum("total_cost_usd"))
+    monthly_cost_usd = round(float(agg["total"] or 0), 4)
+
+    # --- Budget ---
+    budget = Budget.objects.filter(workspace=workspace, period=Budget.Period.MONTHLY).first()
+    budget_data = {"set": False}
+    if budget:
+        limit    = float(budget.limit_usd)
+        used_pct = int((monthly_cost_usd / limit * 100)) if limit > 0 else 0
+        budget_data = {
+            "set":       True,
+            "limit_usd": limit,
+            "period":    budget.period,
+            "used_pct":  min(used_pct, 100),
+            "status":    budget.alert_status,
+        }
+
+    # --- Team ---
+    memberships  = TeamMembership.objects.filter(workspace=workspace).select_related("user")
+    team_members = [
+        {
+            "name":       m.user.name or m.user.email.split("@")[0],
+            "email":      m.user.email,
+            "role":       m.role,
+            "avatar_url": m.user.avatar_url or None,
+        }
+        for m in memberships
+    ]
+
+    return Response({
+        "connected_apps": {
+            "count": len(connected_apps),
+            "apps":  connected_apps,
+        },
+        "cost": {
+            "this_month_usd": monthly_cost_usd,
+            "currency":       "USD",
+        },
+        "budget": budget_data,
+        "team": {
+            "member_count": len(team_members),
+            "members":      team_members,
+        },
+    })
+
+
+@api_view(["GET"])
 @permission_classes([])
 def health_check(request):
     from django.db import connection

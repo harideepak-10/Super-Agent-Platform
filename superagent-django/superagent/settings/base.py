@@ -50,6 +50,7 @@ LOCAL_APPS = [
     "apps.websockets",
     "apps.memory",
     "apps.dashboard",
+    "apps.quick_tasks",
 ]
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 

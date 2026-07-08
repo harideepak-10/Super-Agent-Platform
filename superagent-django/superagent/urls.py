@@ -18,4 +18,5 @@ urlpatterns = [
     path("api/v1/profile/", include("apps.authentication.profile_urls")),
     path("api/v1/memory/", include("apps.memory.urls")),
     path("api/v1/dashboard/", include("apps.dashboard.urls")),
+    path("api/v1/quick-tasks/", include("apps.quick_tasks.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
