@@ -117,6 +117,21 @@ _TOOL_DISPLAY = {
     "export_csv":     ("Export CSV",    "download",     "safe"),
     "upload_to_drive":("Drive Upload",  "upload-cloud", "safe"),
     "generate_report":("Generate Report","file-text",   "safe"),
+    # Document tools — read
+    "read_from_drive":     ("Drive Read",       "folder-open", "safe"),
+    "summarize_document":  ("Summarise Doc",    "file-text",   "safe"),
+    "extract_tables":      ("Extract Tables",   "grid",        "safe"),
+    "ocr_document":        ("OCR Scan",         "eye",         "safe"),
+    # Document tools — create
+    "generate_content":    ("Generate Content", "cpu",         "safe"),
+    "create_pdf":          ("Create PDF",       "file",        "safe"),
+    "create_docx":         ("Create Word Doc",  "file-text",   "safe"),
+    "create_presentation": ("Create PPTX",      "monitor",     "safe"),
+    "fill_template":       ("Fill Template",    "edit-3",      "safe"),
+    "merge_pdfs":          ("Merge PDFs",       "layers",      "safe"),
+    # Document tools — analyse
+    "compare_documents":   ("Compare Docs",     "git-diff",    "safe"),
+    "translate_document":  ("Translate Doc",    "globe",       "safe"),
 }
 _TOOL_DEFAULT = ("Tool",        "zap",    "safe")
 
@@ -609,32 +624,78 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     2,
+        "version":     3,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
-        "description": "Creates PDFs, Word docs, CSV exports, and uploads to Google Drive.",
+        "description": "Full document lifecycle — read from Drive, summarise, create PDFs/DOCX/PPTX, OCR, compare versions, translate, and upload back to Drive.",
         "icon":        "file-text",
         "icon_bg":     "#0F766E",
         "border_color":"#14B8A6",
         "badge":       None,
         "badge_color": None,
         "capabilities": [
-            "Generates structured PDFs and Word documents",
+            "Reads and lists files from Google Drive",
+            "Summarises documents and extracts key points & action items",
+            "Extracts tables from PDFs and Word documents",
+            "Runs OCR on scanned PDFs to extract text",
+            "Generates structured PDFs, Word docs, and PowerPoint presentations",
+            "Fills Word templates with dynamic data (invoices, letters, reports)",
+            "Merges multiple PDF files into one",
+            "Compares two document versions and highlights differences",
+            "Translates documents to Tamil, Hindi, French, Spanish, and 10+ languages",
             "Exports data as CSV spreadsheets",
-            "Uploads documents to Google Drive",
-            "Reads and summarises existing files",
+            "Uploads completed documents to Google Drive",
         ],
-        "tools":       ["generate_content", "create_pdf", "create_docx", "export_csv", "upload_to_drive", "file_read", "generate_report"],
+        "tools": [
+            # Read
+            "read_from_drive",
+            "summarize_document",
+            "extract_tables",
+            "ocr_document",
+            # Create
+            "generate_content",
+            "create_pdf",
+            "create_docx",
+            "create_presentation",
+            "fill_template",
+            "merge_pdfs",
+            "export_csv",
+            # Analyse
+            "compare_documents",
+            "translate_document",
+            # Save
+            "upload_to_drive",
+        ],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
-            "You are a document processing agent. Generate structured PDFs, Word docs, "
-            "and CSV exports from user-provided content or data. "
-            "upload_to_drive is YELLOW zone — requires human approval before uploading. "
-            "Always call generate_content first to structure the document, "
-            "then create_pdf or create_docx to build the file."
+            "You are DocumentAgent, the KRYPSOS AI assistant for the full document lifecycle.\n\n"
+            "## READ tools (GREEN — run automatically):\n"
+            "- read_from_drive: list or download files from Google Drive\n"
+            "- summarize_document: extract key points and action items from any file\n"
+            "- extract_tables: pull tables from PDF or Word documents\n"
+            "- ocr_document: extract text from scanned PDFs using OCR\n\n"
+            "## CREATE tools (GREEN — run automatically):\n"
+            "- generate_content: LLM generates structured document sections — call FIRST\n"
+            "- create_pdf: build a PDF from sections\n"
+            "- create_docx: build a Word .docx from sections\n"
+            "- create_presentation: build a PowerPoint .pptx slide deck\n"
+            "- fill_template: populate a Word template with {{FIELD}} placeholders\n"
+            "- merge_pdfs: combine multiple PDFs into one\n"
+            "- export_csv: create a CSV from tabular data\n\n"
+            "## ANALYSE tools (GREEN — run automatically):\n"
+            "- compare_documents: diff two file versions and show what changed\n"
+            "- translate_document: translate file to Tamil, Hindi, French, Spanish, etc.\n\n"
+            "## SAVE tool (YELLOW — requires human approval):\n"
+            "- upload_to_drive: save completed file to Google Drive\n\n"
+            "## Rules:\n"
+            "1. For CREATE tasks: call generate_content first, then the format tool.\n"
+            "2. For READ tasks: call read_from_drive or summarize_document directly.\n"
+            "3. upload_to_drive is YELLOW — always explain and wait for approval.\n"
+            "4. After Drive upload, include drive_url in your final answer.\n"
+            "5. If Drive is not connected, still create the local file and share the path."
         ),
-        "max_steps":   15,
+        "max_steps":   20,
         "max_cost_usd": 1.0,
     },
     {

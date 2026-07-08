@@ -618,6 +618,259 @@ class DeleteFileTool(BaseTool):
         }}
 
 
+class ReadFromDriveTool(BaseTool):
+    """List and download files from Google Drive (GREEN)."""
+    name = "read_from_drive"
+    description = (
+        "List or download files from Google Drive. GREEN — auto. "
+        "List: {\"action\": \"list\", \"folder_name\": \"Reports\", \"query\": \"invoice\"}. "
+        "Download: {\"action\": \"download\", \"file_id\": \"...\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str):
+        from core.tools.document.read_from_drive import ReadFromDriveTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "action":      {"type": "string", "enum": ["list", "download"]},
+                "folder_name": {"type": "string"},
+                "query":       {"type": "string"},
+                "max_results": {"type": "integer"},
+                "file_id":     {"type": "string"},
+                "filename":    {"type": "string"},
+            }},
+        }}
+
+
+class SummarizeDocumentTool(BaseTool):
+    """Summarize a PDF/DOCX/TXT into key points (GREEN)."""
+    name = "summarize_document"
+    description = (
+        "Summarize a PDF, DOCX, or TXT file into key points. GREEN — auto. "
+        "Input JSON: {\"file_path\": \"/tmp/report.pdf\", \"max_points\": 10, \"focus\": \"...(optional)\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.document.summarize_document import SummarizeDocumentTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_path":  {"type": "string"},
+                "max_points": {"type": "integer"},
+                "focus":      {"type": "string"},
+            }, "required": ["file_path"]},
+        }}
+
+
+class ExtractTablesTool(BaseTool):
+    """Extract tables from PDF or DOCX (GREEN)."""
+    name = "extract_tables"
+    description = (
+        "Extract tables from PDF or DOCX files as structured JSON or CSV. GREEN — auto. "
+        "Input JSON: {\"file_path\": \"/tmp/report.pdf\", \"format\": \"json\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.document.extract_tables import ExtractTablesTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_path": {"type": "string"},
+                "format":    {"type": "string", "enum": ["json", "csv"]},
+                "page":      {"type": "integer"},
+            }, "required": ["file_path"]},
+        }}
+
+
+class OcrDocumentTool(BaseTool):
+    """OCR text extraction from scanned PDFs (GREEN)."""
+    name = "ocr_document"
+    description = (
+        "Extract text from scanned PDFs or images using OCR. GREEN — auto. "
+        "Input JSON: {\"file_path\": \"/tmp/scanned.pdf\", \"language\": \"eng\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.document.ocr_document import OcrDocumentTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_path": {"type": "string"},
+                "language":  {"type": "string"},
+                "pages":     {"type": "array", "items": {"type": "integer"}},
+            }, "required": ["file_path"]},
+        }}
+
+
+class CreatePresentationTool(BaseTool):
+    """Generate a PowerPoint slide deck (GREEN)."""
+    name = "create_presentation"
+    description = (
+        "Generate a PowerPoint (.pptx) slide deck. GREEN — auto. "
+        "Input JSON: {\"title\": \"Q3 Review\", \"slides\": [{\"title\": \"Revenue\", "
+        "\"bullets\": [\"Point 1\"]}], \"theme\": \"blue\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.document.create_presentation import CreatePresentationTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "title":    {"type": "string"},
+                "subtitle": {"type": "string"},
+                "author":   {"type": "string"},
+                "theme":    {"type": "string", "enum": ["blue", "green", "dark", "minimal"]},
+                "slides":   {"type": "array", "items": {"type": "object"}},
+            }, "required": ["title", "slides"]},
+        }}
+
+
+class FillTemplateTool(BaseTool):
+    """Fill a Word template with dynamic data (GREEN)."""
+    name = "fill_template"
+    description = (
+        "Fill a .docx template with dynamic data using {{FIELD}} placeholders. GREEN — auto. "
+        "Input JSON: {\"template_path\": \"/tmp/invoice.docx\", "
+        "\"data\": {\"client_name\": \"Arun\", \"amount\": \"₹15000\"}}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.document.fill_template import FillTemplateTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "template_path":   {"type": "string"},
+                "data":            {"type": "object"},
+                "output_filename": {"type": "string"},
+            }, "required": ["template_path", "data"]},
+        }}
+
+
+class MergePdfsTool(BaseTool):
+    """Merge multiple PDFs into one (GREEN)."""
+    name = "merge_pdfs"
+    description = (
+        "Combine multiple PDF files into a single PDF. GREEN — auto. "
+        "Input JSON: {\"file_paths\": [\"/tmp/a.pdf\", \"/tmp/b.pdf\"], \"output_filename\": \"merged.pdf\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.document.merge_pdfs import MergePdfsTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_paths":      {"type": "array", "items": {"type": "string"}},
+                "output_filename": {"type": "string"},
+            }, "required": ["file_paths"]},
+        }}
+
+
+class CompareDocumentsTool(BaseTool):
+    """Compare two document versions and show changes (GREEN)."""
+    name = "compare_documents"
+    description = (
+        "Compare two document versions and return added/removed lines. GREEN — auto. "
+        "Input JSON: {\"file_path_a\": \"/tmp/v1.docx\", \"file_path_b\": \"/tmp/v2.docx\", "
+        "\"mode\": \"summary\"}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.document.compare_documents import CompareDocumentsTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_path_a": {"type": "string"},
+                "file_path_b": {"type": "string"},
+                "mode":        {"type": "string", "enum": ["summary", "full_diff"]},
+            }, "required": ["file_path_a", "file_path_b"]},
+        }}
+
+
+class TranslateDocumentTool(BaseTool):
+    """Translate a document to another language (GREEN)."""
+    name = "translate_document"
+    description = (
+        "Translate a PDF/DOCX/TXT document to another language. GREEN — auto. "
+        "Input JSON: {\"file_path\": \"/tmp/report.pdf\", \"target_lang\": \"ta\"}. "
+        "Language codes: ta=Tamil, hi=Hindi, fr=French, de=German, es=Spanish."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str):
+        from core.tools.document.translate_document import TranslateDocumentTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_path":     {"type": "string"},
+                "target_lang":   {"type": "string"},
+                "source_lang":   {"type": "string"},
+                "output_format": {"type": "string", "enum": ["docx", "txt"]},
+            }, "required": ["file_path", "target_lang"]},
+        }}
+
+
 class GenerateContentTool(BaseTool):
     """Delegate to core GenerateContentTool."""
     name = "generate_content"
@@ -1647,10 +1900,21 @@ _TOOL_REGISTRY: dict = {
     "respond_to_invite":            RespondToInviteTool,
     "block_focus_time":             BlockFocusTimeTool,
     "send_meeting_summary":         SendMeetingSummaryTool,
-    # Document tools
+    # Document tools — read
+    "read_from_drive":          ReadFromDriveTool,
+    "summarize_document":       SummarizeDocumentTool,
+    "extract_tables":           ExtractTablesTool,
+    "ocr_document":             OcrDocumentTool,
+    # Document tools — create
     "generate_content":         GenerateContentTool,
     "create_pdf":               CreatePdfTool,
     "create_docx":              CreateDocxTool,
+    "create_presentation":      CreatePresentationTool,
+    "fill_template":            FillTemplateTool,
+    "merge_pdfs":               MergePdfsTool,
+    # Document tools — analyse
+    "compare_documents":        CompareDocumentsTool,
+    "translate_document":       TranslateDocumentTool,
     "upload_to_drive":          UploadToDriveTool,
     # General
     "web_search":               WebSearchTool,
@@ -1847,9 +2111,18 @@ _TOOL_LABELS = {
     "detect_conflicts":             ("Detecting conflicts",         "Finding overlapping events"),
     "suggest_meeting_time":         ("Suggesting meeting time",     "Finding best slot for all attendees"),
     # Document tools
+    "read_from_drive":          ("Reading from Drive",         "Listing/downloading Drive files"),
+    "summarize_document":       ("Summarising document",       "Extracting key points from file"),
+    "extract_tables":           ("Extracting tables",          "Pulling tables from PDF/DOCX"),
+    "ocr_document":             ("Running OCR",                "Extracting text from scanned PDF"),
     "generate_content":         ("Generating content",         "Writing document content"),
     "create_pdf":               ("Creating PDF",               "Building PDF document"),
     "create_docx":              ("Creating Word document",     "Building .docx file"),
+    "create_presentation":      ("Creating presentation",      "Building PowerPoint slide deck"),
+    "fill_template":            ("Filling template",           "Populating Word template with data"),
+    "merge_pdfs":               ("Merging PDFs",               "Combining PDF files into one"),
+    "compare_documents":        ("Comparing documents",        "Finding differences between versions"),
+    "translate_document":       ("Translating document",       "Converting document to another language"),
     "upload_to_drive":          ("Uploading to Drive",         "Saving file to Google Drive"),
     # General
     "web_search":               ("Searching the web",          "Looking up information online"),

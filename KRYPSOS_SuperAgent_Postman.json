@@ -2119,153 +2119,425 @@
       ]
     },
     {
-      "name": "17 - Calendar Agent Tasks",
-      "description": "Test all Calendar Agent tools.\n\nActivate Calendar Agent first: POST /agents/templates/4/activate/\nThen paste agent_id into the collection variable.\n\nGREEN tools run automatically.\nYELLOW tools (create_meeting, update_event, delete_event, respond_to_invite) need approval:\n  GET /approvals/pending/ → POST /approvals/{id}/decide/",
-      "item": [
+    "name": "18 - Document Agent Tasks",
+    "item": [
         {
-          "name": "📅 List Today's Events",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"What meetings do I have today?\"\n}"
+            "name": "01 - List files in Drive",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Uses read_from_drive (action: list) to browse Google Drive root.\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"List all files in my Google Drive root folder.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "📅 List Events Next 7 Days",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Show me all my meetings for the next 7 days.\"\n}"
+            "name": "02 - Download a file from Drive",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Uses read_from_drive (action: download) to fetch a specific file.\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Download the file named 'Q2_Report.pdf' from my Google Drive.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "🔍 Get Event Details",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Get details of my meeting called 'Q3 Review' — who is attending and is there a Meet link?\"\n}"
+            "name": "03 - Summarise a document",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Uses summarize_document to extract key points and action items.\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Summarise the document at /tmp/Q2_Report.pdf and list the key action items.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "🕐 Find Free Slots Tomorrow",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"What free 1-hour slots do I have tomorrow for a meeting?\"\n}"
+            "name": "04 - Extract tables from PDF",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Uses extract_tables to pull tabular data from a PDF or Word document.\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Extract all tables from /tmp/financial_report.pdf and return them as CSV.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "📅 Create Meeting [YELLOW]",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Schedule a 1-hour meeting tomorrow at 11am with Arun. Title it 'Project Kickoff'.\"\n}"
+            "name": "05 - OCR a scanned PDF",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Uses ocr_document to extract text from a scanned/image PDF.\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Run OCR on the scanned PDF at /tmp/scanned_invoice.pdf and extract all text.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "✏️ Reschedule Meeting [YELLOW]",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Reschedule the 'Project Kickoff' meeting to 3pm tomorrow.\"\n}"
+            "name": "06 - Create a PDF report",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Tests: generate_content → create_pdf (GREEN)\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Write a 3-section PDF report titled 'KRYPSOS Q3 2026 Business Review' covering Sales Performance, Customer Growth, and Outlook.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "🗑️ Cancel Meeting [YELLOW]",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Cancel the 'Project Kickoff' meeting and let all attendees know it's been cancelled.\"\n}"
+            "name": "07 - Create a Word document",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Tests: generate_content → create_docx (GREEN)\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a Word document proposal for a new SaaS product feature: AI-powered invoice matching. Include Executive Summary, Problem Statement, and Proposed Solution sections.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "✅ Accept Meeting Invite [YELLOW]",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Accept the invite for 'Q3 Review' meeting.\"\n}"
+            "name": "08 - Create a PowerPoint presentation",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Tests: generate_content → create_presentation (GREEN)\nTheme options: blue, green, dark, minimal\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a 5-slide PowerPoint presentation titled 'KRYPSOS Super Agent Platform' with a dark theme. Cover: Introduction, Key Features, Architecture, Use Cases, and Next Steps.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "🔔 Set Reminder on Event",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Set a reminder 30 minutes before the 'Project Kickoff' meeting via email, and a popup 10 minutes before.\"\n}"
+            "name": "09 - Fill a Word template",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Tests: fill_template with {{FIELD}} placeholders (GREEN)\nTemplate must already exist at the given path\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Fill the invoice template at /tmp/invoice_template.docx with: client_name=Arun Kumar, invoice_number=INV-2026-042, amount=\\u20b925000, due_date=2026-07-31, company_name=KRYPSOS Tech. Save as Invoice_Arun_Kumar.docx.\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "🔔 Create Standalone Reminder",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a reminder for me tomorrow at 9am to follow up with Arun about the invoice.\"\n}"
+            "name": "10 - Merge PDFs",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Tests: merge_pdfs combining multiple PDFs into one (GREEN)\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Merge the following PDFs into a single document called 'Combined_Report.pdf': /tmp/report_part1.pdf, /tmp/report_part2.pdf, /tmp/appendix.pdf\"\n}"
+                }
             }
-          }
         },
         {
-          "name": "📅 Full Flow: Find Slot + Create Meeting",
-          "request": {
-            "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
-            "url": {"raw": "{{base_url}}/tasks/create/", "host": ["{{base_url}}"], "path": ["tasks", "create", ""]},
-            "auth": {"type": "bearer", "bearer": [{"key": "token", "value": "{{token}}"}]},
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Find a free 1-hour slot for me and Arun tomorrow afternoon, then schedule a meeting called 'Invoice Discussion' at the best available time.\"\n}"
+            "name": "11 - Compare two document versions",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Tests: compare_documents — diff two file versions (GREEN)\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Compare /tmp/contract_v1.docx and /tmp/contract_v2.docx. Show what was added or removed and the similarity score.\"\n}"
+                }
             }
-          }
+        },
+        {
+            "name": "12 - Translate a document to Tamil",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Tests: translate_document — convert PDF/DOCX to another language (GREEN)\nSupported codes: ta=Tamil, hi=Hindi, fr=French, de=German, es=Spanish, ar=Arabic\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Translate the document at /tmp/product_brochure.pdf to Tamil and save it as a Word file.\"\n}"
+                }
+            }
+        },
+        {
+            "name": "13 - Full flow: create report + upload to Drive [YELLOW]",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    },
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{access_token}}"
+                    }
+                ],
+                "url": {
+                    "raw": "{{base_url}}/tasks/create/",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "tasks",
+                        "create",
+                        ""
+                    ]
+                },
+                "description": "Full flow: generate_content → create_pdf → upload_to_drive [YELLOW]\nTask will pause at waiting_approval before Drive upload.\nApprove via POST /api/v1/tasks/{task_id}/approve/{approval_id}/\nAgent: Document Agent",
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a PDF report on 'AI Trends in 2026' covering: LLM Advances, Agentic AI, Multimodal Systems, and Enterprise Adoption. Upload it to Google Drive in a folder called 'Research Reports'.\"\n}"
+                }
+            }
         }
-      ]
-    }
+    ]
+}
   ]
 }
