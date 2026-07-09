@@ -18,7 +18,11 @@ def _get_workspace(request):
 @permission_classes([IsAuthenticated])
 def agent_list(request):
     workspace = _get_workspace(request)
-    agents = Agent.objects.filter(workspace=workspace, is_active=True)
+    agents = Agent.objects.filter(
+        workspace=workspace,
+        is_active=True,
+        created_by=request.user,
+    ).order_by("created_at")
     return Response(AgentSerializer(agents, many=True).data)
 
 
@@ -837,32 +841,47 @@ def agent_templates(request):
     """
     GET /api/v1/agents/templates/
     Returns all ready-made agent templates.
+
+    Query params:
+      ?my_agents=true  — return only templates the user has activated (their agents)
     """
     workspace = _get_workspace(request)
-    existing_slugs = set()
+
+    # Map agent_type → activated Agent instance for this user
+    activated_map = {}
     if workspace:
-        existing_slugs = set(
-            Agent.objects.filter(workspace=workspace, is_active=True)
-            .values_list("agent_type", flat=True)
-        )
+        for agent in Agent.objects.filter(
+            workspace=workspace,
+            is_active=True,
+            created_by=request.user,
+        ).exclude(template_id=None):
+            activated_map[agent.agent_type] = agent
+
+    my_agents_only = request.query_params.get("my_agents", "").lower() == "true"
 
     result = []
     for t in _AGENT_TEMPLATES:
-        already_added = t["agent_type"] in existing_slugs
+        activated_agent = activated_map.get(t["agent_type"])
+        already_added   = activated_agent is not None
+
+        if my_agents_only and not already_added:
+            continue
+
         result.append({
-            "id":            t["id"],
-            "slug":          t["slug"],
-            "name":          t["name"],
-            "agent_type":    t["agent_type"],
-            "description":   t["description"],
-            "icon":          t["icon"],
-            "icon_bg":       t["icon_bg"],
-            "border_color":  t["border_color"],
-            "badge":         t["badge"],
-            "badge_color":   t["badge_color"],
-            "tools":         [_tool_card(tn) for tn in t["tools"]],
-            "llm_model":     t["llm_model"],
-            "already_added": already_added,
+            "id":                 t["id"],
+            "slug":               t["slug"],
+            "name":               t["name"],
+            "agent_type":         t["agent_type"],
+            "description":        t["description"],
+            "icon":               t["icon"],
+            "icon_bg":            t["icon_bg"],
+            "border_color":       t["border_color"],
+            "badge":              t["badge"],
+            "badge_color":        t["badge_color"],
+            "tools":              [_tool_card(tn) for tn in t["tools"]],
+            "llm_model":          t["llm_model"],
+            "already_added":      already_added,
+            "agent_id":           str(activated_agent.id) if activated_agent else None,
         })
     return Response(result)
 
