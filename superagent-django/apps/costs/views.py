@@ -30,31 +30,167 @@ def _get_workspace(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def cost_summary(request):
+    from apps.tasks.models import Task
+    from django.db.models import Count
+
     workspace = _get_workspace(request)
-    today = timezone.now().date()
+    today     = timezone.now().date()
     month_start = today.replace(day=1)
 
+    # Last month range (for avg comparison)
+    last_month_end   = month_start - datetime.timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+
+    # ── Monthly totals ────────────────────────────────────────────────────────
     monthly = DailyCost.objects.filter(
         workspace=workspace, date__gte=month_start
-    ).aggregate(
-        total_cost=Sum("total_cost_usd"),
-        total_tokens=Sum("total_tokens"),
-        total_tasks=Sum("task_count"),
-    )
-    daily_today = DailyCost.objects.filter(workspace=workspace, date=today).first()
-    budget = Budget.objects.filter(workspace=workspace).first()
+    ).aggregate(total_cost=Sum("total_cost_usd"), total_tasks=Sum("task_count"))
+    monthly_cost_eur = _to_eur(monthly["total_cost"])
+    monthly_tasks    = monthly["total_tasks"] or 0
 
+    # ── Last month totals ─────────────────────────────────────────────────────
+    last_month = DailyCost.objects.filter(
+        workspace=workspace,
+        date__gte=last_month_start,
+        date__lte=last_month_end,
+    ).aggregate(total_cost=Sum("total_cost_usd"), total_tasks=Sum("task_count"))
+    last_month_cost_eur = _to_eur(last_month["total_cost"])
+    last_month_tasks    = last_month["total_tasks"] or 0
+
+    # ── Today ─────────────────────────────────────────────────────────────────
+    daily_today    = DailyCost.objects.filter(workspace=workspace, date=today).first()
+    today_cost_eur = _to_eur(daily_today.total_cost_usd if daily_today else 0)
+    today_tasks    = daily_today.task_count if daily_today else 0
+
+    # ── Budget ────────────────────────────────────────────────────────────────
+    budget    = Budget.objects.filter(workspace=workspace).first()
+    limit_eur = round(float(budget.limit_usd) * _USD_TO_EUR, 2) if budget else None
+
+    # ── Avg per task + month-over-month change ────────────────────────────────
+    avg_this = round(monthly_cost_eur / monthly_tasks, 4) if monthly_tasks else 0.0
+    avg_last = round(last_month_cost_eur / last_month_tasks, 4) if last_month_tasks else 0.0
+    if avg_last:
+        change_pct = round((avg_this - avg_last) / avg_last * 100, 1)
+    else:
+        change_pct = 0.0
+    change_direction = "up" if change_pct > 0 else ("down" if change_pct < 0 else "flat")
+    if change_pct != 0:
+        change_label = "%s %.1f%% vs last month" % ("↑" if change_pct > 0 else "↓", abs(change_pct))
+    else:
+        change_label = "— same as last month"
+
+    # ── Budget percentages ────────────────────────────────────────────────────
+    if limit_eur:
+        pct_used      = round(monthly_cost_eur / limit_eur * 100, 1)
+        pct_remaining = round(100 - pct_used, 1)
+        remaining_eur = round(limit_eur - monthly_cost_eur, 2)
+    else:
+        pct_used = pct_remaining = remaining_eur = None
+
+    # ── This week (Mon–Sun) ───────────────────────────────────────────────────
+    week_start = today - datetime.timedelta(days=today.weekday())   # Monday
+    week_end   = week_start + datetime.timedelta(days=6)            # Sunday
+
+    week_costs = {
+        dc.date: dc.total_cost_usd
+        for dc in DailyCost.objects.filter(
+            workspace=workspace, date__gte=week_start, date__lte=week_end
+        )
+    }
+    _DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    week_days      = []
+    week_total_eur = 0.0
+    for i in range(7):
+        d    = week_start + datetime.timedelta(days=i)
+        cost = _to_eur(week_costs.get(d, 0))
+        week_total_eur += cost
+        week_days.append({
+            "date":      d.isoformat(),
+            "day_label": _DAY_LABELS[i],
+            "cost_eur":  cost,
+            "cost_label": "€%.2f" % cost,
+            "is_today":  d == today,
+        })
+    week_total_eur = round(week_total_eur, 2)
+
+    # ── By agent (this month, all task statuses with a cost) ─────────────────
+    _AGENT_ICONS = {
+        "email": "mail", "calendar": "calendar", "document": "file-text",
+        "research": "search", "finance": "wallet", "reporting": "bar-chart",
+        "compliance": "shield", "qa": "check-square", "orchestrator": "git-branch",
+        "custom": "cpu",
+    }
+    agent_rows = (
+        Task.objects.filter(workspace=workspace, created_at__date__gte=month_start)
+        .exclude(cost_usd=None)
+        .values("agent__id", "agent__name", "agent__agent_type")
+        .annotate(total_cost_usd=Sum("cost_usd"), task_count=Count("id"))
+        .order_by("-total_cost_usd")
+    )
+    denom = monthly_cost_eur or 1
+    by_agent = []
+    for row in agent_rows:
+        cost_eur   = _to_eur(row["total_cost_usd"])
+        pct        = round(cost_eur / denom * 100, 1)
+        agent_type = row["agent__agent_type"] or "custom"
+        n          = row["task_count"]
+        by_agent.append({
+            "agent_id":     str(row["agent__id"]) if row["agent__id"] else None,
+            "name":         row["agent__name"] or "Unknown",
+            "agent_type":   agent_type,
+            "icon":         _AGENT_ICONS.get(agent_type, "cpu"),
+            "cost_eur":     cost_eur,
+            "cost_label":   "€%.2f" % cost_eur,
+            "task_count":   n,
+            "pct_of_total": pct,
+            "task_label":   "%d task%s · %s%% of total" % (n, "s" if n != 1 else "", pct),
+        })
+
+    # ── Response ──────────────────────────────────────────────────────────────
     return Response({
-        "monthly": {
-            "total_cost_eur": _to_eur(monthly["total_cost"]),
-            "total_tokens": monthly["total_tokens"] or 0,
-            "total_tasks": monthly["total_tasks"] or 0,
+        "header": {
+            "this_month": {
+                "cost_eur":    monthly_cost_eur,
+                "cost_label":  "€%.2f" % monthly_cost_eur,
+                "tasks":       monthly_tasks,
+                "tasks_label": "%d task%s run" % (monthly_tasks, "s" if monthly_tasks != 1 else ""),
+            },
+            "budget": {
+                "limit_eur":       limit_eur,
+                "limit_label":     "€%.2f" % limit_eur if limit_eur else None,
+                "pct_remaining":   pct_remaining,
+                "remaining_label": "%s%% remaining" % pct_remaining if pct_remaining is not None else None,
+            } if budget else None,
+            "avg_per_task": {
+                "cost_eur":         avg_this,
+                "cost_label":       "€%.3f" % avg_this,
+                "change_pct":       change_pct,
+                "change_label":     change_label,
+                "change_direction": change_direction,
+            },
+            "today": {
+                "cost_eur":    today_cost_eur,
+                "cost_label":  "€%.2f" % today_cost_eur,
+                "tasks":       today_tasks,
+                "tasks_label": "%d task%s run" % (today_tasks, "s" if today_tasks != 1 else ""),
+            },
         },
-        "today": {
-            "total_cost_eur": _to_eur(daily_today.total_cost_usd if daily_today else 0),
-            "total_tokens": daily_today.total_tokens if daily_today else 0,
+        "monthly_budget": {
+            "spent_eur":      monthly_cost_eur,
+            "limit_eur":      limit_eur,
+            "pct_used":       pct_used,
+            "pct_remaining":  pct_remaining,
+            "remaining_eur":  remaining_eur,
+            "spent_label":    ("€%.2f of €%.2f" % (monthly_cost_eur, limit_eur)) if limit_eur else ("€%.2f" % monthly_cost_eur),
+            "pct_used_label": "%s%% used" % pct_used if pct_used is not None else None,
+            "remaining_label": "€%.2f remaining" % remaining_eur if remaining_eur is not None else None,
         },
-        "budget": BudgetSerializer(budget).data if budget else None,
+        "by_agent": by_agent,
+        "this_week": {
+            "total_eur":   week_total_eur,
+            "total_label": "€%.2f total" % week_total_eur,
+            "days":        week_days,
+        },
     })
 
 
