@@ -107,35 +107,73 @@ _DEFAULT_DISPLAY = ("AI agent", "cpu", "#1E3A5F", "#3B82F6")
 # Tool display registry — maps tool_name → (label, icon, risk_level)
 # ---------------------------------------------------------------------------
 _TOOL_DISPLAY = {
-    "read_email":     ("Gmail Read",    "mail",         "safe"),
-    "send_email":     ("Gmail Send",    "send",         "high"),
-    "create_draft":   ("Create Draft",  "edit-3",       "safe"),
-    "classify_text":  ("Classify Text", "tag",          "safe"),
-    "web_search":     ("Web Search",    "search",       "safe"),
-    "file_read":      ("File Read",     "file",         "safe"),
-    "file_write":     ("File Write",    "file-plus",    "medium"),
-    "browse_web":     ("Browse Web",    "globe",        "safe"),
-    "cal_read":       ("Calendar Read", "calendar",     "safe"),
-    "cal_write":      ("Calendar Write","calendar",     "medium"),
-    "delete_file":    ("Delete File",   "trash-2",      "high"),
-    "export_csv":     ("Export CSV",    "download",     "safe"),
-    "upload_to_drive":("Drive Upload",  "upload-cloud", "safe"),
-    "generate_report":("Generate Report","file-text",   "safe"),
-    # Document tools — read
-    "read_from_drive":     ("Drive Read",       "folder-open", "safe"),
-    "summarize_document":  ("Summarise Doc",    "file-text",   "safe"),
-    "extract_tables":      ("Extract Tables",   "grid",        "safe"),
-    "ocr_document":        ("OCR Scan",         "eye",         "safe"),
-    # Document tools — create
-    "generate_content":    ("Generate Content", "cpu",         "safe"),
-    "create_pdf":          ("Create PDF",       "file",        "safe"),
-    "create_docx":         ("Create Word Doc",  "file-text",   "safe"),
-    "create_presentation": ("Create PPTX",      "monitor",     "safe"),
-    "fill_template":       ("Fill Template",    "edit-3",      "safe"),
-    "merge_pdfs":          ("Merge PDFs",       "layers",      "safe"),
-    # Document tools — analyse
-    "compare_documents":   ("Compare Docs",     "git-diff",    "safe"),
-    "translate_document":  ("Translate Doc",    "globe",       "safe"),
+    # ── Email — read ──────────────────────────────────────────────────────────
+    "read_email":               ("Gmail Read",         "mail",              "safe"),
+    "summarize_emails":         ("Summarise Emails",   "align-left",        "safe"),
+    "download_attachment":      ("Download File",       "download",          "safe"),
+    "read_attachment_content":  ("Read Attachment",    "file-text",         "safe"),
+    "extract_data_from_attachment": ("Extract Data",   "layers",            "safe"),
+    # ── Email — inbox management ──────────────────────────────────────────────
+    "mark_as_read":             ("Mark as Read",       "check-circle",      "safe"),
+    "label_email":              ("Label Email",        "tag",               "safe"),
+    "move_to_folder":           ("Move to Folder",     "folder",            "safe"),
+    "delete_email":             ("Delete Email",       "trash-2",           "high"),
+    # ── Email — compose ───────────────────────────────────────────────────────
+    "create_draft":             ("Create Draft",       "edit-3",            "safe"),
+    "create_gmail_draft":       ("Gmail Draft",        "edit-3",            "safe"),
+    "reply_to_email":           ("Reply Email",        "corner-down-left",  "high"),
+    "forward_email":            ("Forward Email",      "corner-up-right",   "high"),
+    "schedule_email":           ("Schedule Send",      "clock",             "high"),
+    "send_email":               ("Gmail Send",         "send",              "high"),
+    # ── Email — intelligence ──────────────────────────────────────────────────
+    "extract_invoice_data":     ("Extract Invoice",    "file-plus",         "safe"),
+    "detect_follow_up_needed":  ("Detect Follow-ups",  "bell",              "safe"),
+    # ── Shared — customer memory ──────────────────────────────────────────────
+    "list_customer_profiles":   ("Customer Profiles",  "users",             "safe"),
+    "search_customer_by_email": ("Find Customer",      "user",              "safe"),
+    # ── Calendar — read ───────────────────────────────────────────────────────
+    "list_events":              ("List Events",        "calendar",          "safe"),
+    "get_event":                ("View Event",         "calendar",          "safe"),
+    "find_free_slots":          ("Find Free Slots",    "clock",             "safe"),
+    "set_reminder":             ("Set Reminder",       "bell",              "safe"),
+    "check_attendee_availability": ("Check Availability", "user-check",     "safe"),
+    "detect_conflicts":         ("Detect Conflicts",   "alert-triangle",    "safe"),
+    "suggest_meeting_time":     ("Suggest Time",       "clock",             "safe"),
+    # ── Calendar — write ──────────────────────────────────────────────────────
+    "create_meeting":           ("Create Meeting",     "calendar-plus",     "high"),
+    "create_recurring_event":   ("Recurring Event",    "repeat",            "high"),
+    "update_event":             ("Update Event",       "edit-3",            "high"),
+    "delete_event":             ("Delete Event",       "trash-2",           "high"),
+    "respond_to_invite":        ("RSVP",               "check-circle",      "high"),
+    "block_focus_time":         ("Block Focus Time",   "shield",            "high"),
+    "send_meeting_summary":     ("Meeting Summary",    "send",              "high"),
+    # ── Generic ───────────────────────────────────────────────────────────────
+    "classify_text":            ("Classify Text",      "tag",               "safe"),
+    "web_search":               ("Web Search",         "search",            "safe"),
+    "file_read":                ("File Read",          "file",              "safe"),
+    "file_write":               ("File Write",         "file-plus",         "medium"),
+    "browse_web":               ("Browse Web",         "globe",             "safe"),
+    "cal_read":                 ("Calendar Read",      "calendar",          "safe"),
+    "cal_write":                ("Calendar Write",     "calendar",          "medium"),
+    "delete_file":              ("Delete File",        "trash-2",           "high"),
+    "export_csv":               ("Export CSV",         "download",          "safe"),
+    "upload_to_drive":          ("Drive Upload",       "upload-cloud",      "safe"),
+    "generate_report":          ("Generate Report",    "file-text",         "safe"),
+    # ── Document — read ───────────────────────────────────────────────────────
+    "read_from_drive":          ("Drive Read",         "folder-open",       "safe"),
+    "summarize_document":       ("Summarise Doc",      "file-text",         "safe"),
+    "extract_tables":           ("Extract Tables",     "grid",              "safe"),
+    "ocr_document":             ("OCR Scan",           "eye",               "safe"),
+    # ── Document — create ─────────────────────────────────────────────────────
+    "generate_content":         ("Generate Content",   "cpu",               "safe"),
+    "create_pdf":               ("Create PDF",         "file",              "safe"),
+    "create_docx":              ("Create Word Doc",    "file-text",         "safe"),
+    "create_presentation":      ("Create PPTX",        "monitor",           "safe"),
+    "fill_template":            ("Fill Template",      "edit-3",            "safe"),
+    "merge_pdfs":               ("Merge PDFs",         "layers",            "safe"),
+    # ── Document — analyse ────────────────────────────────────────────────────
+    "compare_documents":        ("Compare Docs",       "git-diff",          "safe"),
+    "translate_document":       ("Translate Doc",      "globe",             "safe"),
 }
 _TOOL_DEFAULT = ("Tool",        "zap",    "safe")
 
