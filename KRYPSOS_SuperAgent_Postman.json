@@ -636,7 +636,7 @@
           }
         },
         {
-          "name": "Update Email Draft (PATCH)",
+          "name": "Edit Email Before Approving (PATCH draft)",
           "request": {
             "method": "PATCH",
             "header": [
@@ -657,29 +657,33 @@
                 ""
               ]
             },
-            "description": "PATCH /api/v1/tasks/<task_id>/draft/\n\nUpdate an email draft that was created by the AI agent.\nUse multipart/form-data to send text fields + file attachments.\n\nForm fields:\n  to       — recipient email (optional, keeps original if not sent)\n  subject  — email subject (optional)\n  body     — updated email body text (optional, keeps AI draft if not sent)\n  files    — one or more files: PDF, JPG, PNG, DOCX, etc.\n\nResponse:\n  draft_id      — Gmail draft ID\n  to            — recipient\n  subject       — subject line\n  body_preview  — first 200 chars of body\n  attachments   — list of attached filenames\n  gmail_url     — direct link to draft in Gmail\n  updated       — true\n\nNotes:\n  - Task must have created a Gmail draft (via create_gmail_draft tool)\n  - Draft is updated in Gmail, not sent — use send_email to send\n  - Supports uploading photos from phone camera, PDFs, Word docs",
+            "description": "PATCH /api/v1/tasks/<task_id>/draft/\n\nEdit the email content and/or add attachments BEFORE approving a YELLOW send_email action.\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTHE FLOW (main use-case):\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n1. Create task: POST /tasks/create/\n   body: { \"prompt\": \"send email to hari@gmail.com saying this is testing\" }\n\n2. Agent prepares the email → task pauses (status: waiting_approval)\n\n3. BEFORE approving → call this PATCH to edit content + add attachments\n   Send multipart/form-data with any of:\n     to       — change recipient\n     subject  — change subject\n     body     — change email body\n     files    — attach PDF, JPG, PNG, DOCX from your device\n\n4. Approve: POST /approvals/{{approval_id}}/decide/\n   body: { \"decision\": \"approved\" }\n\n5. Email sends with YOUR edited content + attachments. Done!\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nRESPONSE (approval mode):\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n{\n  \"mode\":         \"approval\",\n  \"approval_id\":  \"<uuid>\",\n  \"to\":           \"hari@gmail.com\",\n  \"subject\":      \"Test\",\n  \"body_preview\": \"This is testing...\",\n  \"attachments\":  [\"invoice.pdf\"],\n  \"updated\":      true,\n  \"next_step\":    \"Approve the task to send the email with your changes.\"\n}\n\nIf task used create_gmail_draft tool instead → updates the Gmail draft directly (mode: gmail_draft).\n\nAll fields are optional — only send what you want to change.",
             "body": {
               "mode": "formdata",
               "formdata": [
                 {
                   "key": "to",
                   "value": "hari@gmail.com",
-                  "type": "text"
+                  "type": "text",
+                  "description": "Change recipient (optional)"
                 },
                 {
                   "key": "subject",
-                  "value": "Re: Invoice #1042",
-                  "type": "text"
+                  "value": "Test Email",
+                  "type": "text",
+                  "description": "Change subject (optional)"
                 },
                 {
                   "key": "body",
-                  "value": "Hi Hari,\n\nThank you for sending the invoice. I have reviewed it and everything looks correct.\n\nBest regards,\nDeepak",
-                  "type": "text"
+                  "value": "Hi Hari,\n\nThis is a test email from the Super Agent Platform.\n\nBest,\nDeepak",
+                  "type": "text",
+                  "description": "Change email body (optional)"
                 },
                 {
                   "key": "files",
                   "type": "file",
-                  "src": []
+                  "src": [],
+                  "description": "Attach files: PDF, JPG, PNG, DOCX (optional, supports multiple)"
                 }
               ]
             }
@@ -2160,7 +2164,7 @@
           }
         },
         {
-          "name": "✏️ Update AI Draft + Add Attachment",
+          "name": "✏️ Edit Email Before Approve + Add Attachment",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2181,19 +2185,30 @@
                 ""
               ]
             },
-            "description": "After the AI creates an email draft, use this to:\n  1. Edit the email body text\n  2. Change the recipient or subject\n  3. Attach files from your phone (PDF, photo, Word doc)\n\nSend as multipart/form-data.\nUse {{task_id}} from the task that created the draft.",
+            "description": "Edit email content + attach files BEFORE approving a send_email action.\n\nFLOW:\n1. POST /tasks/create/ → prompt: 'send email to hari@gmail.com saying testing'\n2. Task pauses → status: waiting_approval\n3. Call this PATCH to change body/subject/to and/or upload files\n4. POST /approvals/{{approval_id}}/decide/ → { \"decision\": \"approved\" }\n5. Email sends with your edits + attachments\n\nAll fields optional — send only what you want to change.",
             "body": {
               "mode": "formdata",
               "formdata": [
                 {
                   "key": "body",
-                  "value": "Hi,\n\nPlease find the updated invoice attached.\n\nBest regards",
+                  "value": "Hi,\n\nPlease find the updated invoice attached.\n\nBest regards,\nDeepak",
+                  "type": "text"
+                },
+                {
+                  "key": "to",
+                  "value": "hari@gmail.com",
+                  "type": "text"
+                },
+                {
+                  "key": "subject",
+                  "value": "Invoice Attached",
                   "type": "text"
                 },
                 {
                   "key": "files",
                   "type": "file",
-                  "src": []
+                  "src": [],
+                  "description": "PDF, JPG, PNG, DOCX — supports multiple files"
                 }
               ]
             }

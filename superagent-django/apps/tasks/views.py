@@ -165,24 +165,48 @@ def task_draft_update(request, pk):
     """
     PATCH /api/v1/tasks/<task_id>/draft/
 
-    Update an email draft that was created by the AI.
-    Accepts updated text fields AND file attachments (PDF, image, doc).
+    Edit the email content and/or add attachments BEFORE the user approves
+    a YELLOW (send_email) action.  Works in two modes:
 
-    Form fields (multipart):
-        to         — recipient email (optional, keeps original if not provided)
-        subject    — email subject (optional)
-        body       — updated email body text (optional)
-        files      — one or more files to attach (PDF, JPG, PNG, DOCX, etc.)
+    ─────────────────────────────────────────────────────────────────────────
+    MODE A — Pending approval (the main use-case)
+    ─────────────────────────────────────────────────────────────────────────
+    When the task is sitting at WAITING_APPROVAL because the agent wants to
+    send an email, this endpoint updates the Approval record's tool_input
+    so that when the user hits APPROVE the email goes out with the edited
+    content + uploaded attachments.
+
+    Flow:
+        1. User creates task: "send email to hari@gmail.com saying this is testing"
+        2. Agent prepares the email → YELLOW → task pauses (waiting_approval)
+        3. User calls PATCH /tasks/<task_id>/draft/ — edits body/subject/to, adds files
+        4. User approves via POST /approvals/<approval_id>/approve/
+        5. Email sends with the edited content + attachments
+
+    ─────────────────────────────────────────────────────────────────────────
+    MODE B — Gmail draft fallback
+    ─────────────────────────────────────────────────────────────────────────
+    If the task used create_gmail_draft to build a draft first, the endpoint
+    updates that Gmail draft in-place (original behaviour).
+
+    ─────────────────────────────────────────────────────────────────────────
+    Request (multipart/form-data or JSON):
+        to         — recipient email  (optional)
+        subject    — email subject    (optional)
+        body       — email body text  (optional)
+        files      — one or more file attachments (PDF, JPG, PNG, DOCX, …)
 
     Response:
         {
-            "draft_id":        "r1234567890",
-            "to":              "hari@gmail.com",
-            "subject":         "Re: Invoice",
-            "body_preview":    "Hi Hari, thank you for...",
-            "attachments":     ["invoice.pdf", "photo.jpg"],
-            "gmail_url":       "https://mail.google.com/mail/#drafts/r123...",
-            "updated":         true
+            "mode":          "approval" | "gmail_draft",
+            "approval_id":   "<uuid>",           // only in approval mode
+            "draft_id":      "r123…",            // only in gmail_draft mode
+            "to":            "hari@gmail.com",
+            "subject":       "Test",
+            "body_preview":  "This is testing…",
+            "attachments":   ["invoice.pdf"],
+            "updated":       true,
+            "next_step":     "Approve the task to send the email."
         }
     """
     import base64
@@ -191,51 +215,166 @@ def task_draft_update(request, pk):
     from email.mime.text import MIMEText
     from email.mime.base import MIMEBase
     from email import encoders
+    from django.conf import settings as django_settings
 
     workspace = _get_workspace(request)
     task = get_object_or_404(Task, id=pk, workspace=workspace)
 
-    # Extract draft_id from task result
-    draft_id = None
+    # ── incoming fields ───────────────────────────────────────────────────
+    new_to      = (request.data.get("to") or "").strip()
+    new_subject = (request.data.get("subject") or "").strip()
+    new_body    = (request.data.get("body") or "").strip()
+    uploaded    = request.FILES.getlist("files")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # MODE A — pending send_email approval
+    # ══════════════════════════════════════════════════════════════════════
     try:
-        result_data = json.loads(task.result) if task.result else {}
-        # Result may be a list of step outputs or a direct dict
-        if isinstance(result_data, list):
-            for item in result_data:
-                if isinstance(item, dict) and item.get("draft_id"):
-                    draft_id = item["draft_id"]
-                    original_to      = item.get("to", "")
-                    original_subject = item.get("subject", "")
-                    break
-        elif isinstance(result_data, dict):
-            draft_id         = result_data.get("draft_id")
-            original_to      = result_data.get("to", "")
-            original_subject = result_data.get("subject", "")
+        from apps.approvals.models import Approval
+
+        # Email tools that go through YELLOW approval
+        EMAIL_SEND_TOOLS = [
+            "send_email",
+            "reply_email",
+            "reply_to_email",
+            "forward_email",
+        ]
+
+        pending_approval = (
+            Approval.objects
+            .filter(
+                task=task,
+                tool_name__in=EMAIL_SEND_TOOLS,
+                status=Approval.Status.PENDING,
+            )
+            .order_by("-created_at")
+            .first()
+        )
     except Exception:
-        pass
+        pending_approval = None
+
+    if pending_approval:
+        tool_input = dict(pending_approval.tool_input or {})
+
+        # Update text fields — keep originals when caller doesn't supply them
+        if new_to:
+            tool_input["to"] = new_to
+        if new_subject:
+            tool_input["subject"] = new_subject
+        if new_body:
+            tool_input["body"] = new_body
+
+        # ── Save uploaded files to a stable per-task directory ────────────
+        attachment_names = [a.get("filename", "") for a in tool_input.get("attachment_paths", [])]
+
+        if uploaded:
+            # Store under MEDIA_ROOT/task_attachments/<task_id>/
+            base_dir = os.path.join(
+                getattr(django_settings, "MEDIA_ROOT", "/tmp"),
+                "task_attachments",
+                str(task.id),
+            )
+            os.makedirs(base_dir, exist_ok=True)
+
+            existing_paths = tool_input.get("attachment_paths", [])
+            for f in uploaded:
+                safe_name = os.path.basename(f.name)
+                dest_path = os.path.join(base_dir, safe_name)
+                with open(dest_path, "wb") as fh:
+                    for chunk in f.chunks():
+                        fh.write(chunk)
+                existing_paths.append({"path": dest_path, "filename": safe_name})
+                attachment_names.append(safe_name)
+
+            tool_input["attachment_paths"] = existing_paths
+
+        pending_approval.tool_input = tool_input
+        pending_approval.save(update_fields=["tool_input"])
+
+        return Response({
+            "mode":         "approval",
+            "approval_id":  str(pending_approval.id),
+            "to":           tool_input.get("to", ""),
+            "subject":      tool_input.get("subject", ""),
+            "body_preview": (tool_input.get("body") or "")[:200],
+            "attachments":  attachment_names,
+            "updated":      True,
+            "next_step":    "Approve the task to send the email with your changes.",
+        })
+
+    # ══════════════════════════════════════════════════════════════════════
+    # MODE B — Gmail draft update (task used create_gmail_draft earlier)
+    # ══════════════════════════════════════════════════════════════════════
+    draft_id         = None
+    original_to      = ""
+    original_subject = ""
+
+    # Search TaskSteps for a create_gmail_draft result
+    for tool_name_filter in (
+        ["create_gmail_draft"],
+        ["create_draft", "schedule_email"],
+    ):
+        step = (
+            task.steps
+            .filter(tool_name__in=tool_name_filter)
+            .order_by("-created_at")
+            .first()
+        )
+        if step and step.tool_output:
+            try:
+                out = step.tool_output
+                if isinstance(out, str):
+                    out = json.loads(out)
+                draft_id         = out.get("draft_id")
+                original_to      = out.get("to", "")
+                original_subject = out.get("subject", "")
+                if draft_id:
+                    break
+            except Exception:
+                pass
+
+    # Fall back to task.result
+    if not draft_id and task.result:
+        try:
+            result_data = json.loads(task.result)
+            if isinstance(result_data, dict):
+                draft_id         = result_data.get("draft_id")
+                original_to      = result_data.get("to", "")
+                original_subject = result_data.get("subject", "")
+        except Exception:
+            pass
 
     if not draft_id:
         return Response(
-            {"detail": "No email draft found in this task. Make sure the task created a draft first."},
+            {
+                "detail": (
+                    "No pending email approval or Gmail draft found for this task. "
+                    "The task must be in WAITING_APPROVAL state (agent preparing to send email) "
+                    "or have used create_gmail_draft tool."
+                ),
+                "hint": (
+                    "Create a task like 'send email to X saying Y' — "
+                    "once the agent pauses for approval, call this endpoint to edit before approving."
+                ),
+            },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Get updated fields (fall back to originals if not provided)
-    to      = request.data.get("to", original_to).strip()
-    subject = request.data.get("subject", original_subject).strip()
-    body    = request.data.get("body", "").strip()
-    files   = request.FILES.getlist("files")  # multiple file uploads
+    # ── Build updated Gmail draft ─────────────────────────────────────────
+    to      = new_to      or original_to
+    subject = new_subject or original_subject
 
     try:
         from core.tools.gmail.auth import GmailAuth
         service = GmailAuth().build_service("default")
 
-        # Fetch existing draft to get current body if not provided
+        # Fetch existing draft body if caller didn't provide new body
+        body = new_body
         if not body:
             existing = service.users().drafts().get(
                 userId="me", id=draft_id, format="full"
             ).execute()
-            msg = existing.get("message", {})
+            msg     = existing.get("message", {})
             payload = msg.get("payload", {})
             for part in payload.get("parts", [payload]):
                 if part.get("mimeType") == "text/plain":
@@ -243,48 +382,46 @@ def task_draft_update(request, pk):
                     body = base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="ignore")
                     break
 
-        # Build new MIME message
-        if files:
+        # Build MIME message
+        attachment_names = []
+        if uploaded:
             mime_msg = MIMEMultipart()
             mime_msg["to"]      = to
             mime_msg["subject"] = subject
             mime_msg.attach(MIMEText(body, "plain"))
-
-            attachment_names = []
-            for f in files:
+            for f in uploaded:
                 part = MIMEBase("application", "octet-stream")
                 part.set_payload(f.read())
                 encoders.encode_base64(part)
-                filename = f.name
-                part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
+                part.add_header("Content-Disposition", f'attachment; filename="{f.name}"')
                 mime_msg.attach(part)
-                attachment_names.append(filename)
+                attachment_names.append(f.name)
         else:
             mime_msg = MIMEText(body, "plain")
             mime_msg["to"]      = to
             mime_msg["subject"] = subject
-            attachment_names    = []
 
         raw = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
 
-        # Update the existing draft
-        result = service.users().drafts().update(
+        updated = service.users().drafts().update(
             userId="me",
             id=draft_id,
             body={"message": {"raw": raw}},
         ).execute()
 
-        updated_draft_id = result.get("id", draft_id)
-        gmail_url = f"https://mail.google.com/mail/#drafts/{updated_draft_id}"
+        updated_draft_id = updated.get("id", draft_id)
+        gmail_url        = f"https://mail.google.com/mail/#drafts/{updated_draft_id}"
 
         return Response({
+            "mode":         "gmail_draft",
             "draft_id":     updated_draft_id,
+            "gmail_url":    gmail_url,
             "to":           to,
             "subject":      subject,
-            "body_preview": body[:200],
+            "body_preview": (body or "")[:200],
             "attachments":  attachment_names,
-            "gmail_url":    gmail_url,
             "updated":      True,
+            "next_step":    "Approve the task (or open in Gmail) to send the email.",
         })
 
     except Exception as exc:
