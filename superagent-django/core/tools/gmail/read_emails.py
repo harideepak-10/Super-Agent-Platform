@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_LIMIT = 10
 _DEFAULT_FILTER = "is:unread -in:spam -in:trash"
 _BODY_PREVIEW_CHARS = 200
+_FULL_BODY_MAX_CHARS = 3000   # prevent token overflow from large HTML/marketing emails
 
 
 class ReadEmailsTool(BaseTool):
@@ -171,6 +172,10 @@ class ReadEmailsTool(BaseTool):
         date = headers.get("date", "")
 
         full_body = ReadEmailsTool._extract_body(payload)
+        # Collapse excessive whitespace (marketing emails have hundreds of blank lines)
+        import re as _re
+        full_body = _re.sub(r"\n{3,}", "\n\n", full_body).strip()
+        full_body = full_body[:_FULL_BODY_MAX_CHARS]
         body_preview = full_body[:_BODY_PREVIEW_CHARS].replace("\n", " ")
 
         attachments = ReadEmailsTool._extract_attachments(payload, msg.get("id", ""))
