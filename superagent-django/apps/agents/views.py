@@ -600,7 +600,7 @@ _AGENT_TEMPLATES = [
         "max_cost_usd": 1.0,
     },
     {
-        "id":          3,
+        "id":          2,
         "version":     3,
         "slug":        "document-agent",
         "name":        "Document Agent",
@@ -676,7 +676,7 @@ _AGENT_TEMPLATES = [
         "max_cost_usd": 1.0,
     },
     {
-        "id":          4,
+        "id":          3,
         "version":     4,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
