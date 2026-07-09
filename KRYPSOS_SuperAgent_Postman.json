@@ -602,6 +602,38 @@
               "raw": "{}"
             }
           }
+        },
+        {
+          "name": "Vague Prompt (Auto-enhanced)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Demonstrates prompt auto-enhancement.\n\nShort/vague prompts (< 12 words) are automatically expanded before the task runs.\n\nExamples:\n  'read email from hostinger'\n  → 'Read the latest email from hostinger. Summarise the subject, sender, date, and key message in plain English.'\n\n  'check my calendar'\n  → 'List my upcoming events for today and tomorrow. Show the title, time, location, and attendees for each.'\n\n  'schedule a meeting'\n  → 'Find a free 1-hour slot in my calendar for today or tomorrow and create a meeting with a Google Meet link.'",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"read email from hostinger\"\n}"
+            }
+          }
         }
       ]
     },
@@ -1375,6 +1407,32 @@
             "method": "GET",
             "url": "{{base_url}}/audit/actor/{{user_id}}/"
           }
+        },
+        {
+          "name": "Task Audit Timeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/audit/task/{{task_id}}/timeline/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "audit",
+                "task",
+                "{{task_id}}",
+                "timeline",
+                ""
+              ]
+            },
+            "description": "GET /api/v1/audit/task/<task_id>/timeline/\n\nReturns the full task audit timeline for the Task Audit screen.\n\nResponse shape:\n  task:\n    id, prompt, status, start_time, end_time, duration, cost, agent_name, agent_type\n\n  timeline[]: ordered list of events\n    id           — unique event id\n    actor        — who did this (user name or agent name)\n    actor_type   — 'user' | 'agent' | 'system'\n    icon         — icon name (user, mail, file-text, calendar, check-circle...)\n    action       — short label (e.g. 'Created task', 'Reading emails')\n    detail       — subtitle (e.g. 'via app', 'Fetching 3 emails', '8m 35s · €0.33')\n    time         — HH:MM:SS timestamp\n    status_label — created | started | thinking | running | done | wait | approved | rejected | complete | failed\n    status_color — hex color for the badge\n\nEvents included:\n  1. User created task\n  2. Agent started\n  3. Each tool call (reading emails, sending email, etc.)\n  4. Approval wait + user decision (if YELLOW tool triggered)\n  5. Task complete / failed"
+          }
         }
       ]
     },
@@ -2144,6 +2202,459 @@
     },
     {
       "name": "17 - Calendar Agent Tasks",
+      "item": [
+        {
+          "name": "01 - List upcoming events",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "List upcoming calendar events for the next 7 days.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"List all my upcoming events for the next 7 days. Show title, date, time, and attendees.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "02 - Get event details",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Get full details of a specific event by title or ID.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Get the full details of my team standup meeting tomorrow including attendees and Meet link.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "03 - Find free slots",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Find available free time slots in the calendar.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Find all free 1-hour slots in my calendar for today and tomorrow.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "04 - Check attendee availability",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Check if specific attendees are free at a proposed time.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Check if hari@example.com and deepak@example.com are free tomorrow at 3 PM for 1 hour.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "05 - Suggest best meeting time",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Find the best common free slot for all attendees.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Suggest the best 1-hour meeting time for me and hari@example.com in the next 3 days.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "06 - Detect conflicts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Find overlapping events in the calendar.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Check my calendar for the next 7 days and find any scheduling conflicts or overlapping events.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "07 - Create meeting [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Create a new meeting with Google Meet link.\nYELLOW — requires human approval before event is created.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Schedule a 1-hour product review meeting tomorrow at 2 PM with hari@example.com. Add a Google Meet link.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "08 - Create recurring event [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Create a recurring event (daily/weekly/monthly).\nYELLOW — requires approval.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Create a weekly team standup every Monday at 10 AM for the next 10 weeks with hari@example.com.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "09 - Reschedule event [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Update/reschedule an existing event.\nYELLOW — requires approval.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Reschedule my product review meeting from tomorrow 2 PM to Friday 3 PM and notify attendees.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "10 - Cancel event [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Cancel an event and notify attendees.\nYELLOW — requires approval.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Cancel my team standup meeting tomorrow and send a cancellation notice to all attendees.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "11 - Accept meeting invite [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Accept/decline/tentative a meeting invitation.\nYELLOW — requires approval.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Accept the meeting invite for the product demo on Friday.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "12 - Set reminder",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Add a reminder to an event or create a standalone reminder.\nGREEN — runs automatically.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Set a 15-minute popup reminder for my product review meeting tomorrow.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "13 - Block focus time [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Block focus/deep work time on calendar.\nYELLOW — requires approval.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Block 2 hours of deep work focus time tomorrow morning starting at 9 AM.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "14 - Send meeting summary [YELLOW]",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/create/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "create",
+                ""
+              ]
+            },
+            "description": "Send meeting summary/agenda email to all attendees.\nYELLOW — requires approval.\nAgent: Calendar Agent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Send a meeting summary for today's standup to all attendees. Key points: sprint review completed, next sprint starts Monday, action item: Deepak to update the API docs.\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 - Document Agent Tasks (Full)",
       "item": [
         {
           "name": "01 - List files in Drive",

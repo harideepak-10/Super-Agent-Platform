@@ -7,4 +7,5 @@ urlpatterns = [
     path("summary/", views.audit_summary, name="audit-summary"),
     path("resource/<str:resource_type>/<str:resource_id>/", views.audit_by_resource, name="audit-by-resource"),
     path("actor/<uuid:actor_id>/", views.audit_actor, name="audit-actor"),
+    path("task/<uuid:task_id>/timeline/", views.task_audit_timeline, name="task-audit-timeline"),
 ]
