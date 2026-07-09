@@ -32,28 +32,28 @@ MAX_QUICK_TASKS = 4
 # ---------------------------------------------------------------------------
 _DEFAULTS = [
     {
-        "title":      "Draft daily report",
-        "prompt":     "Draft a daily status report for today summarising what was completed, what is in progress, and what is blocked.",
-        "agent_type": "document",
-        "icon":       "file-text",
-    },
-    {
-        "title":      "Extract invoice data",
-        "prompt":     "Find all emails with invoices or billing attachments in my inbox, extract the key data (vendor, amount, due date), and create a summary.",
-        "agent_type": "email",
-        "icon":       "receipt",
-    },
-    {
-        "title":      "Organize Google Drive",
-        "prompt":     "List all files in my Google Drive, identify duplicates or unorganised files, and suggest a folder structure.",
-        "agent_type": "document",
-        "icon":       "folder",
-    },
-    {
-        "title":      "Reply to urgent emails",
-        "prompt":     "Find all urgent or high-priority unread emails in my inbox and draft professional replies for each one.",
+        "title":      "Summarise unread emails",
+        "prompt":     "Read all my unread emails and give me a clear summary of each one — subject, sender, and key message.",
         "agent_type": "email",
         "icon":       "mail",
+    },
+    {
+        "title":      "Download latest attachment",
+        "prompt":     "Find the most recent email that has an attachment and download it.",
+        "agent_type": "email",
+        "icon":       "paperclip",
+    },
+    {
+        "title":      "Reply to an email",
+        "prompt":     "Read my latest unread email, create a professional reply, and send it.",
+        "agent_type": "email",
+        "icon":       "send",
+    },
+    {
+        "title":      "Summary of last 5 emails",
+        "prompt":     "Read my last 5 emails and give me a summary of each — who sent it, what it's about, and if any action is needed.",
+        "agent_type": "email",
+        "icon":       "inbox",
     },
 ]
 

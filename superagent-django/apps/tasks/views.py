@@ -1,8 +1,10 @@
+import json
 import threading
 
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -154,6 +156,139 @@ def task_pending_approvals(request):
     ).order_by("-created_at")
     serializer = TaskListSerializer(tasks, many=True)
     return Response(serializer.data)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser, JSONParser])
+def task_draft_update(request, pk):
+    """
+    PATCH /api/v1/tasks/<task_id>/draft/
+
+    Update an email draft that was created by the AI.
+    Accepts updated text fields AND file attachments (PDF, image, doc).
+
+    Form fields (multipart):
+        to         — recipient email (optional, keeps original if not provided)
+        subject    — email subject (optional)
+        body       — updated email body text (optional)
+        files      — one or more files to attach (PDF, JPG, PNG, DOCX, etc.)
+
+    Response:
+        {
+            "draft_id":        "r1234567890",
+            "to":              "hari@gmail.com",
+            "subject":         "Re: Invoice",
+            "body_preview":    "Hi Hari, thank you for...",
+            "attachments":     ["invoice.pdf", "photo.jpg"],
+            "gmail_url":       "https://mail.google.com/mail/#drafts/r123...",
+            "updated":         true
+        }
+    """
+    import base64
+    import os
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+
+    workspace = _get_workspace(request)
+    task = get_object_or_404(Task, id=pk, workspace=workspace)
+
+    # Extract draft_id from task result
+    draft_id = None
+    try:
+        result_data = json.loads(task.result) if task.result else {}
+        # Result may be a list of step outputs or a direct dict
+        if isinstance(result_data, list):
+            for item in result_data:
+                if isinstance(item, dict) and item.get("draft_id"):
+                    draft_id = item["draft_id"]
+                    original_to      = item.get("to", "")
+                    original_subject = item.get("subject", "")
+                    break
+        elif isinstance(result_data, dict):
+            draft_id         = result_data.get("draft_id")
+            original_to      = result_data.get("to", "")
+            original_subject = result_data.get("subject", "")
+    except Exception:
+        pass
+
+    if not draft_id:
+        return Response(
+            {"detail": "No email draft found in this task. Make sure the task created a draft first."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Get updated fields (fall back to originals if not provided)
+    to      = request.data.get("to", original_to).strip()
+    subject = request.data.get("subject", original_subject).strip()
+    body    = request.data.get("body", "").strip()
+    files   = request.FILES.getlist("files")  # multiple file uploads
+
+    try:
+        from core.tools.gmail.auth import GmailAuth
+        service = GmailAuth().build_service("default")
+
+        # Fetch existing draft to get current body if not provided
+        if not body:
+            existing = service.users().drafts().get(
+                userId="me", id=draft_id, format="full"
+            ).execute()
+            msg = existing.get("message", {})
+            payload = msg.get("payload", {})
+            for part in payload.get("parts", [payload]):
+                if part.get("mimeType") == "text/plain":
+                    data = part.get("body", {}).get("data", "")
+                    body = base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="ignore")
+                    break
+
+        # Build new MIME message
+        if files:
+            mime_msg = MIMEMultipart()
+            mime_msg["to"]      = to
+            mime_msg["subject"] = subject
+            mime_msg.attach(MIMEText(body, "plain"))
+
+            attachment_names = []
+            for f in files:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(f.read())
+                encoders.encode_base64(part)
+                filename = f.name
+                part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
+                mime_msg.attach(part)
+                attachment_names.append(filename)
+        else:
+            mime_msg = MIMEText(body, "plain")
+            mime_msg["to"]      = to
+            mime_msg["subject"] = subject
+            attachment_names    = []
+
+        raw = base64.urlsafe_b64encode(mime_msg.as_bytes()).decode()
+
+        # Update the existing draft
+        result = service.users().drafts().update(
+            userId="me",
+            id=draft_id,
+            body={"message": {"raw": raw}},
+        ).execute()
+
+        updated_draft_id = result.get("id", draft_id)
+        gmail_url = f"https://mail.google.com/mail/#drafts/{updated_draft_id}"
+
+        return Response({
+            "draft_id":     updated_draft_id,
+            "to":           to,
+            "subject":      subject,
+            "body_preview": body[:200],
+            "attachments":  attachment_names,
+            "gmail_url":    gmail_url,
+            "updated":      True,
+        })
+
+    except Exception as exc:
+        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["POST"])

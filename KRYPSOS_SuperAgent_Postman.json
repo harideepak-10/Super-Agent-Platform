@@ -634,6 +634,56 @@
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"read email from hostinger\"\n}"
             }
           }
+        },
+        {
+          "name": "Update Email Draft (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{task_id}}/draft/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "{{task_id}}",
+                "draft",
+                ""
+              ]
+            },
+            "description": "PATCH /api/v1/tasks/<task_id>/draft/\n\nUpdate an email draft that was created by the AI agent.\nUse multipart/form-data to send text fields + file attachments.\n\nForm fields:\n  to       — recipient email (optional, keeps original if not sent)\n  subject  — email subject (optional)\n  body     — updated email body text (optional, keeps AI draft if not sent)\n  files    — one or more files: PDF, JPG, PNG, DOCX, etc.\n\nResponse:\n  draft_id      — Gmail draft ID\n  to            — recipient\n  subject       — subject line\n  body_preview  — first 200 chars of body\n  attachments   — list of attached filenames\n  gmail_url     — direct link to draft in Gmail\n  updated       — true\n\nNotes:\n  - Task must have created a Gmail draft (via create_gmail_draft tool)\n  - Draft is updated in Gmail, not sent — use send_email to send\n  - Supports uploading photos from phone camera, PDFs, Word docs",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "to",
+                  "value": "hari@gmail.com",
+                  "type": "text"
+                },
+                {
+                  "key": "subject",
+                  "value": "Re: Invoice #1042",
+                  "type": "text"
+                },
+                {
+                  "key": "body",
+                  "value": "Hi Hari,\n\nThank you for sending the invoice. I have reviewed it and everything looks correct.\n\nBest regards,\nDeepak",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -2108,6 +2158,46 @@
               "raw": "{\n  \"agent_id\": \"{{agent_id}}\",\n  \"prompt\": \"Save a draft email to vendor@example.com with subject 'PO Confirmation' and body: 'Dear Sir, This is to confirm receipt of your purchase order. We will process it within 2 business days. Regards, Team KRYPSOS'\"\n}"
             }
           }
+        },
+        {
+          "name": "✏️ Update AI Draft + Add Attachment",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{task_id}}/draft/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "tasks",
+                "{{task_id}}",
+                "draft",
+                ""
+              ]
+            },
+            "description": "After the AI creates an email draft, use this to:\n  1. Edit the email body text\n  2. Change the recipient or subject\n  3. Attach files from your phone (PDF, photo, Word doc)\n\nSend as multipart/form-data.\nUse {{task_id}} from the task that created the draft.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "body",
+                  "value": "Hi,\n\nPlease find the updated invoice attached.\n\nBest regards",
+                  "type": "text"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -3097,7 +3187,7 @@
                 ""
               ]
             },
-            "description": "Returns top 4 most-used prompts ranked by frequency from task history.\n\nLogic:\n  1. Count how many times each unique prompt was used by this user\n  2. Sort by count descending → top 4\n  3. If fewer than 4 real prompts → fill with defaults:\n       - Draft daily report\n       - Extract invoice data\n       - Organize Google Drive\n       - Reply to urgent emails\n  4. Dismissed prompts are excluded permanently\n\nRecalculated fresh on every call.\n\nResponse fields:\n  id         — stable UUID derived from the prompt\n  title      — first 6 words of the prompt\n  prompt     — full prompt to pre-fill on tap\n  icon       — mail | calendar | file-text | receipt | folder | zap\n  agent_type — email | calendar | document | research\n  source     — 'usage' (from history) | 'default'\n  run_count  — how many times this prompt was used"
+            "description": "Returns top 4 most-used prompts ranked by frequency from task history.\n\nNew user (no task history) gets these 4 defaults:\n  1. Summarise unread emails\n     → Read all my unread emails and give me a clear summary\n  2. Download latest attachment\n     → Find the most recent email with an attachment and download it\n  3. Reply to an email\n     → Read latest unread email, create a reply, and send it\n  4. Summary of last 5 emails\n     → Read my last 5 emails and summarise each one\n\nOnce user starts running tasks, defaults are replaced by their actual top prompts.\n\nResponse fields:\n  id         — stable UUID from the prompt\n  title      — short label (first 6 words)\n  prompt     — full prompt to pre-fill on tap\n  icon       — mail | paperclip | send | inbox | file-text | calendar | zap\n  agent_type — email | calendar | document\n  source     — 'usage' (from history) | 'default'\n  run_count  — how many times this prompt was used"
           }
         },
         {
