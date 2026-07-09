@@ -63,11 +63,18 @@ def task_create(request):
         agent = get_object_or_404(Agent, id=agent_id, workspace=workspace)
 
     priority = serializer.validated_data.get("priority", "routine")
+    raw_prompt = serializer.validated_data["prompt"]
+
+    # Expand short/vague prompts into clear actionable instructions
+    from .prompt_enhancer import enhance
+    agent_type = agent.agent_type if agent else ""
+    prompt = enhance(raw_prompt, agent_type)
+
     task = Task.objects.create(
         workspace=workspace,
         agent=agent,
         created_by=request.user,
-        prompt=serializer.validated_data["prompt"],
+        prompt=prompt,
         priority=priority,
         status=Task.Status.QUEUED,
     )
