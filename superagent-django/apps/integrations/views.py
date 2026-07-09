@@ -300,7 +300,10 @@ def gmail_callback(request):
 # Google Drive OAuth flow
 # ---------------------------------------------------------------------------
 
-_DRIVE_SCOPES = "https://www.googleapis.com/auth/drive.file"
+_DRIVE_SCOPES = " ".join([
+    "https://www.googleapis.com/auth/drive",            # read + write all files
+    "https://www.googleapis.com/auth/drive.file",       # files created by app
+])
 
 
 def _drive_redirect_uri(request):
