@@ -19,6 +19,7 @@ class QuickTask(models.Model):
         DEFAULT = "default", "Default"
         MANUAL  = "manual",  "Manual"
         AUTO    = "auto",    "Auto-promoted"
+        HIDDEN  = "hidden",  "Hidden (dismissed)"
 
     id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workspace   = models.ForeignKey(

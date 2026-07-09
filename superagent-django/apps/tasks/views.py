@@ -81,14 +81,6 @@ def task_create(request):
 
     _run_in_thread(run_agent_task, str(task.id))
 
-    # Auto-promote to quick tasks if user runs same prompt 3+ times
-    try:
-        from apps.quick_tasks.views import try_auto_promote
-        agent_type = agent.agent_type if agent else ""
-        try_auto_promote(request.user, workspace, task.prompt, agent_type)
-    except Exception:
-        pass  # never block task creation due to quick-task logic
-
     log_event(request, "task_created", "task", str(task.id), workspace)
     return Response(TaskSerializer(task).data, status=status.HTTP_201_CREATED)
 

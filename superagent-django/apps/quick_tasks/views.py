@@ -1,29 +1,34 @@
 """
-Quick Tasks — simple read-only list for the "Quick Start" section on the home screen.
+Quick Tasks — dynamic top-4 ranked list for the Quick Start section.
 
-GET  /api/v1/quick-tasks/           — returns max 4 quick tasks (seeds defaults on first use)
-POST /api/v1/quick-tasks/<id>/remove/ — remove one (optional, so user can clear auto-added ones)
+GET  /api/v1/quick-tasks/              — returns top 4 most-used prompts (recalculated on every call)
+POST /api/v1/quick-tasks/remove/       — hide a prompt so it never appears in the list
 
-Auto-promotion:
-  try_auto_promote(user, workspace, prompt, agent_type)
-  Called from tasks/views.py after every task creation.
-  If the same prompt has been submitted 3+ times, it's added to the list automatically.
+How ranking works:
+  1. Count how many times the user has submitted each unique prompt (from Task history)
+  2. Sort by count descending → take top 4
+  3. If fewer than 4 results, fill remaining slots with default quick tasks
+  4. Dismissed prompts (via remove endpoint) are excluded permanently
+
+If user has no task history at all → return the 4 default quick tasks.
 """
 
+from __future__ import annotations
 import re
+import uuid
+from collections import Counter
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import QuickTask
-from .serializers import QuickTaskSerializer
+from .models import QuickTask  # used only to store dismissed prompts
 
-MAX_QUICK_TASKS    = 4
-AUTO_PROMOTE_AFTER = 3   # runs before a prompt is auto-added
+MAX_QUICK_TASKS = 4
 
 # ---------------------------------------------------------------------------
-# Default quick tasks — seeded once per user on first GET
+# Default quick tasks — shown when user has no history
 # ---------------------------------------------------------------------------
 _DEFAULTS = [
     {
@@ -31,103 +36,104 @@ _DEFAULTS = [
         "prompt":     "Draft a daily status report for today summarising what was completed, what is in progress, and what is blocked.",
         "agent_type": "document",
         "icon":       "file-text",
-        "order":      0,
     },
     {
         "title":      "Extract invoice data",
         "prompt":     "Find all emails with invoices or billing attachments in my inbox, extract the key data (vendor, amount, due date), and create a summary.",
         "agent_type": "email",
         "icon":       "receipt",
-        "order":      1,
     },
     {
         "title":      "Organize Google Drive",
         "prompt":     "List all files in my Google Drive, identify duplicates or unorganised files, and suggest a folder structure.",
         "agent_type": "document",
         "icon":       "folder",
-        "order":      2,
     },
     {
         "title":      "Reply to urgent emails",
         "prompt":     "Find all urgent or high-priority unread emails in my inbox and draft professional replies for each one.",
         "agent_type": "email",
         "icon":       "mail",
-        "order":      3,
     },
 ]
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _get_workspace(request):
     membership = request.user.memberships.select_related("workspace").first()
     return membership.workspace if membership else None
 
 
-def _seed_defaults(user, workspace):
-    for item in _DEFAULTS:
-        QuickTask.objects.get_or_create(
-            workspace=workspace,
-            user=user,
-            title=item["title"],
-            defaults={
-                "prompt":     item["prompt"],
-                "agent_type": item["agent_type"],
-                "icon":       item["icon"],
-                "order":      item["order"],
-                "source":     QuickTask.Source.DEFAULT,
-            },
-        )
-
-
 def _normalize(prompt: str) -> str:
+    """Lowercase + collapse whitespace for comparison."""
     return re.sub(r"\s+", " ", prompt.strip().lower())
 
 
-# ---------------------------------------------------------------------------
-# Public helper — called from apps/tasks/views.py after every task creation
-# ---------------------------------------------------------------------------
-def try_auto_promote(user, workspace, prompt: str, agent_type: str = ""):
-    """Auto-add prompt to quick tasks if user has submitted it 3+ times."""
-    from apps.tasks.models import Task
+def _stable_id(prompt: str) -> str:
+    """Generate a stable UUID from a prompt so frontend has a consistent ID."""
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, _normalize(prompt)))
 
-    norm = _normalize(prompt)
 
-    # Count how many times this prompt has been submitted
-    all_prompts = Task.objects.filter(
-        workspace=workspace, created_by=user
-    ).values_list("prompt", flat=True)
+def _detect_icon(prompt: str) -> str:
+    lower = prompt.lower()
+    if any(w in lower for w in ["email", "mail", "inbox", "reply", "send", "draft"]):
+        return "mail"
+    if any(w in lower for w in ["calendar", "meeting", "schedule", "event", "slot"]):
+        return "calendar"
+    if any(w in lower for w in ["invoice", "finance", "payment", "billing", "expense"]):
+        return "receipt"
+    if any(w in lower for w in ["drive", "folder", "file", "pdf", "document", "report", "presentation"]):
+        return "file-text"
+    if any(w in lower for w in ["translate"]):
+        return "globe"
+    if any(w in lower for w in ["search", "research", "find", "look up"]):
+        return "search"
+    return "zap"
 
-    run_count = sum(1 for p in all_prompts if _normalize(p) == norm)
-    if run_count < AUTO_PROMOTE_AFTER:
-        return
 
-    # Already in the list?
-    existing_prompts = QuickTask.objects.filter(
-        workspace=workspace, user=user
-    ).values_list("prompt", flat=True)
-    if any(_normalize(p) == norm for p in existing_prompts):
-        return
+def _detect_agent_type(prompt: str) -> str:
+    lower = prompt.lower()
+    if any(w in lower for w in ["email", "mail", "inbox", "reply", "send", "draft"]):
+        return "email"
+    if any(w in lower for w in ["calendar", "meeting", "schedule", "event", "slot"]):
+        return "calendar"
+    if any(w in lower for w in ["drive", "pdf", "document", "report", "invoice", "presentation", "translate"]):
+        return "document"
+    if any(w in lower for w in ["search", "research"]):
+        return "research"
+    return ""
 
-    # Full?
-    current_count = QuickTask.objects.filter(workspace=workspace, user=user).count()
-    if current_count >= MAX_QUICK_TASKS:
-        return
 
-    # Build short title from the first 6 words
+def _build_item(prompt: str, run_count: int, source: str = "usage") -> dict:
+    """Build a quick task dict from a prompt string."""
     words = prompt.strip().split()
     title = " ".join(words[:6]).rstrip(".,;:")
     if len(words) > 6:
         title += "…"
+    return {
+        "id":         _stable_id(prompt),
+        "title":      title,
+        "prompt":     prompt,
+        "icon":       _detect_icon(prompt),
+        "agent_type": _detect_agent_type(prompt),
+        "source":     source,
+        "run_count":  run_count,
+    }
 
-    QuickTask.objects.create(
-        workspace=workspace,
-        user=user,
-        title=title,
-        prompt=prompt,
-        agent_type=agent_type,
-        icon="zap",
-        source=QuickTask.Source.AUTO,
-        order=current_count,
-    )
+
+def _default_item(d: dict) -> dict:
+    return {
+        "id":         _stable_id(d["prompt"]),
+        "title":      d["title"],
+        "prompt":     d["prompt"],
+        "icon":       d["icon"],
+        "agent_type": d["agent_type"],
+        "source":     "default",
+        "run_count":  0,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -140,36 +146,91 @@ def quick_task_list(request):
     """
     GET /api/v1/quick-tasks/
 
-    Returns up to 4 quick tasks for the Quick Start section.
-    Seeds the 4 defaults the first time a user calls this.
+    Dynamically ranks the user's top 4 most-used prompts from task history.
+    Fills remaining slots with defaults if fewer than 4 real prompts exist.
+    Dismissed prompts are excluded.
+
+    Recalculated fresh on every call — always reflects today's usage.
+    """
+    from apps.tasks.models import Task
+
+    workspace = _get_workspace(request)
+    if not workspace:
+        return Response({"detail": "No workspace."}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Load dismissed prompt norms for this user
+    dismissed_norms = set(
+        _normalize(p)
+        for p in QuickTask.objects.filter(
+            workspace=workspace,
+            user=request.user,
+            source=QuickTask.Source.HIDDEN,
+        ).values_list("prompt", flat=True)
+    )
+
+    # Count usage from Task history
+    all_prompts = Task.objects.filter(
+        workspace=workspace,
+        created_by=request.user,
+    ).values_list("prompt", flat=True)
+
+    counter: Counter = Counter()
+    # Keep the latest original (un-normalized) version of each prompt
+    prompt_originals: dict[str, str] = {}
+
+    for p in all_prompts:
+        norm = _normalize(p)
+        if norm in dismissed_norms:
+            continue
+        counter[norm] += 1
+        prompt_originals[norm] = p   # last seen wins
+
+    # Top 4 by frequency
+    result = []
+    for norm, count in counter.most_common(MAX_QUICK_TASKS):
+        result.append(_build_item(prompt_originals[norm], count, source="usage"))
+
+    # Fill remaining slots with defaults
+    if len(result) < MAX_QUICK_TASKS:
+        used_norms = {_normalize(r["prompt"]) for r in result}
+        for d in _DEFAULTS:
+            if len(result) >= MAX_QUICK_TASKS:
+                break
+            dn = _normalize(d["prompt"])
+            if dn not in used_norms and dn not in dismissed_norms:
+                result.append(_default_item(d))
+
+    return Response(result)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def quick_task_remove(request):
+    """
+    POST /api/v1/quick-tasks/remove/
+
+    Permanently hide a prompt from the quick task list.
+    Body: { "prompt": "..." }
+
+    The prompt will never appear in the list again even if it's the most used.
     """
     workspace = _get_workspace(request)
     if not workspace:
         return Response({"detail": "No workspace."}, status=status.HTTP_400_BAD_REQUEST)
 
-    qs = QuickTask.objects.filter(workspace=workspace, user=request.user)
+    prompt = request.data.get("prompt", "").strip()
+    if not prompt:
+        return Response({"detail": "'prompt' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    if not qs.exists():
-        _seed_defaults(request.user, workspace)
-        qs = QuickTask.objects.filter(workspace=workspace, user=request.user)
+    # Store as hidden — get_or_create so no duplicates
+    QuickTask.objects.get_or_create(
+        workspace=workspace,
+        user=request.user,
+        title=prompt[:120],
+        defaults={
+            "prompt": prompt,
+            "source": QuickTask.Source.HIDDEN,
+        },
+    )
 
-    items = qs[:MAX_QUICK_TASKS]
-    return Response(QuickTaskSerializer(items, many=True).data)
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def quick_task_remove(request, pk):
-    """
-    POST /api/v1/quick-tasks/<id>/remove/
-
-    Remove a quick task (e.g. if user doesn't want an auto-promoted one).
-    """
-    workspace = _get_workspace(request)
-    try:
-        qt = QuickTask.objects.get(id=pk, workspace=workspace, user=request.user)
-    except QuickTask.DoesNotExist:
-        return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    qt.delete()
-    return Response({"detail": "Removed."}, status=status.HTTP_200_OK)
+    return Response({"detail": "Prompt hidden from quick tasks."})

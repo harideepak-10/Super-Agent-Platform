@@ -3078,7 +3078,7 @@
       "name": "19 - Quick Tasks",
       "item": [
         {
-          "name": "Get quick task list",
+          "name": "Get quick task list (ranked top 4)",
           "request": {
             "method": "GET",
             "header": [
@@ -3097,32 +3097,39 @@
                 ""
               ]
             },
-            "description": "Returns max 4 quick tasks for the Quick Start section.\nSeeds 4 defaults on first use:\n  - Draft daily report\n  - Extract invoice data\n  - Organize Google Drive\n  - Reply to urgent emails\n\nAuto-promotion: if user submits the same prompt 3+ times,\nit is automatically added to this list."
+            "description": "Returns top 4 most-used prompts ranked by frequency from task history.\n\nLogic:\n  1. Count how many times each unique prompt was used by this user\n  2. Sort by count descending → top 4\n  3. If fewer than 4 real prompts → fill with defaults:\n       - Draft daily report\n       - Extract invoice data\n       - Organize Google Drive\n       - Reply to urgent emails\n  4. Dismissed prompts are excluded permanently\n\nRecalculated fresh on every call.\n\nResponse fields:\n  id         — stable UUID derived from the prompt\n  title      — first 6 words of the prompt\n  prompt     — full prompt to pre-fill on tap\n  icon       — mail | calendar | file-text | receipt | folder | zap\n  agent_type — email | calendar | document | research\n  source     — 'usage' (from history) | 'default'\n  run_count  — how many times this prompt was used"
           }
         },
         {
-          "name": "Remove a quick task",
+          "name": "Remove (hide) a quick task",
           "request": {
             "method": "POST",
             "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
               {
                 "key": "Authorization",
                 "value": "Bearer {{access_token}}"
               }
             ],
             "url": {
-              "raw": "{{base_url}}/quick-tasks/{{quick_task_id}}/remove/",
+              "raw": "{{base_url}}/quick-tasks/remove/",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "quick-tasks",
-                "{{quick_task_id}}",
                 "remove",
                 ""
               ]
             },
-            "description": "Remove a quick task (e.g. dismiss an auto-promoted one). Frees a slot for a new one."
+            "description": "Hide a prompt permanently from the quick task list.\nPass the full prompt text.\n\nThe prompt will never appear again even if it's the most used.\nUse this when user taps 'dismiss' or 'remove' on a quick task card.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"prompt\": \"Draft a daily status report for today summarising what was completed, what is in progress, and what is blocked.\"\n}"
+            }
           }
         }
       ]
