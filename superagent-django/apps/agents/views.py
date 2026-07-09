@@ -550,7 +550,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     4,       # ← bump this whenever template changes
+        "version":     4,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -597,33 +597,6 @@ _AGENT_TEMPLATES = [
             "Use current_time to resolve relative times like 'at 11' or 'tomorrow'."
         ),
         "max_steps":    25,
-        "max_cost_usd": 1.0,
-    },
-    {
-        "id":          2,
-        "version":     1,
-        "slug":        "research-agent",
-        "name":        "Research Agent",
-        "agent_type":  "research",
-        "description": "Searches the web, browses pages, and generates structured research reports.",
-        "icon":        "search",
-        "icon_bg":     "#1E40AF",
-        "border_color":"#3B82F6",
-        "badge":       None,
-        "badge_color": None,
-        "capabilities": [
-            "Searches the web for up-to-date information",
-            "Browses and reads relevant web pages",
-            "Generates structured research reports",
-            "Summarises findings into key insights",
-        ],
-        "tools":       ["web_search", "browse_web", "generate_report"],
-        "llm_model":   "llama-3.3-70b-versatile",
-        "system_prompt": (
-            "You are a research agent. Search the web for information, browse relevant pages, "
-            "and generate clear structured reports. Always use tools — never make up information."
-        ),
-        "max_steps":   20,
         "max_cost_usd": 1.0,
     },
     {
@@ -779,33 +752,6 @@ _AGENT_TEMPLATES = [
         "max_steps":   20,
         "max_cost_usd": 1.0,
     },
-    {
-        "id":          5,
-        "version":     1,
-        "slug":        "reporting-agent",
-        "name":        "Reporting Agent",
-        "agent_type":  "reporting",
-        "description": "Generates business reports, summaries, and CSV exports from your data.",
-        "icon":        "bar-chart",
-        "icon_bg":     "#5B21B6",
-        "border_color":"#8B5CF6",
-        "badge":       None,
-        "badge_color": None,
-        "capabilities": [
-            "Generates business performance reports",
-            "Summarises data into actionable insights",
-            "Exports reports as CSV or structured files",
-            "Searches the web for benchmark comparisons",
-        ],
-        "tools":       ["generate_report", "export_csv", "web_search"],
-        "llm_model":   "llama-3.3-70b-versatile",
-        "system_prompt": (
-            "You are a reporting agent. Generate structured business reports and export data "
-            "as CSV when needed. Always use the generate_report tool for report creation."
-        ),
-        "max_steps":   15,
-        "max_cost_usd": 1.0,
-    },
 ]
 
 _TEMPLATE_MAP    = {t["slug"]: t for t in _AGENT_TEMPLATES}
@@ -840,14 +786,12 @@ def sync_agent_from_template(agent, template: dict) -> bool:
 def agent_templates(request):
     """
     GET /api/v1/agents/templates/
-    Returns all ready-made agent templates.
-
-    Query params:
-      ?my_agents=true  — return only templates the user has activated (their agents)
+    Returns the available agent templates (Email, Calendar, Document).
+    already_added=true means the user has already activated that agent.
+    agent_id is set when activated — use it to navigate to that agent.
     """
     workspace = _get_workspace(request)
 
-    # Map agent_type → activated Agent instance for this user
     activated_map = {}
     if workspace:
         for agent in Agent.objects.filter(
@@ -857,31 +801,24 @@ def agent_templates(request):
         ).exclude(template_id=None):
             activated_map[agent.agent_type] = agent
 
-    my_agents_only = request.query_params.get("my_agents", "").lower() == "true"
-
     result = []
     for t in _AGENT_TEMPLATES:
         activated_agent = activated_map.get(t["agent_type"])
-        already_added   = activated_agent is not None
-
-        if my_agents_only and not already_added:
-            continue
-
         result.append({
-            "id":                 t["id"],
-            "slug":               t["slug"],
-            "name":               t["name"],
-            "agent_type":         t["agent_type"],
-            "description":        t["description"],
-            "icon":               t["icon"],
-            "icon_bg":            t["icon_bg"],
-            "border_color":       t["border_color"],
-            "badge":              t["badge"],
-            "badge_color":        t["badge_color"],
-            "tools":              [_tool_card(tn) for tn in t["tools"]],
-            "llm_model":          t["llm_model"],
-            "already_added":      already_added,
-            "agent_id":           str(activated_agent.id) if activated_agent else None,
+            "id":            t["id"],
+            "slug":          t["slug"],
+            "name":          t["name"],
+            "agent_type":    t["agent_type"],
+            "description":   t["description"],
+            "icon":          t["icon"],
+            "icon_bg":       t["icon_bg"],
+            "border_color":  t["border_color"],
+            "badge":         t["badge"],
+            "badge_color":   t["badge_color"],
+            "tools":         [_tool_card(tn) for tn in t["tools"]],
+            "llm_model":     t["llm_model"],
+            "already_added": activated_agent is not None,
+            "agent_id":      str(activated_agent.id) if activated_agent else None,
         })
     return Response(result)
 
