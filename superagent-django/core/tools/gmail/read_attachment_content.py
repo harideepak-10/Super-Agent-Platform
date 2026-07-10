@@ -71,6 +71,19 @@ class ReadAttachmentContentTool(BaseTool):
             logger.exception("ReadAttachmentContentTool failed for %s", filename)
             return json.dumps({"error": f"Could not read file: {exc}"})
 
+        if not content or not content.strip():
+            return json.dumps({
+                "filename":  filename,
+                "file_type": ext.lstrip("."),
+                "error":     (
+                    "No text could be extracted from this file. "
+                    "It may be a scanned/image-based PDF that requires OCR, "
+                    "a password-protected file, or an unsupported format."
+                ),
+                "content":   "",
+                "char_count": 0,
+            }, ensure_ascii=False)
+
         truncated = len(content) > max_chars
         content   = content[:max_chars]
 
@@ -103,13 +116,31 @@ class ReadAttachmentContentTool(BaseTool):
 
     @staticmethod
     def _read_pdf(file_path: str) -> str:
+        # Try pdfminer.six first — handles embedded fonts and complex layouts
+        # far better than pypdf. Fall back to pypdf if pdfminer isn't available.
+        try:
+            from pdfminer.high_level import extract_text as pdfminer_extract
+            text = pdfminer_extract(file_path)
+            if text and text.strip():
+                return text.strip()
+            # pdfminer returned blank — likely a scanned/image PDF, fall through
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+        # Fallback: pypdf
         try:
             import pypdf
             reader = pypdf.PdfReader(file_path)
             pages  = [page.extract_text() or "" for page in reader.pages]
-            return "\n\n".join(pages).strip()
-        except ImportError:
-            raise ImportError("pypdf is not installed. Run: pip install pypdf")
+            text   = "\n\n".join(pages).strip()
+            if text:
+                return text
+        except Exception:
+            pass
+
+        return "[PDF appears to be image-based or scanned. No text could be extracted.]"
 
     @staticmethod
     def _read_docx(file_path: str) -> str:
