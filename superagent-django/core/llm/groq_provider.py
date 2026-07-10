@@ -218,6 +218,8 @@ class GroqProvider(LLMProvider):
             Dict with ``content``, ``tool_call``, ``tokens_used``,
             ``cost_usd``.
         """
+        import re as _re
+
         message = completion.choices[0].message
 
         # --- Text content ---
@@ -231,6 +233,35 @@ class GroqProvider(LLMProvider):
                 "name": first.function.name,
                 "input": first.function.arguments,  # raw JSON string
             }
+        else:
+            # Fallback: some llama variants emit tool calls as text rather than
+            # via the API tool_calls field.  Detect and parse them so the agent
+            # loop can execute the tool instead of treating this as a final answer.
+            #
+            # Pattern 1: <function>tool_name({"arg": "val"})</function>
+            # Pattern 2: <function_calls><invoke><tool_name>t</tool_name>
+            #              <parameters>{"arg": "val"}</parameters></invoke></function_calls>
+
+            fn_match = _re.search(
+                r"<function>\s*(\w+)\s*\((\{.*?\})\)\s*</function>",
+                content,
+                _re.DOTALL,
+            )
+            if not fn_match:
+                # Try the XML-style format
+                fn_match = _re.search(
+                    r"<invoke>\s*<tool_name>\s*(\w+)\s*</tool_name>\s*"
+                    r"<parameters>\s*(\{.*?\})\s*</parameters>",
+                    content,
+                    _re.DOTALL,
+                )
+
+            if fn_match:
+                fn_name = fn_match.group(1).strip()
+                fn_args = fn_match.group(2).strip()
+                tool_call = {"name": fn_name, "input": fn_args}
+                # Clear content so it is not surfaced as a final answer
+                content = ""
 
         # --- Token accounting ---
         usage = completion.usage
