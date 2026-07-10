@@ -1854,6 +1854,132 @@ class SetReminderTool(BaseTool):
         }}
 
 
+class ReadEmailAttachmentContentTool(BaseTool):
+    """One-shot tool: read latest email → download attachment → return text content.
+
+    The model calls this with a simple filter and gets back the full text of
+    every attachment in the matched email — no separate download/read steps needed.
+    """
+    name = "read_email_attachment_content"
+    description = (
+        "Read the text content of attachments in an email — all in one step. "
+        "Finds the email, downloads every attachment, extracts the text (PDF/DOCX/CSV/TXT), "
+        "and returns the content ready to summarize. "
+        "Input JSON: {\"filter\": \"has:attachment\", \"limit\": 1}. "
+        "Use this whenever the user asks about what is IN an attachment or wants a summary of it."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def _gmail_service(self):
+        return _gmail_service_for_workspace(self._workspace_id)
+
+    def run(self, input_str: str) -> str:
+        import tempfile, base64, os as _os
+
+        try:
+            data = json.loads(input_str) if isinstance(input_str, str) else input_str
+        except Exception:
+            data = {}
+
+        email_filter = data.get("filter", "has:attachment")
+        limit        = int(data.get("limit", 1))
+
+        # Ensure we only look at emails with attachments
+        if "has:attachment" not in email_filter:
+            email_filter = "has:attachment " + email_filter
+
+        service = self._gmail_service()
+        if not service:
+            return json.dumps({"error": "Gmail not connected. Go to Integrations to connect Gmail."})
+
+        # ── Step 1: find matching emails ──────────────────────────────────────
+        try:
+            from core.tools.gmail.read_emails import ReadEmailsTool
+            raw = ReadEmailsTool(gmail_service=service).run(
+                json.dumps({"filter": email_filter, "limit": limit})
+            )
+            emails = json.loads(raw)
+        except Exception as exc:
+            return json.dumps({"error": f"Failed to read emails: {exc}"})
+
+        if not emails:
+            return json.dumps({"error": "No emails with attachments found."})
+
+        email = emails[0]  # take the most recent one
+        attachments_meta = email.get("attachments", [])
+        if not attachments_meta:
+            return json.dumps({
+                "error": "Email found but has no downloadable attachments.",
+                "email_subject": email.get("subject", ""),
+                "note": "The email body was: " + email.get("full_body", "")[:500],
+            })
+
+        # ── Step 2 + 3: download each attachment and read its content ─────────
+        _OUTPUT_DIR = _os.path.join(tempfile.gettempdir(), "krypsos_docs")
+        _os.makedirs(_OUTPUT_DIR, exist_ok=True)
+
+        results = []
+        for att in attachments_meta:
+            att_id  = att.get("attachment_id", "")
+            msg_id  = att.get("message_id", email.get("id", ""))
+            fname   = att.get("filename", "attachment")
+
+            if not att_id:
+                results.append({"filename": fname, "error": "No attachment_id — may be inline image."})
+                continue
+
+            # Download
+            try:
+                raw_att = (
+                    service.users().messages().attachments()
+                    .get(userId="me", messageId=msg_id, id=att_id)
+                    .execute()
+                )
+                file_bytes = base64.urlsafe_b64decode(raw_att.get("data", "") + "==")
+            except Exception as exc:
+                results.append({"filename": fname, "error": f"Download failed: {exc}"})
+                continue
+
+            file_path = _os.path.join(_OUTPUT_DIR, fname)
+            with open(file_path, "wb") as f:
+                f.write(file_bytes)
+
+            # Read content
+            try:
+                from core.tools.gmail.read_attachment_content import ReadAttachmentContentTool as RAC
+                content_raw = RAC().run(json.dumps({"file_path": file_path, "max_chars": 8000}))
+                content_data = json.loads(content_raw)
+                results.append({
+                    "filename":   fname,
+                    "file_type":  content_data.get("file_type", ""),
+                    "content":    content_data.get("content", ""),
+                    "char_count": content_data.get("char_count", 0),
+                    "truncated":  content_data.get("truncated", False),
+                })
+            except Exception as exc:
+                results.append({"filename": fname, "error": f"Could not read content: {exc}"})
+
+        return json.dumps({
+            "email_subject":  email.get("subject", ""),
+            "email_from":     email.get("sender", ""),
+            "email_date":     email.get("date", ""),
+            "attachment_count": len(results),
+            "attachments":    results,
+        }, ensure_ascii=False)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "filter": {"type": "string", "description": "Gmail search filter, e.g. 'has:attachment is:unread'"},
+                "limit":  {"type": "integer", "description": "Number of emails to check (default 1)"},
+            }},
+        }}
+
+
 # =============================================================================
 # TOOL REGISTRY
 # =============================================================================
@@ -1862,6 +1988,7 @@ _TOOL_REGISTRY: dict = {
     # Email core
     "send_email":               SendEmailTool,
     "read_email":               ReadEmailTool,
+    "read_email_attachment_content": ReadEmailAttachmentContentTool,
     "summarize_emails":         SummarizeEmailsTool,
     "download_attachment":      DownloadAttachmentTool,
     "create_draft":             CreateDraftTool,
@@ -2074,6 +2201,7 @@ _TOOL_LABELS = {
     "send_email":               ("Sending email",              "Sending message to recipient"),
     "read_email":               ("Reading emails",             "Fetching from Gmail inbox"),
     "summarize_emails":         ("Summarising emails",         "Building summary of all emails"),
+    "read_email_attachment_content": ("Reading attachment",    "Downloading and extracting attachment text"),
     "download_attachment":      ("Downloading attachment",     "Saving attachment from Gmail"),
     "create_draft":             ("Creating email draft",       "Drafting message"),
     "create_gmail_draft":       ("Saving Gmail draft",         "Saving draft to Gmail Drafts folder"),

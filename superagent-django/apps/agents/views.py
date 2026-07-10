@@ -108,8 +108,9 @@ _DEFAULT_DISPLAY = ("AI agent", "cpu", "#1E3A5F", "#3B82F6")
 # ---------------------------------------------------------------------------
 _TOOL_DISPLAY = {
     # ── Email — read ──────────────────────────────────────────────────────────
-    "read_email":               ("Gmail Read",         "mail",              "safe"),
-    "summarize_emails":         ("Summarise Emails",   "align-left",        "safe"),
+    "read_email":                    ("Gmail Read",          "mail",         "safe"),
+    "summarize_emails":              ("Summarise Emails",    "align-left",   "safe"),
+    "read_email_attachment_content": ("Read Attachment",     "file-text",    "safe"),
     "download_attachment":      ("Download File",       "download",          "safe"),
     "read_attachment_content":  ("Read Attachment",    "file-text",         "safe"),
     "extract_data_from_attachment": ("Extract Data",   "layers",            "safe"),
@@ -588,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     5,
+        "version":     6,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -609,7 +610,9 @@ _AGENT_TEMPLATES = [
         ],
         "tools": [
             # Read
-            "read_email", "summarize_emails", "download_attachment",
+            "read_email", "summarize_emails",
+            "read_email_attachment_content",          # one-shot: read email → download → extract text
+            "download_attachment",
             "read_attachment_content", "extract_data_from_attachment",
             # Inbox management
             "mark_as_read", "label_email", "move_to_folder", "delete_email",
@@ -625,21 +628,20 @@ _AGENT_TEMPLATES = [
         "system_prompt": (
             "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n\n"
 
-            "## ATTACHMENT READING — most important rule\n"
-            "When the user asks about attachment content, summary, or what is inside a file:\n"
-            "1. Call read_email (limit:1, filter:'has:attachment') to get the email with attachments.\n"
-            "2. For EACH attachment in the 'attachments' list, call download_attachment passing "
-            "   message_id and attachment_id from that list.\n"
-            "3. Call read_attachment_content with the file_path returned by download_attachment.\n"
-            "4. Read the full 'content' field returned and summarize it for the user.\n"
-            "NEVER skip steps 2 and 3. The email body does NOT contain the attachment content — "
-            "you must download and read the file to see what is inside it.\n\n"
+            "## ATTACHMENT CONTENT — use read_email_attachment_content\n"
+            "When the user asks what is IN an attachment, wants a summary of an attachment, "
+            "or says anything like 'check attachment', 'what does the PDF say', 'summarize the file':\n"
+            "  → Call read_email_attachment_content({\"filter\": \"has:attachment\", \"limit\": 1})\n"
+            "This single tool reads the email, downloads the attachment, extracts the text, "
+            "and returns the full content. You MUST then summarize that content for the user.\n"
+            "DO NOT call download_attachment or read_attachment_content separately for this case.\n\n"
 
             "## YELLOW zone tools (require human approval before executing)\n"
             "send_email, reply_to_email, forward_email, schedule_email, delete_email\n\n"
 
             "## GREEN zone tools (run automatically)\n"
-            "read_email, download_attachment, read_attachment_content, extract_data_from_attachment, "
+            "read_email, read_email_attachment_content, download_attachment, "
+            "read_attachment_content, extract_data_from_attachment, "
             "summarize_emails, mark_as_read, label_email, move_to_folder, create_draft, "
             "create_gmail_draft, extract_invoice_data, detect_follow_up_needed, "
             "list_customer_profiles, search_customer_by_email\n\n"
@@ -648,7 +650,7 @@ _AGENT_TEMPLATES = [
             "- For meeting scheduling, direct the user to use the Calendar Agent.\n"
             "- Always check customer memory before drafting a reply.\n"
             "- Use current_time to resolve relative times like 'at 11' or 'tomorrow'.\n"
-            "- For invoice/contract PDFs, use extract_data_from_attachment after reading."
+            "- For invoice/contract PDFs, call read_email_attachment_content then extract_data_from_attachment."
         ),
         "max_steps":    25,
         "max_cost_usd": 1.0,
