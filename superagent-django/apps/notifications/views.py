@@ -16,6 +16,26 @@ def _get_workspace(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def notification_count(request):
+    """
+    GET /api/v1/notifications/count/
+
+    Response::
+
+        {"unread_count": 5, "total_count": 12, "has_unread": true}
+    """
+    workspace = _get_workspace(request)
+    qs = Notification.objects.filter(user=request.user, workspace=workspace)
+    unread_count = qs.filter(is_read=False).count()
+    return Response({
+        "unread_count": unread_count,
+        "total_count":  qs.count(),
+        "has_unread":   unread_count > 0,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def notification_list(request):
     workspace = _get_workspace(request)
     notifications = Notification.objects.filter(
