@@ -134,4 +134,39 @@ class ReadAttachmentContentTool(BaseTool):
             import pypdf
             reader = pypdf.PdfReader(file_path)
             pages  = [page.extract_text() or "" for page in reader.pages]
-            text   = "\n\n".
+            text   = "\n\n".join(pages).strip()
+            if text:
+                return text
+        except Exception:
+            pass
+
+        return "[PDF appears to be image-based or scanned. No text could be extracted.]"
+
+    @staticmethod
+    def _read_docx(file_path: str) -> str:
+        from docx import Document
+        doc   = Document(file_path)
+        lines = [para.text for para in doc.paragraphs if para.text.strip()]
+        return "\n".join(lines)
+
+    @staticmethod
+    def _read_csv(file_path: str) -> str:
+        import csv
+        rows = []
+        with open(file_path, "r", encoding="utf-8-sig", errors="replace") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                rows.append(", ".join(row))
+        return "\n".join(rows)
+
+    def to_schema(self) -> dict:
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "max_chars": {"type": "integer"},
+                },
+                "required": ["file_path"],
+            },
+        }}

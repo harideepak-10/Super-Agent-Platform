@@ -1895,62 +1895,87 @@ class ReadEmailAttachmentContentTool(BaseTool):
         if not service:
             return json.dumps({"error": "Gmail not connected. Go to Integrations to connect Gmail."})
 
-        # ── Step 1: find matching emails ──────────────────────────────────────
+        # ── Step 1: find matching email IDs ───────────────────────────────────
         try:
-            from core.tools.gmail.read_emails import ReadEmailsTool
-            raw = ReadEmailsTool(gmail_service=service).run(
-                json.dumps({"filter": email_filter, "limit": limit})
+            result = (
+                service.users().messages()
+                .list(userId="me", q=email_filter, maxResults=limit)
+                .execute()
             )
-            emails = json.loads(raw)
+            msg_refs = result.get("messages", [])
         except Exception as exc:
-            return json.dumps({"error": f"Failed to read emails: {exc}"})
+            return json.dumps({"error": f"Failed to search emails: {exc}"})
 
-        if not emails:
+        if not msg_refs:
             return json.dumps({"error": "No emails with attachments found."})
 
-        email = emails[0]  # take the most recent one
-        attachments_meta = email.get("attachments", [])
-        if not attachments_meta:
-            return json.dumps({
-                "error": "Email found but has no downloadable attachments.",
-                "email_subject": email.get("subject", ""),
-                "note": "The email body was: " + email.get("full_body", "")[:500],
-            })
-
-        # ── Step 2 + 3: download each attachment and read its content ─────────
+        # ── Step 2: fetch full message and walk ALL parts for attachments ─────
         _OUTPUT_DIR = _os.path.join(tempfile.gettempdir(), "krypsos_docs")
         _os.makedirs(_OUTPUT_DIR, exist_ok=True)
 
+        def _walk_parts(parts):
+            """Yield (filename, attachment_id, inline_data) for every file part."""
+            for part in parts:
+                fname = part.get("filename", "")
+                mime  = part.get("mimeType", "")
+                body  = part.get("body", {})
+                att_id   = body.get("attachmentId", "")
+                inline   = body.get("data", "")
+                sub_parts = part.get("parts", [])
+
+                if fname:  # any part with a filename is an attachment
+                    yield fname, att_id, inline, mime
+                if sub_parts:
+                    yield from _walk_parts(sub_parts)
+
+        msg_id = msg_refs[0]["id"]
+        try:
+            msg = service.users().messages().get(
+                userId="me", id=msg_id, format="full"
+            ).execute()
+        except Exception as exc:
+            return json.dumps({"error": f"Failed to fetch email: {exc}"})
+
+        payload  = msg.get("payload", {})
+        headers  = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
+        subject  = headers.get("subject", "(no subject)")
+        sender   = headers.get("from", "(unknown)")
+        date     = headers.get("date", "")
+
+        att_parts = list(_walk_parts(payload.get("parts", [])))
+        if not att_parts:
+            return json.dumps({
+                "error": "Email found but has no file attachments.",
+                "email_subject": subject,
+                "email_from": sender,
+            })
+
+        # ── Step 3: download / decode each attachment and extract text ────────
         results = []
-        for att in attachments_meta:
-            att_id  = att.get("attachment_id", "")
-            msg_id  = att.get("message_id", email.get("id", ""))
-            fname   = att.get("filename", "attachment")
+        from core.tools.gmail.read_attachment_content import ReadAttachmentContentTool as RAC
 
-            if not att_id:
-                results.append({"filename": fname, "error": "No attachment_id — may be inline image."})
-                continue
-
-            # Download
+        for fname, att_id, inline_data, mime in att_parts:
             try:
-                raw_att = (
-                    service.users().messages().attachments()
-                    .get(userId="me", messageId=msg_id, id=att_id)
-                    .execute()
-                )
-                file_bytes = base64.urlsafe_b64decode(raw_att.get("data", "") + "==")
-            except Exception as exc:
-                results.append({"filename": fname, "error": f"Download failed: {exc}"})
-                continue
+                if att_id:
+                    # Large attachment — fetch via Gmail API
+                    raw_att = (
+                        service.users().messages().attachments()
+                        .get(userId="me", messageId=msg_id, id=att_id)
+                        .execute()
+                    )
+                    file_bytes = base64.urlsafe_b64decode(raw_att.get("data", "") + "==")
+                elif inline_data:
+                    # Small attachment — data is inlined in the payload
+                    file_bytes = base64.urlsafe_b64decode(inline_data + "==")
+                else:
+                    results.append({"filename": fname, "error": "No data available for this attachment."})
+                    continue
 
-            file_path = _os.path.join(_OUTPUT_DIR, fname)
-            with open(file_path, "wb") as f:
-                f.write(file_bytes)
+                file_path = _os.path.join(_OUTPUT_DIR, fname)
+                with open(file_path, "wb") as f:
+                    f.write(file_bytes)
 
-            # Read content
-            try:
-                from core.tools.gmail.read_attachment_content import ReadAttachmentContentTool as RAC
-                content_raw = RAC().run(json.dumps({"file_path": file_path, "max_chars": 8000}))
+                content_raw  = RAC().run(json.dumps({"file_path": file_path, "max_chars": 8000}))
                 content_data = json.loads(content_raw)
                 results.append({
                     "filename":   fname,
@@ -1958,16 +1983,17 @@ class ReadEmailAttachmentContentTool(BaseTool):
                     "content":    content_data.get("content", ""),
                     "char_count": content_data.get("char_count", 0),
                     "truncated":  content_data.get("truncated", False),
+                    "error":      content_data.get("error", ""),
                 })
             except Exception as exc:
-                results.append({"filename": fname, "error": f"Could not read content: {exc}"})
+                results.append({"filename": fname, "error": f"Could not process attachment: {exc}"})
 
         return json.dumps({
-            "email_subject":  email.get("subject", ""),
-            "email_from":     email.get("sender", ""),
-            "email_date":     email.get("date", ""),
+            "email_subject":    subject,
+            "email_from":       sender,
+            "email_date":       date,
             "attachment_count": len(results),
-            "attachments":    results,
+            "attachments":      results,
         }, ensure_ascii=False)
 
     def to_schema(self):
