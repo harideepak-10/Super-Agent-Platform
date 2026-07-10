@@ -1,10 +1,21 @@
 """
 Base Django settings shared across all environments.
 """
+import sys
 import environ
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Ensure superagent-django/ is first in sys.path so that our `core` package
+# takes priority over any other `core` package elsewhere in the repo
+# (e.g. superagent-ai/core which lacks core.tools.document).
+_base_dir_str = str(BASE_DIR)
+if _base_dir_str not in sys.path:
+    sys.path.insert(0, _base_dir_str)
+elif sys.path[0] != _base_dir_str:
+    sys.path.remove(_base_dir_str)
+    sys.path.insert(0, _base_dir_str)
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")
 
