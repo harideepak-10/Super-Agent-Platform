@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     6,
+        "version":     7,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -624,7 +624,7 @@ _AGENT_TEMPLATES = [
             # Customer memory
             "list_customer_profiles", "search_customer_by_email",
         ],
-        "llm_model":    "llama-3.3-70b-versatile",
+        "llm_model":    "llama-3.1-8b-instant",
         "system_prompt": (
             "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n\n"
 
@@ -657,7 +657,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     3,
+        "version":     4,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -700,7 +700,7 @@ _AGENT_TEMPLATES = [
             # Save
             "upload_to_drive",
         ],
-        "llm_model":   "llama-3.3-70b-versatile",
+        "llm_model":   "llama-3.1-8b-instant",
         "system_prompt": (
             "You are DocumentAgent, the KRYPSOS AI assistant for the full document lifecycle.\n\n"
             "## READ tools (GREEN — run automatically):\n"
@@ -733,7 +733,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     4,
+        "version":     5,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -775,7 +775,7 @@ _AGENT_TEMPLATES = [
             "search_customer_by_email",
             "web_search",
         ],
-        "llm_model":   "llama-3.3-70b-versatile",
+        "llm_model":   "llama-3.1-8b-instant",
         "system_prompt": (
             "You are CalendarAgent, the KRYPSOS AI assistant for Google Calendar management.\n\n"
             "## READ tools (GREEN — run automatically):\n"
