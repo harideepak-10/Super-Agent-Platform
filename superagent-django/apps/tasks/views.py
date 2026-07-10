@@ -451,6 +451,53 @@ def task_retry(request, pk):
 
 
 # ---------------------------------------------------------------------------
+# Document deliverable download
+# ---------------------------------------------------------------------------
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def task_download(request, pk, filename):
+    """
+    GET /api/v1/tasks/<task_id>/download/<filename>/
+
+    Streams a document deliverable created by the Document Agent.
+    Returns 404 if the file doesn't exist or doesn't belong to this workspace.
+    """
+    import os
+    from django.conf import settings
+    from django.http import FileResponse, Http404
+
+    workspace = _get_workspace(request)
+    task = get_object_or_404(Task, id=pk, workspace=workspace)
+
+    # Security: prevent path traversal
+    safe_root = os.path.realpath(
+        os.path.join(settings.MEDIA_ROOT, "deliverables", str(pk))
+    )
+    file_path  = os.path.realpath(os.path.join(safe_root, filename))
+    if not file_path.startswith(safe_root):
+        raise Http404("Invalid path.")
+    if not os.path.exists(file_path):
+        raise Http404("File not found. It may not have been created yet.")
+
+    ext_map = {
+        ".pdf":  "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+    ext = os.path.splitext(filename)[1].lower()
+    content_type = ext_map.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        open(file_path, "rb"),
+        as_attachment=True,
+        filename=filename,
+        content_type=content_type,
+    )
+
+
+# ---------------------------------------------------------------------------
 # New Task form config
 # ---------------------------------------------------------------------------
 

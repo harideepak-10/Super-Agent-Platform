@@ -2407,6 +2407,65 @@ def _save_audit_steps(task, audit_log, step_offset=0):
 
 
 # =============================================================================
+# DOCUMENT DELIVERABLE HELPER
+# =============================================================================
+
+_DOCUMENT_CREATE_TOOLS = {"create_pdf", "create_docx", "create_presentation", "merge_pdfs"}
+
+
+def _save_document_deliverables(task, audit_log):
+    """Scan audit log for document creation results, copy files to media, save to task.deliverables."""
+    import shutil as _shutil
+    from django.conf import settings as _settings
+
+    deliverables = list(task.deliverables or [])
+    existing_filenames = {d.get("filename") for d in deliverables}
+    changed = False
+
+    for entry in audit_log:
+        if entry.get("event_type") != "tool_result":
+            continue
+        details = entry.get("details", {})
+        if details.get("tool_name") not in _DOCUMENT_CREATE_TOOLS:
+            continue
+
+        try:
+            result_str = details.get("result", "{}")
+            result = json.loads(result_str) if isinstance(result_str, str) else result_str
+            file_path = result.get("file_path", "")
+            filename  = result.get("filename", "")
+
+            if not file_path or not filename or not os.path.exists(file_path):
+                continue
+            if filename in existing_filenames:
+                continue
+
+            # Copy to persistent media directory so it survives beyond the request
+            dest_dir = os.path.join(_settings.MEDIA_ROOT, "deliverables", str(task.id))
+            os.makedirs(dest_dir, exist_ok=True)
+            dest_path = os.path.join(dest_dir, filename)
+            _shutil.copy2(file_path, dest_path)
+
+            rel_url = f"{_settings.MEDIA_URL}deliverables/{task.id}/{filename}"
+            deliverables.append({
+                "type":      "file",
+                "filename":  filename,
+                "url":       rel_url,
+                "format":    result.get("format", os.path.splitext(filename)[1].lstrip(".")),
+                "size_kb":   result.get("size_kb", 0),
+                "tool":      details.get("tool_name", ""),
+            })
+            existing_filenames.add(filename)
+            changed = True
+        except Exception as _exc:
+            _logger.warning("_save_document_deliverables: skipped entry — %s", _exc)
+
+    if changed:
+        task.deliverables = deliverables
+        task.save(update_fields=["deliverables"])
+
+
+# =============================================================================
 # CELERY TASK: send_scheduled_email  (used by schedule_email tool)
 # =============================================================================
 
@@ -2518,6 +2577,7 @@ def run_agent_task(self, task_id: str):
     try:
         result = react_agent.run(task.prompt)
         _save_audit_steps(task, react_agent.audit_log)
+        _save_document_deliverables(task, react_agent.audit_log)
         cost = react_agent.get_cost_summary()
         task.status = Task.Status.COMPLETED
         task.result = result

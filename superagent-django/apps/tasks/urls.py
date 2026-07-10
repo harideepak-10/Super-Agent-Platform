@@ -12,4 +12,5 @@ urlpatterns = [
     path("<uuid:pk>/result/", views.task_result, name="task-result"),
     path("<uuid:pk>/retry/", views.task_retry, name="task-retry"),
     path("<uuid:pk>/draft/", views.task_draft_update, name="task-draft-update"),
+    path("<uuid:pk>/download/<str:filename>/", views.task_download, name="task-download"),
 ]
