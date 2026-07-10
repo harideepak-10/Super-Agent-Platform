@@ -52,7 +52,7 @@ def invite_member(request):
         TeamMembership.Role.OWNER, TeamMembership.Role.ADMIN
     ):
         return Response(
-            {"detail": "Only admins and owners can invite members."},
+            {"detail": "Only operators and owners can invite members."},
             status=status.HTTP_403_FORBIDDEN,
         )
 
@@ -62,10 +62,10 @@ def invite_member(request):
     email = serializer.validated_data["email"]
     role  = serializer.validated_data["role"]
 
-    # Admins can only invite as member — only owner can assign admin role
+    # Operators can only invite as member — only owner can assign operator role
     if my_membership.role == TeamMembership.Role.ADMIN and role == TeamMembership.Role.ADMIN:
         return Response(
-            {"detail": "Admins can only invite people as members. Only the owner can assign the admin role."},
+            {"detail": "Operators can only invite people as members. Only the owner can assign the operator role."},
             status=status.HTTP_403_FORBIDDEN,
         )
 

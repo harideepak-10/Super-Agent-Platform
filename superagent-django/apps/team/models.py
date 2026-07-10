@@ -6,7 +6,7 @@ from django.conf import settings
 class TeamMembership(models.Model):
     class Role(models.TextChoices):
         OWNER = "owner", "Owner"
-        ADMIN = "admin", "Admin"
+        ADMIN = "admin", "Operator"
         MEMBER = "member", "Member"
         VIEWER = "viewer", "Viewer"
 
