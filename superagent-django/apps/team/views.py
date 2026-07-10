@@ -44,11 +44,30 @@ def invite_member(request):
     if not workspace:
         return Response({"detail": "No workspace found."}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Only owner and admin can send invitations — members cannot
+    my_membership = TeamMembership.objects.filter(
+        workspace=workspace, user=request.user
+    ).first()
+    if not my_membership or my_membership.role not in (
+        TeamMembership.Role.OWNER, TeamMembership.Role.ADMIN
+    ):
+        return Response(
+            {"detail": "Only admins and owners can invite members."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     serializer = InviteMemberSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     email = serializer.validated_data["email"]
     role  = serializer.validated_data["role"]
+
+    # Admins can only invite as member — only owner can assign admin role
+    if my_membership.role == TeamMembership.Role.ADMIN and role == TeamMembership.Role.ADMIN:
+        return Response(
+            {"detail": "Admins can only invite people as members. Only the owner can assign the admin role."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     # B must have an account
     if not User.objects.filter(email=email).exists():
