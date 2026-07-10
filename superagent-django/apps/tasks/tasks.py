@@ -2622,8 +2622,11 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     _tools_for_resume = _build_tools(agent_model, workspace_id=task.workspace_id)
     _tool_map = {t.name: t for t in _tools_for_resume}
     _approved_tool = _tool_map.get(approval.tool_name)
-    _last_tool_call = snapshot.get("last_tool_call", {})
-    _tool_input = _last_tool_call.get("input", "") if isinstance(_last_tool_call, dict) else ""
+
+    # Use approval.tool_input — the PATCH /draft/ endpoint updates this field,
+    # so always read from here to respect any edits the user made before approving.
+    # Never read from snapshot["last_tool_call"]["input"] — that is the original content.
+    _tool_input = approval.tool_input or {}
     if not isinstance(_tool_input, str):
         _tool_input = json.dumps(_tool_input)
     _logger.info(
