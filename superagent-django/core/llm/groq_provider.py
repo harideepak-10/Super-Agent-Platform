@@ -243,7 +243,7 @@ class GroqProvider(LLMProvider):
             #              <parameters>{"arg": "val"}</parameters></invoke></function_calls>
 
             fn_match = _re.search(
-                r"<function>\s*(\w+)\s*\((\{.*?\})\)\s*</function>",
+                r"<function>\s*(\w+)\s*\(?\s*(\{.*?\})\s*\)?\s*</function>",
                 content,
                 _re.DOTALL,
             )
