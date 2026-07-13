@@ -13,6 +13,35 @@ from .serializers import TaskSerializer, TaskListSerializer, CreateTaskSerialize
 from apps.audit.utils import log_event
 
 
+def _ask_clarification(prompt: str) -> str:
+    """Call Groq to generate a relevant clarifying question for a vague prompt."""
+    try:
+        from groq import Groq
+        import os
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful assistant. The user gave a very short or vague task. "
+                        "Ask ONE short, friendly clarifying question to understand what they need. "
+                        "Do not explain yourself. Just ask the question. Max 2 sentences."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f'The user said: "{prompt}"',
+                },
+            ],
+            max_tokens=80,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception:
+        return "Could you give me a bit more detail about what you'd like me to do?"
+
+
 def _run_in_thread(celery_task, *args):
     """Run a Celery task in a background thread (free tier — no separate worker needed)."""
     def _worker():
@@ -65,12 +94,15 @@ def task_create(request):
         agent = get_object_or_404(Agent, id=agent_id, workspace=workspace)
 
     priority = serializer.validated_data.get("priority", "routine")
-    raw_prompt = serializer.validated_data["prompt"]
+    prompt = serializer.validated_data["prompt"].strip()
 
-    # Expand short/vague prompts into clear actionable instructions
-    from .prompt_enhancer import enhance
-    agent_type = agent.agent_type if agent else ""
-    prompt = enhance(raw_prompt, agent_type)
+    # Reject vague prompts and ask for clarification
+    if len(prompt.split()) < 4:
+        clarification = _ask_clarification(prompt)
+        return Response(
+            {"detail": "needs_clarification", "message": clarification},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     task = Task.objects.create(
         workspace=workspace,
