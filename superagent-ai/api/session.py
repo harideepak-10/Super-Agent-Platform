@@ -35,7 +35,7 @@ class Session:
         result:       Final agent result (set on completion).
         error:        Error message (set on failure).
         audit_log:    Accumulated audit entries.
-        cost_usd:     Cumulative LLM cost.
+        cost_eur:     Cumulative LLM cost.
         steps_taken:  Number of agent loop steps completed.
         created_at:   ISO 8601 UTC creation timestamp.
 
@@ -54,7 +54,7 @@ class Session:
         self.result: str | None = None
         self.error: str | None = None
         self.audit_log: list[dict[str, Any]] = []
-        self.cost_usd: float = 0.0
+        self.cost_eur: float = 0.0
         self.steps_taken: int = 0
         self.created_at: str = datetime.now(timezone.utc).isoformat()
 
@@ -69,14 +69,14 @@ class Session:
         self,
         result: str,
         audit_log: list[dict[str, Any]],
-        cost_usd: float,
+        cost_eur: float,
         steps_taken: int,
     ) -> None:
         """Transition the session to 'completed' state."""
         self.status = "completed"
         self.result = result
         self.audit_log = audit_log
-        self.cost_usd = cost_usd
+        self.cost_eur = cost_eur
         self.steps_taken = steps_taken
 
     def mark_pending_approval(
@@ -87,7 +87,7 @@ class Session:
         assistant_content: str,
         tool_call: dict[str, Any],
         audit_log: list[dict[str, Any]],
-        cost_usd: float,
+        cost_eur: float,
         steps_taken: int,
     ) -> None:
         """Transition the session to 'pending_approval' state."""
@@ -98,7 +98,7 @@ class Session:
         self.approval_assistant_content = assistant_content
         self.approval_tool_call = tool_call
         self.audit_log = audit_log
-        self.cost_usd = cost_usd
+        self.cost_eur = cost_eur
         self.steps_taken = steps_taken
 
     def mark_denied(self) -> None:

@@ -57,5 +57,5 @@ def get_audit_log(
         session_id=session_id,
         entries=entries,
         total_entries=len(entries),
-        total_cost_usd=session.cost_usd,
+        total_cost_eur=session.cost_eur,
     )

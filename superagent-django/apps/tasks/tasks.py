@@ -2583,7 +2583,7 @@ def run_agent_task(self, task_id: str):
         task.result = result
         task.completed_at = timezone.now()
         task.steps_taken = cost["total_steps"]
-        task.cost_usd = cost["total_cost_usd"]
+        task.cost_usd = cost["total_cost_eur"]
         task.total_tokens = llm.total_tokens
         task.save()
         from apps.notifications.utils import notify_task_complete
@@ -2609,7 +2609,7 @@ def run_agent_task(self, task_id: str):
         cost = react_agent.get_cost_summary()
         task.status = Task.Status.WAITING_APPROVAL
         task.steps_taken = cost["total_steps"]
-        task.cost_usd = cost["total_cost_usd"]
+        task.cost_usd = cost["total_cost_eur"]
         task.save(update_fields=["status", "steps_taken", "cost_usd"])
         from apps.notifications.utils import notify_approval_needed
         notify_approval_needed(task, approval)
@@ -2622,7 +2622,7 @@ def run_agent_task(self, task_id: str):
         task.error_message = str(exc)
         task.completed_at = timezone.now()
         task.steps_taken = cost["total_steps"]
-        task.cost_usd = cost["total_cost_usd"]
+        task.cost_usd = cost["total_cost_eur"]
         task.save()
         from apps.notifications.utils import notify_task_failed
         notify_task_failed(task)
@@ -2760,7 +2760,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.result = result
         task.completed_at = timezone.now()
         task.steps_taken = (task.steps_taken or 0) + cost["total_steps"]
-        task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_usd"]
+        task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_eur"]
         task.total_tokens = (task.total_tokens or 0) + llm.total_tokens
         task.save()
         from apps.notifications.utils import notify_task_complete
@@ -2785,7 +2785,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         cost = react_agent.get_cost_summary()
         task.status = Task.Status.WAITING_APPROVAL
         task.steps_taken = (task.steps_taken or 0) + cost["total_steps"]
-        task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_usd"]
+        task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_eur"]
         task.save(update_fields=["status", "steps_taken", "cost_usd"])
         from apps.notifications.utils import notify_approval_needed
         notify_approval_needed(task, new_approval)

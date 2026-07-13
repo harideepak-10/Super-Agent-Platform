@@ -22,7 +22,7 @@ class Agent(models.Model):
     # Configuration
     max_steps = models.PositiveIntegerField(default=20)
     max_cost_usd = models.DecimalField(max_digits=8, decimal_places=4, default=1.0)
-    llm_model = models.CharField(max_length=100, default="llama-3.1-8b-instant")
+    llm_model = models.CharField(max_length=100, default="llama-3.3-70b-versatile")
 
     # Enabled tools
     tools = models.JSONField(default=list)
@@ -45,4 +45,4 @@ class Agent(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.name} ({self.agent_type})"
+        return f"{self.name} ({self.agent_type}

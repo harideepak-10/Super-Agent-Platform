@@ -77,15 +77,15 @@ class CostLimitReached(Exception):
     """Raised when cumulative LLM cost exceeds ``max_cost``.
 
     Attributes:
-        cost_so_far: Cumulative cost (USD) at the point of the limit hit.
-        max_cost:    The configured cost ceiling (USD).
+        cost_so_far: Cumulative cost (EUR) at the point of the limit hit.
+        max_cost:    The configured cost ceiling (EUR).
     """
 
     def __init__(self, cost_so_far: float, max_cost: float) -> None:
         self.cost_so_far = cost_so_far
         self.max_cost = max_cost
         super().__init__(
-            f"Cost limit reached: ${cost_so_far:.6f} exceeds max ${max_cost:.6f}."
+            f"Cost limit reached: €{cost_so_far:.6f} exceeds max €{max_cost:.6f}."
         )
 
 
@@ -146,7 +146,7 @@ class BaseAgent:
                           agent.
             max_steps:    Maximum number of loop iterations before
                           StepLimitReached is raised.
-            max_cost:     Maximum cumulative LLM cost (USD) before
+            max_cost:     Maximum cumulative LLM cost (EUR) before
                           CostLimitReached is raised.
             task_id:      Optional external task identifier.  A UUID is
                           auto-generated when not supplied.
@@ -223,7 +223,7 @@ class BaseAgent:
                 # --- Step 1: Call the LLM ---
                 self._log("llm_called", {"step": self._step, "message_count": len(messages)})
                 response = self._llm.send(messages, tool_schemas)
-                self._cost_so_far += response.get("cost_usd", 0.0)
+                self._cost_so_far += response.get("cost_eur", 0.0)
 
                 tool_call = response.get("tool_call")
                 content = response.get("content", "")
@@ -339,11 +339,11 @@ class BaseAgent:
         """Return token and cost totals for the most recent run.
 
         Returns:
-            Dict with ``total_cost_usd`` (float) and
+            Dict with ``total_cost_eur`` (float) and
             ``total_steps`` (int).
         """
         return {
-            "total_cost_usd": round(self._cost_so_far, 6),
+            "total_cost_eur": round(self._cost_so_far, 6),
             "total_steps": self._step,
         }
 
@@ -418,4 +418,4 @@ class BaseAgent:
             f"tools={list(self._tools.keys())} "
             f"max_steps={self.max_steps} "
             f"max_cost={self.max_cost}>"
-        )
+      

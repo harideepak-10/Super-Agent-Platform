@@ -249,7 +249,7 @@ def profile_settings(request):
     membership = user.memberships.select_related("workspace").first()
     workspace = membership.workspace if membership else None
 
-    role_label = {"owner": "Owner", "admin": "Admin", "member": "Member", "viewer": "Viewer"}.get(
+    role_label = {"owner": "Owner", "admin": "Operator", "member": "Member", "viewer": "Viewer"}.get(
         membership.role if membership else "", "Member"
     )
     plan_label = "Pro plan"
@@ -348,12 +348,12 @@ def settings_summary(request):
                 "apps":  ["gmail", "google_calendar", "google_drive"]
             },
             "cost": {
-                "this_month_usd": 1.42,
-                "currency":       "USD"
+                "this_month_eur": 1.31,
+                "currency":       "EUR"
             },
             "budget": {
                 "set":        true,
-                "limit_usd":  20.00,
+                "limit_eur":  18.40,
                 "period":     "monthly",
                 "used_pct":   7,
                 "status":     "ok"        // "ok" | "warning" | "critical"
@@ -386,22 +386,23 @@ def settings_summary(request):
     connected_apps = list(active_integrations.values_list("provider", flat=True).distinct())
 
     # --- Cost (this month) ---
+    _USD_TO_EUR = 0.92
     today       = datetime.date.today()
     month_start = today.replace(day=1)
     agg = DailyCost.objects.filter(
         workspace=workspace, date__gte=month_start
     ).aggregate(total=Sum("total_cost_usd"))
-    monthly_cost_usd = round(float(agg["total"] or 0), 4)
+    monthly_cost_eur = round(float(agg["total"] or 0) * _USD_TO_EUR, 4)
 
     # --- Budget ---
     budget = Budget.objects.filter(workspace=workspace, period=Budget.Period.MONTHLY).first()
     budget_data = {"set": False}
     if budget:
-        limit    = float(budget.limit_usd)
-        used_pct = int((monthly_cost_usd / limit * 100)) if limit > 0 else 0
+        limit_eur = round(float(budget.limit_usd) * _USD_TO_EUR, 2)
+        used_pct  = int((monthly_cost_eur / limit_eur * 100)) if limit_eur > 0 else 0
         budget_data = {
             "set":       True,
-            "limit_usd": limit,
+            "limit_eur": limit_eur,
             "period":    budget.period,
             "used_pct":  min(used_pct, 100),
             "status":    budget.alert_status,
@@ -425,8 +426,8 @@ def settings_summary(request):
             "apps":  connected_apps,
         },
         "cost": {
-            "this_month_usd": monthly_cost_usd,
-            "currency":       "USD",
+            "this_month_eur": monthly_cost_eur,
+            "currency":       "EUR",
         },
         "budget": budget_data,
         "team": {
@@ -446,6 +447,4 @@ def health_check(request):
     except Exception:
         db_ok = False
     return Response({
-        "status": "ok" if db_ok else "degraded",
-        "db": "ok" if db_ok else "error",
-    }, status=200)
+        "status": "ok" if db_ok 

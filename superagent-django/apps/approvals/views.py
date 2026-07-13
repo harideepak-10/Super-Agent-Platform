@@ -245,7 +245,7 @@ def approval_confirm(request, pk):
     membership = user.memberships.filter(workspace=workspace).first()
     role_map = {
         "owner":  "Workspace Owner",
-        "admin":  "Admin",
+        "admin":  "Operator",
         "member": "Member",
         "viewer": "Viewer",
     }
@@ -506,4 +506,4 @@ def approval_history(request):
         "rejected_count": rejected_count,
         "subtitle":       "%d approved · %d rejected" % (approved_count, rejected_count),
         "history":        items,
-    })
+    

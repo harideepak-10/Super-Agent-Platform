@@ -37,7 +37,7 @@ class MockLLMProvider(LLMProvider):
                 "content":    str,
                 "tool_call":  {"name": str, "input": str} | None,
                 "tokens_used": int,   # optional — defaults to FAKE_TOKENS_PER_CALL
-                "cost_usd":   float,  # optional — defaults to 0.0
+                "cost_eur":   float,  # optional — defaults to 0.0
             }
 
         Args:
@@ -65,7 +65,7 @@ class MockLLMProvider(LLMProvider):
 
         Returns:
             The next response dict from the canned list, normalised to
-            always contain ``tokens_used`` and ``cost_usd``.
+            always contain ``tokens_used`` and ``cost_eur``.
 
         Raises:
             StopIteration: If the pre-written response list is exhausted.
@@ -82,7 +82,7 @@ class MockLLMProvider(LLMProvider):
 
         # Ensure required keys are present with sensible defaults
         response.setdefault("tokens_used", self.FAKE_TOKENS_PER_CALL)
-        response.setdefault("cost_usd", 0.0)
+        response.setdefault("cost_eur", 0.0)
         response.setdefault("content", "")
         response.setdefault("tool_call", None)
 

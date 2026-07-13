@@ -624,7 +624,7 @@ _AGENT_TEMPLATES = [
             # Customer memory
             "list_customer_profiles", "search_customer_by_email",
         ],
-        "llm_model":    "llama-3.1-8b-instant",
+        "llm_model":    "llama-3.3-70b-versatile",
         "system_prompt": (
             "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n\n"
 
@@ -700,7 +700,7 @@ _AGENT_TEMPLATES = [
             # Save
             "upload_to_drive",
         ],
-        "llm_model":   "llama-3.1-8b-instant",
+        "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
             "You are DocumentAgent, the KRYPSOS AI assistant for the full document lifecycle.\n\n"
             "## READ tools (GREEN — run automatically):\n"
@@ -775,7 +775,7 @@ _AGENT_TEMPLATES = [
             "search_customer_by_email",
             "web_search",
         ],
-        "llm_model":   "llama-3.1-8b-instant",
+        "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
             "You are CalendarAgent, the KRYPSOS AI assistant for Google Calendar management.\n\n"
             "## READ tools (GREEN — run automatically):\n"
@@ -1103,7 +1103,7 @@ def agent_create_form(request):
         "model": {
             "options": [
                 {
-                    "value":   "llama-3.1-8b-instant",
+                    "value":   "llama-3.3-70b-versatile",
                     "label":   "Llama 3.1 8B",
                     "badge":   "Fast",
                     "badge_color": "#22C55E",
@@ -1124,7 +1124,7 @@ def agent_create_form(request):
                     "is_default": False,
                 },
             ],
-            "default": "llama-3.1-8b-instant",
+            "default": "llama-3.3-70b-versatile",
         },
         "tools": {
             "available": [
@@ -1172,5 +1172,4 @@ def agent_create_form(request):
         },
         "submit_label": "Create Agent",
         "submit_url":   "/api/v1/agents/create/",
-        "submit_method": "POST",
-    })
+        "submit_method": 

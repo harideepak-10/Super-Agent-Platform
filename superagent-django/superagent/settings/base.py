@@ -274,7 +274,7 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@superagent.ai")
 # AI / Groq
 # ---------------------------------------------------------------------------
 GROQ_API_KEY = env("GROQ_API_KEY", default="")
-GROQ_MODEL = env("GROQ_MODEL", default="llama-3.1-8b-instant")
+GROQ_MODEL = env("GROQ_MODEL", default="llama-3.3-70b-versatile")
 
 # ---------------------------------------------------------------------------
 # Google OAuth
@@ -332,4 +332,3 @@ LOGGING = {
             "propagate": False,
         },
     },
-}

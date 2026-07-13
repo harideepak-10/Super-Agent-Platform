@@ -109,14 +109,14 @@ def run_task(
         session.mark_completed(
             result=result,
             audit_log=agent.get_audit_log(),
-            cost_usd=summary["total_cost_usd"],
+            cost_eur=summary["total_cost_eur"],
             steps_taken=summary["total_steps"],
         )
         return RunResponse(
             session_id=session.session_id,
             status="completed",
             result=result,
-            cost_usd=summary["total_cost_usd"],
+            cost_eur=summary["total_cost_eur"],
             steps_taken=summary["total_steps"],
         )
 
@@ -130,7 +130,7 @@ def run_task(
             assistant_content=pa.get("last_assistant_content", ""),
             tool_call=pa.get("last_tool_call", {}),
             audit_log=agent.get_audit_log(),
-            cost_usd=summary["total_cost_usd"],
+            cost_eur=summary["total_cost_eur"],
             steps_taken=summary["total_steps"],
         )
         return RunResponse(
@@ -140,7 +140,7 @@ def run_task(
                 tool_name=exc.tool_name,
                 tool_input=exc.tool_input,
             ),
-            cost_usd=summary["total_cost_usd"],
+            cost_eur=summary["total_cost_eur"],
             steps_taken=summary["total_steps"],
         )
 
@@ -212,7 +212,7 @@ def approve_tool_call(
             session_id=session_id,
             status="denied",
             result=session.result,
-            cost_usd=session.cost_usd,
+            cost_eur=session.cost_eur,
             steps_taken=session.steps_taken,
         )
 
@@ -249,20 +249,20 @@ def approve_tool_call(
 
         # Merge audit logs: pre-approval entries + resume entries
         merged_audit = session.audit_log + agent.get_audit_log()
-        total_cost = round(session.cost_usd + cost_summary["total_cost_usd"], 6)
+        total_cost = round(session.cost_eur + cost_summary["total_cost_eur"], 6)
         total_steps = session.steps_taken + cost_summary["total_steps"]
 
         session.mark_completed(
             result=result,
             audit_log=merged_audit,
-            cost_usd=total_cost,
+            cost_eur=total_cost,
             steps_taken=total_steps,
         )
         return ApproveResponse(
             session_id=session_id,
             status="completed",
             result=result,
-            cost_usd=total_cost,
+            cost_eur=total_cost,
             steps_taken=total_steps,
         )
 
@@ -276,7 +276,7 @@ def approve_tool_call(
             assistant_content=pa.get("last_assistant_content", ""),
             tool_call=pa.get("last_tool_call", {}),
             audit_log=session.audit_log + agent.get_audit_log(),
-            cost_usd=round(session.cost_usd + agent.get_cost_summary()["total_cost_usd"], 6),
+            cost_eur=round(session.cost_eur + agent.get_cost_summary()["total_cost_eur"], 6),
             steps_taken=session.steps_taken + agent.get_cost_summary()["total_steps"],
         )
         return ApproveResponse(
@@ -286,7 +286,7 @@ def approve_tool_call(
                 tool_name=exc.tool_name,
                 tool_input=exc.tool_input,
             ),
-            cost_usd=session.cost_usd,
+            cost_eur=session.cost_eur,
             steps_taken=session.steps_taken,
         )
 
@@ -314,7 +314,7 @@ def get_sessions(
             status=s.status,
             task=s.task,
             created_at=s.created_at,
-            cost_usd=s.cost_usd,
+            cost_eur=s.cost_usd,
             steps_taken=s.steps_taken,
         )
         for s in list_sessions()
@@ -346,6 +346,6 @@ def get_session_summary(
         status=session.status,
         task=session.task,
         created_at=session.created_at,
-        cost_usd=session.cost_usd,
+        cost_eur=session.cost_eur,
         steps_taken=session.steps_taken,
     )

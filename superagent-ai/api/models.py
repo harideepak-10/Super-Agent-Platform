@@ -89,7 +89,7 @@ class RunResponse(BaseModel):
         default=None,
         description="Tool call details for the human to review.  Present when status='pending_approval'.",
     )
-    cost_usd: float = Field(default=0.0, description="Estimated LLM cost for this run in USD.")
+    cost_eur: float = Field(default=0.0, description="Estimated LLM cost for this run in EUR.")
     steps_taken: int = Field(default=0)
 
 
@@ -114,7 +114,7 @@ class ApproveResponse(BaseModel):
     status: Literal["completed", "pending_approval", "denied", "error"]
     result: str | None = None
     approval_needed: ApprovalNeeded | None = None
-    cost_usd: float = 0.0
+    cost_eur: float = 0.0
     steps_taken: int = 0
 
 
@@ -164,7 +164,7 @@ class AuditLogResponse(BaseModel):
     session_id: str
     entries: list[AuditEntry]
     total_entries: int
-    total_cost_usd: float
+    total_cost_eur: float
 
 
 # ---------------------------------------------------------------------------
@@ -179,5 +179,5 @@ class SessionSummary(BaseModel):
     status: str
     task: str
     created_at: str
-    cost_usd: float
+    cost_eur: float
     steps_taken: int

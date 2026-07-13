@@ -1,7 +1,7 @@
 """
 Groq LLM provider.
 
-Wraps the official ``groq`` Python SDK to call llama-3.1-8b-instant.
+Wraps the official ``groq`` Python SDK to call llama-3.3-70b-versatile.
 Reads the API key from the GROQ_API_KEY environment variable.
 Retries up to 3 times on transient failures and tracks token usage
 and estimated cost per call.
@@ -19,13 +19,14 @@ from .base import LLMProvider
 
 
 # ---------------------------------------------------------------------------
-# Cost constants (as of mid-2024 Groq pricing for llama-3.1-8b-instant)
+# Cost constants (as of mid-2024 Groq pricing for llama-3.3-70b-versatile)
 # ---------------------------------------------------------------------------
-_COST_PER_1K_INPUT_TOKENS: float = 0.00005   # USD
-_COST_PER_1K_OUTPUT_TOKENS: float = 0.00008  # USD
+_COST_PER_1K_INPUT_TOKENS: float = 0.00005   # USD (converted to EUR on output)
+_COST_PER_1K_OUTPUT_TOKENS: float = 0.00008  # USD (converted to EUR on output)
+_USD_TO_EUR: float = 0.92
 _MAX_RETRIES: int = 3
 _RETRY_DELAY_SECONDS: float = 2.0
-_MODEL: str = "llama-3.1-8b-instant"
+_MODEL: str = "llama-3.3-70b-versatile"
 
 
 class GroqProvider(LLMProvider):
@@ -33,14 +34,14 @@ class GroqProvider(LLMProvider):
 
     Attributes:
         total_tokens: Cumulative tokens used across all calls this session.
-        total_cost:   Cumulative cost (USD) across all calls this session.
+        total_cost:   Cumulative cost (EUR) across all calls this session.
     """
 
     def __init__(self, model: str = _MODEL) -> None:
         """Initialise the Groq client from the GROQ_API_KEY env variable.
 
         Args:
-            model: Groq model name to use (default: llama-3.1-8b-instant).
+            model: Groq model name to use (default: llama-3.3-70b-versatile).
 
         Raises:
             EnvironmentError: If GROQ_API_KEY is not set.
@@ -85,7 +86,7 @@ class GroqProvider(LLMProvider):
 
         Returns:
             Normalised response dict with keys:
-                ``content``, ``tool_call``, ``tokens_used``, ``cost_usd``.
+                ``content``, ``tool_call``, ``tokens_used``, ``cost_eur``.
 
         Raises:
             RuntimeError: If all retry attempts are exhausted.
@@ -212,7 +213,7 @@ class GroqProvider(LLMProvider):
 
         Returns:
             Dict with ``content``, ``tool_call``, ``tokens_used``,
-            ``cost_usd``.
+            ``cost_eur``.
         """
         message = completion.choices[0].message
 
@@ -234,28 +235,26 @@ class GroqProvider(LLMProvider):
         output_tokens: int = getattr(usage, "completion_tokens", 0)
         tokens_used: int = input_tokens + output_tokens
 
-        cost_usd: float = (
+        cost_eur: float = (
             (input_tokens / 1000) * _COST_PER_1K_INPUT_TOKENS
             + (output_tokens / 1000) * _COST_PER_1K_OUTPUT_TOKENS
-        )
+        ) * _USD_TO_EUR
 
         self.total_tokens += tokens_used
-        self.total_cost += cost_usd
+        self.total_cost += cost_eur
 
         return {
             "content": content,
             "tool_call": tool_call,
             "tokens_used": tokens_used,
-            "cost_usd": cost_usd,
+            "cost_eur": cost_eur,
         }
 
     def get_cost_summary(self) -> dict[str, Any]:
         """Return cumulative token and cost totals for this provider instance.
 
         Returns:
-            Dict with ``total_tokens`` (int) and ``total_cost_usd`` (float).
+            Dict with ``total_tokens`` (int) and ``total_cost_eur`` (float).
         """
         return {
-            "total_tokens": self.total_tokens,
-            "total_cost_usd": round(self.total_cost, 6),
-        }
+    
