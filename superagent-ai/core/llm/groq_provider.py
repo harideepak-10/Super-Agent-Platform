@@ -245,6 +245,15 @@ class GroqProvider(LLMProvider):
                     content,
                     _re.DOTALL,
                 )
+            if not fn_match:
+                # Pattern 3: bare Python-style call inside a code block
+                # e.g. generate_content({"title": "...", "doc_type": "..."})
+                fn_match = _re.search(
+                    r"(\w+)\s*\(\s*(\{[^)]+\})\s*\)",
+                    content,
+                    _re.DOTALL,
+                )
+
             if fn_match:
                 tool_call = {"name": fn_match.group(1).strip(), "input": fn_match.group(2).strip()}
                 content = ""
