@@ -196,7 +196,7 @@ def gmail_auth_url(request):
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
+        "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send",
         "access_type": "offline",
         "prompt": "consent",
         "state": state,
@@ -301,6 +301,7 @@ def gmail_callback(request):
 # ---------------------------------------------------------------------------
 
 _DRIVE_SCOPES = " ".join([
+    "openid", "email", "profile",
     "https://www.googleapis.com/auth/drive",            # read + write all files
     "https://www.googleapis.com/auth/drive.file",       # files created by app
 ])
@@ -392,6 +393,13 @@ def drive_callback(request):
     refresh_token = tokens.get("refresh_token", "")
     scopes        = tokens.get("scope", "").split()
 
+    # Fetch connected Google account email
+    profile_resp = http_requests.get(
+        "https://www.googleapis.com/oauth2/v1/userinfo",
+        headers={"Authorization": "Bearer " + access_token},
+    )
+    email_address = profile_resp.json().get("email", "") if profile_resp.ok else ""
+
     membership = user.memberships.select_related("workspace").first()
     if not membership:
         return Response({"detail": "User has no workspace."}, status=status.HTTP_400_BAD_REQUEST)
@@ -406,14 +414,15 @@ def drive_callback(request):
             "access_token":  access_token,
             "refresh_token": refresh_token,
             "scopes":        scopes,
+            "metadata":      {"email": email_address},
         },
     )
 
     from django.http import HttpResponse
     return HttpResponse(
         "<html><body><h2>Google Drive connected!</h2>"
-        "<p>Your Drive is now linked to KRYPSOS. You can close this window.</p>"
-        "</body></html>",
+        "<p>Your Drive account <b>{}</b> is now linked to KRYPSOS. You can close this window.</p>"
+        "</body></html>".format(email_address),
         content_type="text/html",
     )
 
@@ -422,7 +431,7 @@ def drive_callback(request):
 # Google Calendar OAuth flow
 # ---------------------------------------------------------------------------
 
-_CALENDAR_SCOPES = "https://www.googleapis.com/auth/calendar"
+_CALENDAR_SCOPES = "openid email profile https://www.googleapis.com/auth/calendar"
 
 
 def _calendar_redirect_uri(request):
@@ -511,6 +520,13 @@ def calendar_callback(request):
     refresh_token = tokens.get("refresh_token", "")
     scopes        = tokens.get("scope", "").split()
 
+    # Fetch connected Google account email
+    profile_resp = http_requests.get(
+        "https://www.googleapis.com/oauth2/v1/userinfo",
+        headers={"Authorization": "Bearer " + access_token},
+    )
+    email_address = profile_resp.json().get("email", "") if profile_resp.ok else ""
+
     membership = user.memberships.select_related("workspace").first()
     if not membership:
         return Response({"detail": "User has no workspace."}, status=status.HTTP_400_BAD_REQUEST)
@@ -525,13 +541,14 @@ def calendar_callback(request):
             "access_token":  access_token,
             "refresh_token": refresh_token,
             "scopes":        scopes,
+            "metadata":      {"email": email_address},
         },
     )
 
     from django.http import HttpResponse
     return HttpResponse(
         "<html><body><h2>Google Calendar connected!</h2>"
-        "<p>Your Calendar is now linked to KRYPSOS. You can close this window.</p>"
-        "</body></html>",
+        "<p>Your Calendar account <b>{}</b> is now linked to KRYPSOS. You can close this window.</p>"
+        "</body></html>".format(email_address),
         content_type="text/html",
     )
