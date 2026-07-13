@@ -1,5 +1,8 @@
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from rest_framework import status
+
+_OAUTH_COMPLETE_URL = "https://super-agent-qwbi.onrender.com/#/oauthCompleteScreen"
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -217,10 +220,8 @@ def gmail_callback(request):
     state = request.query_params.get("state")  # user ID
     error = request.query_params.get("error")
 
-    if error:
-        return Response({"detail": "OAuth denied: {}".format(error)}, status=status.HTTP_400_BAD_REQUEST)
-    if not code or not state:
-        return Response({"detail": "Missing code or state."}, status=status.HTTP_400_BAD_REQUEST)
+    if error or not code or not state:
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     # Look up the user from state
     from django.contrib.auth import get_user_model
@@ -228,13 +229,13 @@ def gmail_callback(request):
     try:
         user = User.objects.get(id=state)
     except (User.DoesNotExist, Exception):
-        return Response({"detail": "Invalid state."}, status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     # Exchange code for tokens
     try:
         client_id, client_secret = _gmail_oauth_client()
-    except ValueError as exc:
-        return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except ValueError:
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     import requests as http_requests
     redirect_uri = _gmail_redirect_uri(request)
@@ -249,8 +250,7 @@ def gmail_callback(request):
         },
     )
     if not token_resp.ok:
-        return Response({"detail": "Token exchange failed.", "error": token_resp.json()},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     tokens = token_resp.json()
     access_token  = tokens.get("access_token", "")
@@ -262,18 +262,16 @@ def gmail_callback(request):
         "https://www.googleapis.com/oauth2/v1/userinfo",
         headers={"Authorization": "Bearer " + access_token},
     )
-    email_address = ""
-    if profile_resp.ok:
-        email_address = profile_resp.json().get("email", "")
+    email_address = profile_resp.json().get("email", "") if profile_resp.ok else ""
 
     # Find the user's workspace
     membership = user.memberships.select_related("workspace").first()
     if not membership:
-        return Response({"detail": "User has no workspace."}, status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
     workspace = membership.workspace
 
     # Save / update the integration
-    integration, _ = Integration.objects.update_or_create(
+    Integration.objects.update_or_create(
         workspace=workspace,
         user=user,
         provider=Integration.Provider.GMAIL,
@@ -286,14 +284,7 @@ def gmail_callback(request):
         },
     )
 
-    # Return a simple success page the mobile WebView can detect
-    from django.http import HttpResponse
-    return HttpResponse(
-        "<html><body><h2>Gmail connected!</h2>"
-        "<p>Your Gmail account <b>{}</b> is now linked. You can close this window.</p>"
-        "</body></html>".format(email_address),
-        content_type="text/html",
-    )
+    return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
 
 # ---------------------------------------------------------------------------
@@ -355,22 +346,20 @@ def drive_callback(request):
     state = request.query_params.get("state")
     error = request.query_params.get("error")
 
-    if error:
-        return Response({"detail": "OAuth denied: {}".format(error)}, status=status.HTTP_400_BAD_REQUEST)
-    if not code or not state:
-        return Response({"detail": "Missing code or state."}, status=status.HTTP_400_BAD_REQUEST)
+    if error or not code or not state:
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     from django.contrib.auth import get_user_model
     User = get_user_model()
     try:
         user = User.objects.get(id=state)
     except (User.DoesNotExist, Exception):
-        return Response({"detail": "Invalid state."}, status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     try:
         client_id, client_secret = _gmail_oauth_client()
-    except ValueError as exc:
-        return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except ValueError:
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     import requests as http_requests
     redirect_uri = _drive_redirect_uri(request)
@@ -385,15 +374,13 @@ def drive_callback(request):
         },
     )
     if not token_resp.ok:
-        return Response({"detail": "Token exchange failed.", "error": token_resp.json()},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     tokens        = token_resp.json()
     access_token  = tokens.get("access_token", "")
     refresh_token = tokens.get("refresh_token", "")
     scopes        = tokens.get("scope", "").split()
 
-    # Fetch connected Google account email
     profile_resp = http_requests.get(
         "https://www.googleapis.com/oauth2/v1/userinfo",
         headers={"Authorization": "Bearer " + access_token},
@@ -402,7 +389,7 @@ def drive_callback(request):
 
     membership = user.memberships.select_related("workspace").first()
     if not membership:
-        return Response({"detail": "User has no workspace."}, status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
     workspace = membership.workspace
 
     Integration.objects.update_or_create(
@@ -418,13 +405,7 @@ def drive_callback(request):
         },
     )
 
-    from django.http import HttpResponse
-    return HttpResponse(
-        "<html><body><h2>Google Drive connected!</h2>"
-        "<p>Your Drive account <b>{}</b> is now linked to KRYPSOS. You can close this window.</p>"
-        "</body></html>".format(email_address),
-        content_type="text/html",
-    )
+    return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
 
 # ---------------------------------------------------------------------------
@@ -482,22 +463,20 @@ def calendar_callback(request):
     state = request.query_params.get("state")
     error = request.query_params.get("error")
 
-    if error:
-        return Response({"detail": "OAuth denied: {}".format(error)}, status=status.HTTP_400_BAD_REQUEST)
-    if not code or not state:
-        return Response({"detail": "Missing code or state."}, status=status.HTTP_400_BAD_REQUEST)
+    if error or not code or not state:
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     from django.contrib.auth import get_user_model
     User = get_user_model()
     try:
         user = User.objects.get(id=state)
     except (User.DoesNotExist, Exception):
-        return Response({"detail": "Invalid state."}, status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     try:
         client_id, client_secret = _gmail_oauth_client()
-    except ValueError as exc:
-        return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except ValueError:
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     import requests as http_requests
     redirect_uri = _calendar_redirect_uri(request)
@@ -512,15 +491,13 @@ def calendar_callback(request):
         },
     )
     if not token_resp.ok:
-        return Response({"detail": "Token exchange failed.", "error": token_resp.json()},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
 
     tokens        = token_resp.json()
     access_token  = tokens.get("access_token", "")
     refresh_token = tokens.get("refresh_token", "")
     scopes        = tokens.get("scope", "").split()
 
-    # Fetch connected Google account email
     profile_resp = http_requests.get(
         "https://www.googleapis.com/oauth2/v1/userinfo",
         headers={"Authorization": "Bearer " + access_token},
@@ -529,7 +506,7 @@ def calendar_callback(request):
 
     membership = user.memberships.select_related("workspace").first()
     if not membership:
-        return Response({"detail": "User has no workspace."}, status=status.HTTP_400_BAD_REQUEST)
+        return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
     workspace = membership.workspace
 
     Integration.objects.update_or_create(
@@ -545,10 +522,4 @@ def calendar_callback(request):
         },
     )
 
-    from django.http import HttpResponse
-    return HttpResponse(
-        "<html><body><h2>Google Calendar connected!</h2>"
-        "<p>Your Calendar account <b>{}</b> is now linked to KRYPSOS. You can close this window.</p>"
-        "</body></html>".format(email_address),
-        content_type="text/html",
-    )
+    return HttpResponseRedirect(_OAUTH_COMPLETE_URL)
