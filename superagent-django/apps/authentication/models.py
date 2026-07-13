@@ -1,6 +1,7 @@
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -58,3 +59,33 @@ class Workspace(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class PasswordResetToken(models.Model):
+    """DB-backed password reset token.
+
+    Replaces the in-memory ``_password_reset_tokens`` dict so tokens survive
+    server restarts and multi-dyno deployments (e.g. Render.com).
+
+    Tokens expire after 1 hour and are single-use (``used`` flag).
+    """
+
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="reset_tokens",
+    )
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "password_reset_tokens"
+
+    def is_valid(self) -> bool:
+        """Return True if token is not expired and not already used."""
+        return not self.used and timezone.now() < self.expires_at
+
+    def __str__(self) -> str:
+        return f"PasswordResetToken(user={self.user.email}, expires={self.expires_at})"

@@ -1,4 +1,5 @@
 import secrets
+from datetime import timedelta
 from django.contrib.auth import get_user_model, authenticate
 from django.core.mail import send_mail
 from django.conf import settings
@@ -11,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 
+from .models import PasswordResetToken
 from .serializers import (
     UserSerializer, LoginSerializer, RegisterSerializer,
     GoogleLoginSerializer, ForgotPasswordSerializer, ResetPasswordSerializer,
@@ -19,7 +21,7 @@ from .serializers import (
 
 User = get_user_model()
 
-_password_reset_tokens: dict = {}
+_TOKEN_TTL_HOURS = 1
 
 
 def _get_tokens(user):
@@ -148,18 +150,24 @@ def forgot_password(request):
 
     try:
         user = User.objects.get(email=email)
+
+        # Clean up old tokens for this user before creating a new one
+        PasswordResetToken.objects.filter(user=user).delete()
+
         token = secrets.token_urlsafe(32)
-        _password_reset_tokens[token] = user.pk
-        reset_url = f"{getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')}/reset-password?token={token}"
+        expires_at = timezone.now() + timedelta(hours=_TOKEN_TTL_HOURS)
+        PasswordResetToken.objects.create(token=token, user=user, expires_at=expires_at)
+
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
         send_mail(
             subject="Reset your Super Agent password",
-            message=f"Click here to reset: {reset_url}",
+            message=f"Click here to reset your password:\n\n{reset_url}\n\nThis link expires in {_TOKEN_TTL_HOURS} hour.",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[email],
             fail_silently=True,
         )
     except User.DoesNotExist:
-        pass
+        pass  # Don't reveal whether the email exists
 
     return Response({"detail": "If that email exists, a reset link has been sent."})
 
@@ -170,16 +178,24 @@ def reset_password(request):
     serializer = ResetPasswordSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     token = serializer.validated_data["token"]
-    user_pk = _password_reset_tokens.pop(token, None)
-    if not user_pk:
-        return Response({"detail": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
-        user = User.objects.get(pk=user_pk)
-        user.set_password(serializer.validated_data["password"])
-        user.save(update_fields=["password"])
-        return Response({"detail": "Password reset successful."})
-    except User.DoesNotExist:
-        return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        reset_token = PasswordResetToken.objects.select_related("user").get(token=token)
+    except PasswordResetToken.DoesNotExist:
+        return Response({"detail": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not reset_token.is_valid():
+        return Response({"detail": "Invalid or expired token."}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = reset_token.user
+    user.set_password(serializer.validated_data["password"])
+    user.save(update_fields=["password"])
+
+    # Mark token as used so it can't be replayed
+    reset_token.used = True
+    reset_token.save(update_fields=["used"])
+
+    return Response({"detail": "Password reset successful."})
 
 
 # ── Profile views ─────────────────────────────────────────────────────────────
