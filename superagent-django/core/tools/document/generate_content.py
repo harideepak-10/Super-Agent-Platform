@@ -86,6 +86,7 @@ class GenerateContentTool(BaseTool):
         prompt      = data.get("prompt", "")
         source_data = data.get("source_data", "")
         sections    = data.get("sections", [])
+        max_points  = data.get("max_points", 5)
 
         if not prompt and not source_data:
             return json.dumps({"error": "Either 'prompt' or 'source_data' is required."})
@@ -94,31 +95,63 @@ class GenerateContentTool(BaseTool):
             doc_type, self._DOC_TYPE_INSTRUCTIONS["report"]
         )
 
-        # Build the instruction for the agent's LLM to act on
-        instruction_parts = [
-            f"Document title: {title}",
-            f"Document type: {doc_type}",
-            f"Instructions: {type_instruction}",
-        ]
+        section_list = sections or self._default_sections(doc_type)
+
+        # Build system + user prompt for content generation
+        system_msg = (
+            f"You are a professional document writer. {type_instruction} "
+            f"Write detailed, high-quality content for each section. "
+            f"Use up to {max_points} key points per section. "
+            "Respond ONLY with a JSON array of objects: "
+            '[{"heading": "...", "content": "..."}, ...]. No extra text.'
+        )
+        user_msg_parts = [f"Document title: {title}"]
         if prompt:
-            instruction_parts.append(f"User request: {prompt}")
+            user_msg_parts.append(f"Topic / request: {prompt}")
         if source_data:
-            instruction_parts.append(f"Source data to use:\n{source_data[:3000]}")
-        if sections:
-            instruction_parts.append(f"Required sections: {', '.join(sections)}")
+            user_msg_parts.append(f"Source data:\n{source_data[:3000]}")
+        user_msg_parts.append(f"Sections to write: {', '.join(section_list)}")
+        user_msg = "\n\n".join(user_msg_parts)
+
+        # Call Groq directly to generate real content
+        written_sections = self._call_llm(system_msg, user_msg, section_list)
 
         return json.dumps({
             "title":    title,
             "doc_type": doc_type,
-            "instruction": "\n\n".join(instruction_parts),
-            "suggested_sections": sections or self._default_sections(doc_type),
+            "sections": written_sections,
             "ready_for": ["create_pdf", "create_docx"] if doc_type != "table" else ["export_csv", "create_pdf"],
-            "note": (
-                "Use the instruction above to write the full document content. "
-                "Then call create_pdf or create_docx with the title and your written sections. "
-                "Each section needs a 'heading' and 'content' field."
-            ),
+            "note": "Content generated. Pass title + sections directly to create_pdf or create_docx.",
         }, ensure_ascii=False)
+
+    def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
+        """Call Groq to generate actual section content. Falls back to stubs on error."""
+        import os
+        try:
+            from groq import Groq
+            client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+            completion = client.chat.completions.create(
+                model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                messages=[
+                    {"role": "system", "content": system_msg},
+                    {"role": "user",   "content": user_msg},
+                ],
+                temperature=0.7,
+                max_tokens=4096,
+            )
+            raw = completion.choices[0].message.content or ""
+            # Extract JSON array from response
+            import re
+            match = re.search(r"\[.*\]", raw, re.DOTALL)
+            if match:
+                sections = json.loads(match.group())
+                if isinstance(sections, list) and sections:
+                    return sections
+        except Exception:
+            pass
+
+        # Fallback: return stub sections so create_pdf can still run
+        return [{"heading": h, "content": f"Content for {h}."} for h in section_list]
 
     @staticmethod
     def _default_sections(doc_type: str) -> list[str]:
