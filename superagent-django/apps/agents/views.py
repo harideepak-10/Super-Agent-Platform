@@ -1172,4 +1172,5 @@ def agent_create_form(request):
         },
         "submit_label": "Create Agent",
         "submit_url":   "/api/v1/agents/create/",
-        "submit_method": 
+        "submit_method": "POST",
+    })

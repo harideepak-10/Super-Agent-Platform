@@ -418,4 +418,4 @@ class BaseAgent:
             f"tools={list(self._tools.keys())} "
             f"max_steps={self.max_steps} "
             f"max_cost={self.max_cost}>"
-      
+        )

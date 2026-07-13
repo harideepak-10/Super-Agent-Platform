@@ -506,4 +506,4 @@ def approval_history(request):
         "rejected_count": rejected_count,
         "subtitle":       "%d approved · %d rejected" % (approved_count, rejected_count),
         "history":        items,
-    
+    })

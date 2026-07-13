@@ -447,4 +447,6 @@ def health_check(request):
     except Exception:
         db_ok = False
     return Response({
-        "status": "ok" if db_ok 
+        "status": "ok" if db_ok else "degraded",
+        "db": "ok" if db_ok else "error",
+    }, status=200)

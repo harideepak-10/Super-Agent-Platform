@@ -292,4 +292,6 @@ class GroqProvider(LLMProvider):
             Dict with ``total_tokens`` (int) and ``total_cost_eur`` (float).
         """
         return {
-    
+            "total_tokens": self.total_tokens,
+            "total_cost_eur": round(self.total_cost, 6),
+        }

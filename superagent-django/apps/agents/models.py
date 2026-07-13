@@ -45,4 +45,4 @@ class Agent(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.name} ({self.agent_type}
+        return f"{self.name} ({self.agent_type})"
