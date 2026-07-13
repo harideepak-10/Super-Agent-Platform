@@ -180,6 +180,19 @@ Attachment flow:
   read_emails -> email.attachments[{filename, attachment_id, message_id}]
              -> download_attachment -> read_attachment_content or extract_data_from_attachment
 
+=== FINAL RESPONSE RULES ===
+
+NEVER include any of the following in your final answer:
+- "I will use the ... tool"
+- "Please wait while I ..."
+- "The tool has finished running"
+- "I am now going to ..."
+- "I have successfully ..."
+- Any description of which tools you used or what steps you took
+
+Your final response must contain ONLY the actual result — the emails, summary,
+draft, or answer the user asked for. Nothing else.
+
 """
 
 

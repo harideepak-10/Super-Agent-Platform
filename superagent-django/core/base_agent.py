@@ -274,6 +274,7 @@ class BaseAgent:
                         })
                         continue
 
+                    content = self._clean_result(content)
                     self._log(
                         "task_completed",
                         {"result": content, "total_steps": self._step},
@@ -394,6 +395,22 @@ class BaseAgent:
     # ------------------------------------------------------------------
     # Overrideable hooks
     # ------------------------------------------------------------------
+
+    def _clean_result(self, text: str) -> str:
+        """Strip narration lines the model sometimes includes in its final answer."""
+        import re
+        _NARRATION = re.compile(
+            r"^.*(i will use|i am going to|i('ll| will) now|please wait|"
+            r"the tool has finished|i have (successfully|now)|"
+            r"i('m| am) (now |currently )?(using|reading|fetching|checking|calling)|"
+            r"let me (use|read|fetch|check|call|now)).*$",
+            re.IGNORECASE,
+        )
+        lines = text.splitlines()
+        cleaned = [ln for ln in lines if not _NARRATION.match(ln.strip())]
+        # Remove leading/trailing blank lines left after stripping
+        result = "\n".join(cleaned).strip()
+        return result or text  # fallback to original if everything was stripped
 
     def _system_prompt(self) -> str:
         """Return the system prompt sent to the LLM at the start of every task.
