@@ -211,6 +211,40 @@ def reset_password(request):
     return Response({"detail": "Password reset successful."})
 
 
+# ── Email debug (remove after confirming email works) ─────────────────────────
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def test_email(request):
+    """Temporary debug endpoint — sends a test email and returns success/error directly."""
+    to = request.data.get("email", "")
+    if not to:
+        return Response({"error": "Provide 'email' in body."}, status=400)
+    try:
+        send_mail(
+            subject="Super Agent — test email",
+            message="If you received this, email sending is working.",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[to],
+            fail_silently=False,
+        )
+        return Response({
+            "status": "sent",
+            "backend": settings.EMAIL_BACKEND,
+            "host": settings.EMAIL_HOST,
+            "user": settings.EMAIL_HOST_USER,
+            "from": settings.DEFAULT_FROM_EMAIL,
+        })
+    except Exception as exc:
+        return Response({
+            "status": "failed",
+            "error": str(exc),
+            "backend": settings.EMAIL_BACKEND,
+            "host": settings.EMAIL_HOST,
+            "user": settings.EMAIL_HOST_USER,
+        }, status=500)
+
+
 # ── Profile views ─────────────────────────────────────────────────────────────
 
 @api_view(["GET"])

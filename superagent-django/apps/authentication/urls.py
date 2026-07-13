@@ -10,4 +10,5 @@ urlpatterns = [
     path("token/refresh/", views.token_refresh, name="auth-token-refresh"),
     path("forgot-password/", views.forgot_password, name="auth-forgot-password"),
     path("reset-password/", views.reset_password, name="auth-reset-password"),
+    path("test-email/", views.test_email, name="auth-test-email"),
 ]
