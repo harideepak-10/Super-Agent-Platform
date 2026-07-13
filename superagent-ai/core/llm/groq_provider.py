@@ -221,6 +221,7 @@ class GroqProvider(LLMProvider):
         content: str = message.content or ""
 
         # --- Tool call (if any) ---
+        import re as _re
         tool_call: dict[str, Any] | None = None
         if message.tool_calls:
             first = message.tool_calls[0]
@@ -228,6 +229,25 @@ class GroqProvider(LLMProvider):
                 "name": first.function.name,
                 "input": first.function.arguments,  # raw JSON string
             }
+        else:
+            # Fallback: llama-3.3-70b-versatile sometimes emits tool calls as
+            # plain text instead of via the API tool_calls field.
+            # Pattern 1: <function=tool_name>{"arg": "val"}</function>
+            # Pattern 2: <function>tool_name({"arg": "val"})</function>
+            fn_match = _re.search(
+                r"<function=(\w+)>\s*(\{.*?\})\s*</function>",
+                content,
+                _re.DOTALL,
+            )
+            if not fn_match:
+                fn_match = _re.search(
+                    r"<function>\s*(\w+)\s*\(?\s*(\{.*?\})\s*\)?\s*</function>",
+                    content,
+                    _re.DOTALL,
+                )
+            if fn_match:
+                tool_call = {"name": fn_match.group(1).strip(), "input": fn_match.group(2).strip()}
+                content = ""
 
         # --- Token accounting ---
         usage = completion.usage

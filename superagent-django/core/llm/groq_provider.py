@@ -239,15 +239,22 @@ class GroqProvider(LLMProvider):
             # via the API tool_calls field.  Detect and parse them so the agent
             # loop can execute the tool instead of treating this as a final answer.
             #
-            # Pattern 1: <function>tool_name({"arg": "val"})</function>
-            # Pattern 2: <function_calls><invoke><tool_name>t</tool_name>
+            # Pattern 1: <function=tool_name>{"arg": "val"}</function>  ← llama-3.3-70b-versatile
+            # Pattern 2: <function>tool_name({"arg": "val"})</function>
+            # Pattern 3: <function_calls><invoke><tool_name>t</tool_name>
             #              <parameters>{"arg": "val"}</parameters></invoke></function_calls>
 
             fn_match = _re.search(
-                r"<function>\s*(\w+)\s*\(?\s*(\{.*?\})\s*\)?\s*</function>",
+                r"<function=(\w+)>\s*(\{.*?\})\s*</function>",
                 content,
                 _re.DOTALL,
             )
+            if not fn_match:
+                fn_match = _re.search(
+                    r"<function>\s*(\w+)\s*\(?\s*(\{.*?\})\s*\)?\s*</function>",
+                    content,
+                    _re.DOTALL,
+                )
             if not fn_match:
                 # Try the XML-style format
                 fn_match = _re.search(
