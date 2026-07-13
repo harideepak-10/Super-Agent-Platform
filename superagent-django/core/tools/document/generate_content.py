@@ -43,11 +43,11 @@ class GenerateContentTool(BaseTool):
 
     name: str = "generate_content"
     description: str = (
-        "Generate structured document content using the LLM. "
+        "Generate document content AND automatically create the PDF file in one step. "
         "Input JSON: {\"title\": \"...\", \"doc_type\": \"report|summary|proposal|letter|table\", "
         "\"prompt\": \"...\", \"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
-        "Returns structured sections ready to pass to create_pdf or create_docx. "
-        "Always call this first before creating any document file."
+        "Returns file_path of the created PDF. Pass file_path to upload_to_drive to save to Google Drive. "
+        "Do NOT call create_pdf separately — this tool handles everything."
     )
     zone: ToolZone = ToolZone.GREEN
 
@@ -116,13 +116,40 @@ class GenerateContentTool(BaseTool):
         # Call Groq directly to generate real content
         written_sections = self._call_llm(system_msg, user_msg, section_list)
 
-        return json.dumps({
+        # Automatically build the PDF/DOCX so the agent doesn't need a second tool call
+        file_result = self._auto_create_file(title, doc_type, written_sections, data.get("author", "KRYPSOS Agent"))
+
+        result = {
             "title":    title,
             "doc_type": doc_type,
             "sections": written_sections,
-            "ready_for": ["create_pdf", "create_docx"] if doc_type != "table" else ["export_csv", "create_pdf"],
-            "note": "Content generated. Pass title + sections directly to create_pdf or create_docx.",
-        }, ensure_ascii=False)
+        }
+        result.update(file_result)
+        return json.dumps(result, ensure_ascii=False)
+
+    def _auto_create_file(self, title: str, doc_type: str, sections: list, author: str) -> dict:
+        """Immediately build the output file so no second tool call is needed."""
+        try:
+            from core.tools.document.create_pdf import CreatePdfTool
+            import json as _json
+            payload = _json.dumps({"title": title, "sections": sections, "author": author})
+            raw = CreatePdfTool().run(payload)
+            result = _json.loads(raw)
+            if result.get("status") == "created":
+                return {
+                    "status":    "created",
+                    "file_path": result["file_path"],
+                    "filename":  result["filename"],
+                    "size_kb":   result["size_kb"],
+                    "format":    "pdf",
+                    "note": (
+                        f"PDF created at {result['file_path']}. "
+                        "Call upload_to_drive with this file_path to save it to Google Drive."
+                    ),
+                }
+        except Exception as exc:
+            return {"pdf_error": str(exc)}
+        return {}
 
     def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
         """Call Groq to generate actual section content. Falls back to stubs on error."""
