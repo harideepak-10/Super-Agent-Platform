@@ -162,6 +162,7 @@ class BaseAgent:
         self.audit_log: list[dict[str, Any]] = []
         self._step: int = 0
         self._cost_so_far: float = 0.0
+        self._hallucination_reprompts: int = 0
 
         # Populated just before ApprovalRequired is raised so the API
         # layer can save full state and resume after human approval.
@@ -230,29 +231,41 @@ class BaseAgent:
 
                 # --- Step 2: No tool call → task complete (or push back if no tools used yet) ---
                 if not tool_call:
-                    # Guard: if the model gave a final answer on the very first step
-                    # without calling any tool, it is hallucinating success.
-                    # Re-prompt once so it actually executes the required tool.
+                    # Guard: if no tool has run yet the model is hallucinating success.
+                    # Re-prompt up to 3 times with increasingly explicit instructions.
                     tools_used_so_far = any(
                         m.get("role") == "tool" for m in messages
                     )
-                    if self._step == 1 and tool_schemas and not tools_used_so_far:
+                    if tool_schemas and not tools_used_so_far and self._hallucination_reprompts < 3:
+                        self._hallucination_reprompts += 1
                         self._log(
                             "hallucination_guard",
                             {
                                 "step": self._step,
+                                "reprompt": self._hallucination_reprompts,
                                 "content_preview": content[:120],
-                                "note": "Model gave final answer without calling any tool — re-prompting",
+                                "note": "Model returned text without calling any tool — re-prompting",
                             },
+                        )
+                        # Build list of available tool names for the model
+                        tool_names = ", ".join(
+                            s["function"]["name"]
+                            for s in tool_schemas
+                            if "function" in s
                         )
                         messages.append({"role": "assistant", "content": content or ""})
                         messages.append({
                             "role": "user",
                             "content": (
-                                "You have not called any tools yet but you claimed the task is done. "
-                                "That is incorrect — nothing has been executed. "
-                                "You MUST call the appropriate tool NOW (e.g. generate_content to create a document). "
-                                "Do not give a final answer until the tool has actually run and returned a result."
+                                "ERROR: You wrote text but called NO tools. Nothing was executed.\n\n"
+                                "Rules:\n"
+                                "- Do NOT write Python code or pseudocode.\n"
+                                "- Do NOT describe what you will do.\n"
+                                "- You MUST call one of these tools right now using the tool-calling mechanism: "
+                                f"{tool_names}\n\n"
+                                "For document creation tasks, call generate_content with JSON like this:\n"
+                                '{"title": "Report Title", "doc_type": "report", "prompt": "describe what to write"}\n\n'
+                                "Call the tool NOW. Your response must be a tool call, not text."
                             ),
                         })
                         continue
@@ -396,6 +409,7 @@ class BaseAgent:
         """Reset per-run counters and log before starting a new task."""
         self._step = 0
         self._cost_so_far = 0.0
+        self._hallucination_reprompts = 0
         self.audit_log = []
         self.pending_approval = None
         self._memory.clear()
