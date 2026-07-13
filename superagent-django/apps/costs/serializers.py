@@ -16,15 +16,34 @@ class DailyCostSerializer(serializers.ModelSerializer):
 
 
 class BudgetSerializer(serializers.ModelSerializer):
-    limit_eur = serializers.SerializerMethodField()
+    # Write field — client sends limit_eur; we convert to limit_usd for storage
+    limit_eur = serializers.DecimalField(
+        max_digits=10, decimal_places=2, write_only=False, required=False,
+        help_text="Budget limit in EUR. Converted to USD internally."
+    )
 
     class Meta:
         model = Budget
         fields = [
-            "id", "workspace", "period", "limit_usd", "limit_eur",
+            "id", "workspace", "period", "limit_eur",
             "alert_threshold_pct", "alert_status", "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "workspace", "limit_eur", "alert_status", "created_at", "updated_at"]
+        read_only_fields = ["id", "workspace", "alert_status", "created_at", "updated_at"]
 
-    def get_limit_eur(self, obj):
-        return round(float(obj.limit_usd or 0) * _USD_TO_EUR, 4)
+    def to_representation(self, instance):
+        """Always return limit_eur (computed from the stored limit_usd)."""
+        rep = super().to_representation(instance)
+        rep["limit_eur"] = round(float(instance.limit_usd or 0) * _USD_TO_EUR, 2)
+        return rep
+
+    def validate_limit_eur(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Budget limit must be greater than zero.")
+        return value
+
+    def get_limit_usd_from_eur(self, validated_data):
+        """Convert the incoming limit_eur to limit_usd for DB storage."""
+        limit_eur = validated_data.pop("limit_eur", None)
+        if limit_eur is not None:
+            validated_data["limit_usd"] = round(float(limit_eur) / _USD_TO_EUR, 2)
+        return validated_data

@@ -234,11 +234,12 @@ def budget_detail(request):
 
     serializer = BudgetSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    vd = serializer.get_limit_usd_from_eur(dict(serializer.validated_data))
     budget = Budget.objects.create(
         workspace=workspace,
         period=Budget.Period.MONTHLY,
-        limit_usd=serializer.validated_data["limit_usd"],
-        alert_threshold_pct=serializer.validated_data.get("alert_threshold_pct", 80),
+        limit_usd=vd["limit_usd"],
+        alert_threshold_pct=vd.get("alert_threshold_pct", 80),
         created_by=request.user,
     )
     return Response(BudgetSerializer(budget).data, status=status.HTTP_201_CREATED)
@@ -248,7 +249,7 @@ def budget_detail(request):
 @permission_classes([IsAuthenticated])
 def budget_update(request):
     """
-    PATCH /costs/budget/update/  — update limit_usd or alert_threshold_pct
+    PATCH /costs/budget/update/  — update limit_eur or alert_threshold_pct
     Returns 404 if no budget has been created yet.
     """
     workspace = _get_workspace(request)
@@ -259,8 +260,14 @@ def budget_update(request):
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    if "limit_usd" in request.data:
-        budget.limit_usd = request.data["limit_usd"]
+    if "limit_eur" in request.data:
+        try:
+            limit_eur = float(request.data["limit_eur"])
+            if limit_eur <= 0:
+                return Response({"detail": "limit_eur must be greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
+            budget.limit_usd = round(limit_eur / 0.92, 2)
+        except (ValueError, TypeError):
+            return Response({"detail": "limit_eur must be a valid number."}, status=status.HTTP_400_BAD_REQUEST)
     if "alert_threshold_pct" in request.data:
         budget.alert_threshold_pct = request.data["alert_threshold_pct"]
     budget.save()
