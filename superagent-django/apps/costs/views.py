@@ -223,7 +223,27 @@ def budget_detail(request):
 
     if request.method == "GET":
         budget = Budget.objects.filter(workspace=workspace).first()
-        return Response(BudgetSerializer(budget).data if budget else None)
+        if not budget:
+            return Response(None)
+
+        data = BudgetSerializer(budget).data
+
+        # Compute current-month spending and append live fields
+        today = timezone.now().date()
+        month_start = today.replace(day=1)
+        agg = DailyCost.objects.filter(
+            workspace=workspace, date__gte=month_start
+        ).aggregate(total=Sum("total_cost_usd"))
+        spent_eur  = round(float(agg["total"] or 0) * _USD_TO_EUR, 2)
+        limit_eur  = float(data["limit_eur"])
+        remaining_eur = round(limit_eur - spent_eur, 2)
+        used_pct   = round(spent_eur / limit_eur * 100) if limit_eur else 0
+
+        data["spent_eur"]     = spent_eur
+        data["remaining_eur"] = remaining_eur
+        data["used_pct"]      = used_pct
+
+        return Response(data)
 
     # POST — create only
     if Budget.objects.filter(workspace=workspace).exists():
