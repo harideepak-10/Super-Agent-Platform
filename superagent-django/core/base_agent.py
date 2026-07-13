@@ -223,7 +223,11 @@ class BaseAgent:
 
                 # --- Step 1: Call the LLM ---
                 self._log("llm_called", {"step": self._step, "message_count": len(messages)})
-                response = self._llm.send(messages, tool_schemas)
+                # Force a tool call when no tool has run yet — prevents the model
+                # from skipping straight to a hallucinated final answer.
+                tools_used_so_far = any(m.get("role") == "tool" for m in messages)
+                force_tool = bool(tool_schemas) and not tools_used_so_far
+                response = self._llm.send(messages, tool_schemas, force_tool=force_tool)
                 self._cost_so_far += response.get("cost_eur", 0.0)
 
                 tool_call = response.get("tool_call")

@@ -74,6 +74,7 @@ class GroqProvider(LLMProvider):
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        force_tool: bool = False,
     ) -> dict[str, Any]:
         """Send messages to Groq and return a normalised response dict.
 
@@ -95,7 +96,7 @@ class GroqProvider(LLMProvider):
 
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
-                return self._call_api(messages, tools)
+                return self._call_api(messages, tools, force_tool=force_tool)
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 if attempt < _MAX_RETRIES:
@@ -169,6 +170,7 @@ class GroqProvider(LLMProvider):
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
+        force_tool: bool = False,
     ) -> dict[str, Any]:
         """Make a single API call and parse the response.
 
@@ -186,7 +188,8 @@ class GroqProvider(LLMProvider):
         }
         if tools:
             kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
+            # force_tool=True → model MUST call a tool (no plain-text response allowed)
+            kwargs["tool_choice"] = "required" if force_tool else "auto"
 
         try:
             completion = self._client.chat.completions.create(**kwargs)

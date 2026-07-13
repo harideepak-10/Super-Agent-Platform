@@ -25,6 +25,7 @@ class LLMProvider(ABC):
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        force_tool: bool = False,
     ) -> dict[str, Any]:
         """Send a conversation to the language model and return its response.
 

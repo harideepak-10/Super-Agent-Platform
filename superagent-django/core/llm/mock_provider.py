@@ -56,6 +56,7 @@ class MockLLMProvider(LLMProvider):
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        force_tool: bool = False,
     ) -> dict[str, Any]:
         """Return the next pre-written response from the list.
 
