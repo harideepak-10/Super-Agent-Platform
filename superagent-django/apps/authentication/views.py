@@ -1,7 +1,11 @@
+import logging
 import secrets
+import threading
 from datetime import timedelta
 from django.contrib.auth import get_user_model, authenticate
 from django.core.mail import send_mail
+
+logger = logging.getLogger(__name__)
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import status
@@ -159,13 +163,22 @@ def forgot_password(request):
         PasswordResetToken.objects.create(token=token, user=user, expires_at=expires_at)
 
         reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
-        send_mail(
-            subject="Reset your Super Agent password",
-            message=f"Click here to reset your password:\n\n{reset_url}\n\nThis link expires in {_TOKEN_TTL_HOURS} hour.",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-            fail_silently=True,
-        )
+
+        # Send email in background so API returns immediately
+        def _send():
+            try:
+                send_mail(
+                    subject="Reset your Super Agent password",
+                    message=f"Click here to reset your password:\n\n{reset_url}\n\nThis link expires in {_TOKEN_TTL_HOURS} hour.",
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+                logger.info("Password reset email sent to %s", email)
+            except Exception as exc:
+                logger.error("Failed to send password reset email to %s: %s", email, exc)
+
+        threading.Thread(target=_send, daemon=True).start()
     except User.DoesNotExist:
         pass  # Don't reveal whether the email exists
 
