@@ -228,8 +228,35 @@ class BaseAgent:
                 tool_call = response.get("tool_call")
                 content = response.get("content", "")
 
-                # --- Step 2: No tool call → task complete ---
+                # --- Step 2: No tool call → task complete (or push back if no tools used yet) ---
                 if not tool_call:
+                    # Guard: if the model gave a final answer on the very first step
+                    # without calling any tool, it is hallucinating success.
+                    # Re-prompt once so it actually executes the required tool.
+                    tools_used_so_far = any(
+                        m.get("role") == "tool" for m in messages
+                    )
+                    if self._step == 1 and tool_schemas and not tools_used_so_far:
+                        self._log(
+                            "hallucination_guard",
+                            {
+                                "step": self._step,
+                                "content_preview": content[:120],
+                                "note": "Model gave final answer without calling any tool — re-prompting",
+                            },
+                        )
+                        messages.append({"role": "assistant", "content": content or ""})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "You have not called any tools yet but you claimed the task is done. "
+                                "That is incorrect — nothing has been executed. "
+                                "You MUST call the appropriate tool NOW (e.g. generate_content to create a document). "
+                                "Do not give a final answer until the tool has actually run and returned a result."
+                            ),
+                        })
+                        continue
+
                     self._log(
                         "task_completed",
                         {"result": content, "total_steps": self._step},
