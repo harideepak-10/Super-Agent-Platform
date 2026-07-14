@@ -254,6 +254,68 @@ class ReadEmailTool(BaseTool):
         }}
 
 
+class SearchEmailTool(BaseTool):
+    """Search Gmail using Gmail search syntax."""
+    name = "search_emails"
+    description = (
+        "Search Gmail using Gmail search syntax. "
+        "Input JSON: {\"query\": \"in:inbox\", \"max_results\": 10}. "
+        "'query' is required — use 'in:inbox' to search all inbox emails. "
+        "Returns {\"emails\": [...], \"count\": N}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def _gmail_service(self):
+        if not self._workspace_id:
+            return None
+        try:
+            from apps.integrations.models import Integration
+            integration = Integration.objects.filter(
+                workspace_id=self._workspace_id,
+                provider=Integration.Provider.GMAIL,
+                status=Integration.Status.ACTIVE,
+            ).first()
+            if not integration or not integration.access_token:
+                return None
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+            creds = Credentials(
+                token=integration.access_token,
+                refresh_token=integration.refresh_token,
+                client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+                client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+                token_uri="https://oauth2.googleapis.com/token",
+            )
+            return build("gmail", "v1", credentials=creds)
+        except Exception:
+            return None
+
+    def run(self, input_str: str) -> str:
+        service = self._gmail_service()
+        if not service:
+            return json.dumps({
+                "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account.",
+                "emails": [], "count": 0,
+            })
+        from core.tools.gmail.search_emails import SearchEmailsTool
+        return SearchEmailsTool(gmail_service=service).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "query":       {"type": "string"},
+                    "max_results": {"type": "integer"},
+                },
+                "required": ["query"],
+            },
+        }}
+
+
 class DownloadAttachmentTool(BaseTool):
     """Download a Gmail attachment and save it locally."""
     name = "download_attachment"
@@ -2107,6 +2169,7 @@ _TOOL_REGISTRY: dict = {
     # Email core
     "send_email":               SendEmailTool,
     "read_email":               ReadEmailTool,
+    "search_emails":            SearchEmailTool,
     "read_email_attachment_content": ReadEmailAttachmentContentTool,
     "summarize_emails":         SummarizeEmailsTool,
     "download_attachment":      DownloadAttachmentTool,
