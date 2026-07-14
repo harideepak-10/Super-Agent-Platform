@@ -77,7 +77,7 @@ def _placeholder_error_json(reason: str) -> str:
 
 from core.base_agent import (
     BaseAgent, ApprovalRequired, RedZoneBlocked,
-    StepLimitReached, CostLimitReached,
+    StepLimitReached, CostLimitReached, TimeLimitReached,
 )
 
 
@@ -2364,6 +2364,8 @@ class DjangoAgent(BaseAgent):
         }
         """
         super()._log(event_type, details)
+        if getattr(self, "_ws_dead", False):
+            return
         import json as _json
         import logging as _logging
         _ws_logger = _logging.getLogger("ws.live")
@@ -2422,6 +2424,7 @@ class DjangoAgent(BaseAgent):
             })
             _ws_logger.info("WS_PUSH_OK task=%s ws_event=%s", self.task_id, ws_event)
         except Exception as _exc:
+            self._ws_dead = True
             _ws_logger.error("WS_PUSH_ERR task=%s event=%s err=%s", self.task_id, event_type, _exc, exc_info=True)
 
 
@@ -2784,13 +2787,15 @@ def run_agent_task(self, task_id: str):
     )
 
     try:
+        import time as _time
+        _run_t0 = _time.monotonic()
         result = react_agent.run(task.prompt)
 
-        # Safety net: if no tool was called at all, retry once
+        # Safety net: if no tool was called at all, retry once (skip if first run was slow)
         _tool_called = any(
             e.get("event_type") == "tool_called" for e in react_agent.audit_log
         )
-        if not _tool_called and tools:
+        if not _tool_called and tools and (_time.monotonic() - _run_t0) < 90:
             _logger.warning("run_agent_task: no tool called on first run — retrying task=%s", task_id)
             react_agent._step = 0
             react_agent.audit_log = []
@@ -2845,7 +2850,7 @@ def run_agent_task(self, task_id: str):
         notify_approval_needed(task, approval)
         return {"status": "waiting_approval", "approval_id": str(approval.id)}
 
-    except (StepLimitReached, CostLimitReached, RedZoneBlocked) as exc:
+    except (StepLimitReached, CostLimitReached, RedZoneBlocked, TimeLimitReached) as exc:
         _save_audit_steps(task, react_agent.audit_log)
         cost = react_agent.get_cost_summary()
         task.status = Task.Status.FAILED

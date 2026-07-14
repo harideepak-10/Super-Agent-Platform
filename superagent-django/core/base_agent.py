@@ -105,6 +105,23 @@ class StepLimitReached(Exception):
         )
 
 
+class TimeLimitReached(Exception):
+    """Raised when the agent run exceeds ``max_seconds``.
+
+    Attributes:
+        elapsed:     Seconds elapsed since the run started.
+        max_seconds: The configured time ceiling.
+    """
+
+    def __init__(self, elapsed: float, max_seconds: float) -> None:
+        self.elapsed = elapsed
+        self.max_seconds = max_seconds
+        super().__init__(
+            f"Time limit reached: task ran {elapsed:.0f}s, max is {max_seconds:.0f}s. "
+            "The AI provider may be slow or overloaded — please try again."
+        )
+
+
 # ---------------------------------------------------------------------------
 # BaseAgent
 # ---------------------------------------------------------------------------
@@ -135,6 +152,7 @@ class BaseAgent:
         max_steps: int = 20,
         max_cost: float = 1.0,
         task_id: str | None = None,
+        max_seconds: float = 240.0,
     ) -> None:
         """Initialise the agent.
 
@@ -156,7 +174,9 @@ class BaseAgent:
         self._tools: dict[str, BaseTool] = {t.name: t for t in tools}
         self.max_steps = max_steps
         self.max_cost = max_cost
+        self.max_seconds = max_seconds
         self.task_id = task_id or str(uuid.uuid4())
+        self._run_started_at: float = 0.0
 
         self._memory = WorkingMemory()
         self.audit_log: list[dict[str, Any]] = []
@@ -401,7 +421,7 @@ class BaseAgent:
                     {"role": "tool", "name": tool_name, "content": result}
                 )
 
-        except (ApprovalRequired, RedZoneBlocked, CostLimitReached, StepLimitReached):
+        except (ApprovalRequired, RedZoneBlocked, CostLimitReached, StepLimitReached, TimeLimitReached):
             raise  # propagate control-flow exceptions unchanged
         except Exception as exc:  # noqa: BLE001
             self._log("error", {"error": str(exc), "step": self._step})
@@ -527,20 +547,33 @@ class BaseAgent:
 
     def _reset_run_state(self) -> None:
         """Reset per-run counters and log before starting a new task."""
+        import time as _time
         self._step = 0
         self._cost_so_far = 0.0
         self._hallucination_reprompts = 0
         self.audit_log = []
         self.pending_approval = None
         self._memory.clear()
+        self._run_started_at = _time.monotonic()
 
     def _check_limits(self) -> None:
         """Raise the appropriate exception if a limit has been exceeded.
 
         Raises:
+            TimeLimitReached:  If elapsed wall time exceeds ``max_seconds``.
             StepLimitReached:  If ``self._step > self.max_steps``.
             CostLimitReached:  If ``self._cost_so_far > self.max_cost``.
         """
+        import time as _time
+        if self.max_seconds and self._run_started_at:
+            elapsed = _time.monotonic() - self._run_started_at
+            if elapsed > self.max_seconds:
+                self._log(
+                    "time_limit_reached",
+                    {"elapsed": elapsed, "max_seconds": self.max_seconds},
+                )
+                raise TimeLimitReached(elapsed, self.max_seconds)
+
         if self._step > self.max_steps:
             self._log(
                 "step_limit_reached",

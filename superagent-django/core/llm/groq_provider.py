@@ -24,8 +24,9 @@ from .base import LLMProvider
 _COST_PER_1K_INPUT_TOKENS: float = 0.00005   # USD (converted to EUR on output)
 _COST_PER_1K_OUTPUT_TOKENS: float = 0.00008  # USD (converted to EUR on output)
 _USD_TO_EUR: float = 0.92
-_MAX_RETRIES: int = 3
+_MAX_RETRIES: int = 2
 _RETRY_DELAY_SECONDS: float = 2.0
+_REQUEST_TIMEOUT_SECONDS: float = 45.0
 _MODEL: str = "llama-3.3-70b-versatile"
 
 _RATE_LIMIT_MESSAGE = (
@@ -76,7 +77,7 @@ class GroqProvider(LLMProvider):
                 "Run: pip install groq"
             ) from exc
 
-        self._client = Groq(api_key=api_key)
+        self._client = Groq(api_key=api_key, timeout=_REQUEST_TIMEOUT_SECONDS, max_retries=0)
         self._model = model
         self.total_tokens: int = 0
         self.total_cost: float = 0.0
