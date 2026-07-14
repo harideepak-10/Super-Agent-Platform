@@ -222,10 +222,25 @@ class ReadEmailTool(BaseTool):
         service = self._gmail_service()
         if service:
             from core.tools.gmail.read_emails import ReadEmailsTool
-            return ReadEmailsTool(gmail_service=service).run(input_str)
+            result = ReadEmailsTool(gmail_service=service).run(input_str)
+            # Detect auth/token errors and give user a clear message
+            try:
+                import json as _j
+                data = _j.loads(result)
+                if data.get("error") and any(
+                    k in str(data["error"]).lower()
+                    for k in ("401", "403", "invalid_grant", "token", "credential", "unauthorized", "expired")
+                ):
+                    return _j.dumps({
+                        "error": "Gmail authentication failed. Your Gmail token has expired. Please go to Integrations → disconnect Gmail → reconnect it to get a fresh token.",
+                        "emails": [], "count": 0,
+                    })
+            except Exception:
+                pass
+            return result
         return json.dumps({
-            "note": "No Gmail integration connected. Go to Integrations to connect Gmail.",
-            "emails": [],
+            "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account first.",
+            "emails": [], "count": 0,
         })
 
     def to_schema(self):
