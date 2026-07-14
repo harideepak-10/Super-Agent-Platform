@@ -213,11 +213,13 @@ class GroqProvider(LLMProvider):
         try:
             completion = self._client.chat.completions.create(**kwargs)
         except Exception as exc:
-            # Model used wrong parameter names — Groq rejected the tool call BEFORE
-            # returning it, so `translated` is already clean (no bad message added).
-            # Retry WITH tools so the model can try again (not without — that causes
-            # the model to output the function call as text).
+            # Model used wrong parameter names — Groq rejected the tool call.
             if "tool_use_failed" in str(exc) or "tool call validation failed" in str(exc):
+                # Try to salvage the tool call from the error's failed_generation
+                salvaged = GroqProvider._salvage_failed_tool_call(exc)
+                if salvaged is not None:
+                    return {"content": "", "tool_call": salvaged, "tokens_used": 0, "cost_eur": 0.0}
+                # Fallback: retry with tool_choice=auto
                 retry_kwargs: dict[str, Any] = {
                     "model": self._model,
                     "messages": translated,
@@ -230,6 +232,58 @@ class GroqProvider(LLMProvider):
                 raise
 
         return self._parse_response(completion)
+
+    @staticmethod
+    def _salvage_failed_tool_call(exc: Exception) -> "dict | None":
+        """Try to extract a valid tool call from a tool_use_failed error."""
+        import re as _re, json as _json
+
+        # Extract failed_generation string
+        raw = ""
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict):
+            try:
+                raw = body["error"]["failed_generation"]
+            except (KeyError, TypeError):
+                pass
+        if not raw:
+            m = _re.search(
+                r'"failed_generation"\s*:\s*"((?:[^"\\]|\\.)*)"\'',
+                str(exc),
+            )
+            if m:
+                try:
+                    raw = _json.loads('"' + m.group(1) + '"')
+                except Exception:
+                    raw = m.group(1)
+        if not raw:
+            return None
+
+        # Pattern 1: <function=name>{...}</function>
+        m1 = _re.search(r"<function=(\w+)>\s*(\{.*?\})\s*</function>", raw, _re.DOTALL)
+        if m1:
+            return {"name": m1.group(1).strip(), "input": m1.group(2).strip()}
+
+        # Pattern 2: name({...}) or name()
+        m2 = _re.search(r"(\w+)\s*\(\s*(\{.*?\})?\s*\)", raw, _re.DOTALL)
+        if m2:
+            return {"name": m2.group(1).strip(), "input": (m2.group(2) or "{}").strip()}
+
+        # Pattern 3: raw JSON with name/tool/function key
+        try:
+            obj = _json.loads(raw)
+            if isinstance(obj, dict):
+                name = obj.get("name") or obj.get("tool") or obj.get("function")
+                args = obj.get("arguments") or obj.get("parameters") or obj.get("input") or {}
+                if name:
+                    return {
+                        "name": str(name),
+                        "input": args if isinstance(args, str) else _json.dumps(args),
+                    }
+        except Exception:
+            pass
+
+        return None
 
     def _parse_response(self, completion: Any) -> dict[str, Any]:
         """Convert a Groq completion object into our standard response dict.

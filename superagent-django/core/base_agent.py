@@ -452,6 +452,8 @@ class BaseAgent:
 
         # Pattern A: answer names a tool that was never actually called
         _TOOL_MENTIONS = [
+            ("read_email",         ["read_email", "'read_email'", "read_emails"]),
+            ("search_emails",      ["search_emails", "'search_emails'"]),
             ("summarize_emails",   ["summarize_emails", "summarised", "summarized"]),
             ("send_email",         ["send_email", "email sent", "sent the email"]),
             ("create_gmail_draft", ["create_gmail_draft", "draft saved", "saved to drafts"]),
