@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     8,
+        "version":     9,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -632,12 +632,12 @@ _AGENT_TEMPLATES = [
 
             "Reading / summarising emails:\n"
             "  1. read_email(limit=N, filter='-in:spam -in:trash')\n"
-            "  2. summarize_emails(emails=result['emails'])\n"
+            "  2. summarize_emails()  — automatically uses the emails just read\n"
             "  3. Present the formatted_summary exactly — do not rewrite it.\n\n"
 
             "Summarise AND send the summary to someone:\n"
             "  1. read_email(limit=N, filter='-in:spam -in:trash')\n"
-            "  2. summarize_emails(emails=result['emails'])  → formatted_summary\n"
+            "  2. summarize_emails()  — automatically uses the emails just read  → formatted_summary\n"
             "  3. send_email(to=<recipient>, subject='Email Summary', body=<formatted_summary>)\n"
             "  CRITICAL: body MUST be the FULL formatted_summary text — never use a placeholder.\n\n"
 

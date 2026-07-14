@@ -201,6 +201,7 @@ def _build_gmail_service(workspace_id):
 
         from google.oauth2.credentials import Credentials
         from googleapiclient.discovery import build
+        from django.utils import timezone as _tz
 
         creds = Credentials(
             token=integration.access_token,
@@ -208,23 +209,65 @@ def _build_gmail_service(workspace_id):
             client_id=os.environ.get("GOOGLE_CLIENT_ID"),
             client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
             token_uri="https://oauth2.googleapis.com/token",
+            expiry=integration.token_expires_at,  # lets creds.expired work correctly
         )
 
-        # Auto-refresh if expired — saves new token back to DB so next call also works
-        if creds.expired and creds.refresh_token:
+        # Auto-refresh if expired or expiring within 5 minutes
+        needs_refresh = (
+            creds.expired
+            or (
+                integration.token_expires_at
+                and integration.token_expires_at <= _tz.now() + __import__("datetime").timedelta(minutes=5)
+            )
+        )
+        if needs_refresh and creds.refresh_token:
             try:
                 from google.auth.transport.requests import Request
                 creds.refresh(Request())
                 integration.access_token = creds.token
-                integration.save(update_fields=["access_token"])
+                integration.token_expires_at = creds.expiry
+                integration.save(update_fields=["access_token", "token_expires_at"])
+                _logger.info("Gmail token auto-refreshed for workspace=%s", workspace_id)
             except Exception as refresh_exc:
                 _logger.warning("Gmail token refresh failed: %s", refresh_exc)
-                # Continue anyway — token might still be valid
 
         return build("gmail", "v1", credentials=creds)
     except Exception as exc:
         _logger.warning("_build_gmail_service failed: %s", exc)
         return None
+
+
+# ---------------------------------------------------------------------------
+# Per-workspace email cache — lets summarize_emails get the emails that were
+# just read without the LLM having to copy the entire array into its arguments.
+# ---------------------------------------------------------------------------
+_LAST_READ_EMAILS: dict = {}
+
+
+def _cache_emails(workspace_id, result_json: str) -> None:
+    """Parse result_json and store its emails list keyed by workspace_id."""
+    if not workspace_id:
+        return
+    try:
+        data = json.loads(result_json) if isinstance(result_json, str) else result_json
+        emails = data.get("emails", []) if isinstance(data, dict) else []
+        if isinstance(emails, list):
+            _LAST_READ_EMAILS[str(workspace_id)] = emails
+    except Exception:
+        pass
+
+
+def _get_cached_emails(workspace_id) -> list:
+    """Return the cached emails list for this workspace, or []."""
+    if not workspace_id:
+        return []
+    return _LAST_READ_EMAILS.get(str(workspace_id), [])
+
+
+def _clear_cached_emails(workspace_id) -> None:
+    """Remove the cached emails for this workspace (call at task start)."""
+    if workspace_id:
+        _LAST_READ_EMAILS.pop(str(workspace_id), None)
 
 
 class ReadEmailTool(BaseTool):
@@ -254,6 +297,7 @@ class ReadEmailTool(BaseTool):
                     })
             except Exception:
                 pass
+            _cache_emails(self._workspace_id, result)
             return result
         return json.dumps({
             "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account first.",
@@ -293,7 +337,9 @@ class SearchEmailTool(BaseTool):
                 "emails": [], "count": 0,
             })
         from core.tools.gmail.search_emails import SearchEmailsTool
-        return SearchEmailsTool(gmail_service=service).run(input_str)
+        result = SearchEmailsTool(gmail_service=service).run(input_str)
+        _cache_emails(self._workspace_id, result)
+        return result
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -341,21 +387,51 @@ class DownloadAttachmentTool(BaseTool):
 
 
 class SummarizeEmailsTool(BaseTool):
-    """Thin wrapper — delegates to core SummarizeEmailsTool (no Gmail credentials needed)."""
+    """Summarize emails — uses cache fallback so model never needs to pass the full array."""
     name = "summarize_emails"
     description = (
-        "Summarize a list of emails from different senders into a clean numbered report in one step. "
-        "Input JSON: {\"emails\": [...]} — the list returned by read_emails. "
-        "Returns formatted_summary ready to show the user, plus structured summaries per email."
+        "Summarize emails into a clean numbered report. "
+        "Call with no arguments — it automatically uses the emails from the last read_email or search_emails call. "
+        "Or pass {\"emails\": [...]} explicitly. "
+        "Returns formatted_summary ready to show the user."
     )
     zone = ToolZone.GREEN
 
     def __init__(self, workspace_id=None):
-        pass  # no credentials needed
+        self._workspace_id = workspace_id
 
     def run(self, input_str: str) -> str:
         from core.tools.gmail.summarize_emails import SummarizeEmailsTool as CoreTool
-        return CoreTool().run(input_str)
+
+        # Try to get emails from what the model passed
+        emails = None
+        try:
+            data = json.loads(input_str) if isinstance(input_str, str) and input_str.strip() else {}
+            if isinstance(data, dict):
+                candidate = data.get("emails")
+                # Accept only a non-empty list of dicts — reject strings, empty lists, etc.
+                if isinstance(candidate, list) and candidate and isinstance(candidate[0], dict):
+                    emails = candidate
+            elif isinstance(data, list) and data and isinstance(data[0], dict):
+                emails = data
+        except Exception:
+            pass
+
+        # Fallback: use the workspace cache populated by read_email / search_emails
+        if not emails:
+            emails = _get_cached_emails(self._workspace_id)
+
+        if not emails:
+            return json.dumps({
+                "error": (
+                    "No emails to summarize. Please call read_email first to fetch emails, "
+                    "then call summarize_emails() with no arguments."
+                )
+            })
+
+        # Delegate to core tool with the recovered emails
+        payload = json.dumps({"emails": emails})
+        return CoreTool().run(payload)
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -364,11 +440,14 @@ class SummarizeEmailsTool(BaseTool):
                 "properties": {
                     "emails": {
                         "type": "array",
-                        "description": "List of email objects returned by read_emails.",
+                        "description": (
+                            "Optional. List of email objects to summarize. "
+                            "If omitted, the tool automatically uses the last read_email result."
+                        ),
                         "items": {"type": "object"},
                     }
                 },
-                "required": ["emails"],
+                # emails is intentionally NOT required — cache handles it
             },
         }}
 
@@ -2600,6 +2679,7 @@ def run_agent_task(self, task_id: str):
 
     agent_model = task.agent
     workspace_id = task.workspace_id
+    _clear_cached_emails(workspace_id)
 
     # ── Auto-sync agent from template if template has been updated ──────────
     if agent_model and agent_model.template_id:
@@ -2632,7 +2712,7 @@ def run_agent_task(self, task_id: str):
         name=(agent_model.name if agent_model else "Agent"),
         llm_provider=llm,
         tools=tools,
-        max_steps=int((agent_model.max_steps if agent_model else None) or 20),
+        max_steps=min(int((agent_model.max_steps if agent_model else None) or 8), 10),
         max_cost=float((agent_model.max_cost_usd if agent_model else None) or 1.0),
         task_id=task_id,
         system_prompt=(agent_model.system_prompt if agent_model else "") or "",
@@ -2755,6 +2835,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
 
     agent_model = task.agent
     workspace_id = task.workspace_id
+    _clear_cached_emails(workspace_id)
     step_offset = TaskStep.objects.filter(task=task).count()
 
     tools = (
