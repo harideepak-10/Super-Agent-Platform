@@ -187,7 +187,7 @@ class GenerateReportTool(BaseTool):
 
 class ReadEmailTool(BaseTool):
     name = "read_email"
-    description = "Fetch emails from the Gmail inbox. Input JSON: {\"limit\": 10, \"filter\": \"-in:spam -in:trash\"}. Default fetches ALL emails (read + unread). Only use 'is:unread' filter when the user explicitly asks for unread emails."
+    description = "Fetch emails from Gmail. Input JSON: {\"limit\": 10, \"filter\": \"-in:spam -in:trash\"}. Default fetches ALL emails (read + unread). Only use 'is:unread' filter when user explicitly asks for unread. Returns {\"emails\":[...], \"count\":N}."
     zone = ToolZone.GREEN
 
     def __init__(self, workspace_id=None):

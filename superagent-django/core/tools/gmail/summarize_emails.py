@@ -1,284 +1,254 @@
 """
-SummarizeEmailsTool — summarize multiple emails from different senders in one pass.
+SummarizeEmailsTool — summarize a list of emails in one clean pass.
 
 Zone: GREEN — runs automatically, no human approval required.
 
-Unlike summarize_thread (one conversation between same people), this tool
-handles a list of emails from different senders and produces a clean
-numbered summary in a single step — no looping, no per-email LLM calls.
-
-Input: the JSON list returned by read_emails.
-Output: formatted_summary (ready to show the user) + structured summaries list.
+Accepts the output of read_emails directly:
+  Input:  {"emails": [...]}  OR  the emails array directly
+  Output: formatted_summary (ready to show the user) + structured summaries
 """
 
 from __future__ import annotations
 
 import json
 import re
+from typing import Any
 
 from core.tools.base_tool import BaseTool, ToolZone
 
+# Urgency keyword sets
+_CRITICAL_KW = {"critical", "immediately", "asap", "overdue", "final notice", "last chance", "urgent action"}
+_HIGH_KW     = {"urgent", "deadline", "payment", "invoice", "action required", "expiring", "important", "due today"}
+_MEDIUM_KW   = {"follow up", "follow-up", "waiting", "pending", "please reply", "response needed", "reminder", "checking in"}
 
-# Keywords used for urgency detection
-_CRITICAL_KEYWORDS = {"critical", "immediately", "asap", "overdue", "final notice", "last chance"}
-_HIGH_KEYWORDS     = {"urgent", "deadline", "payment", "invoice", "action required", "expiring", "important"}
-_MEDIUM_KEYWORDS   = {"follow up", "follow-up", "waiting", "pending", "please reply", "response needed", "reminder"}
-
-_URGENCY_ICON = {
-    "critical": "🚨",
-    "high":     "🔴",
-    "medium":   "🟡",
-    "low":      "🟢",
-}
+_ICON = {"critical": "🚨", "high": "🔴", "medium": "🟡", "low": "🟢"}
 
 
 class SummarizeEmailsTool(BaseTool):
     """Summarize a list of emails from different senders into one clean report.
 
-    Takes the JSON list produced by ReadEmailsTool and returns:
-      - ``formatted_summary`` : ready-to-display text the agent can present directly
-      - ``summaries``         : structured list (one entry per email)
-      - ``total``             : number of emails processed
-      - ``high_urgency_count``: count of high/critical emails
+    Accepts the result of read_emails directly — either:
+      - {"emails": [...], "count": N}  (full read_emails output)
+      - {"emails": [...]}
+      - [...]  (raw list)
 
-    Input format (JSON string)::
+    Returns::
 
         {
-            "emails": [...]     ← list from read_emails
+            "formatted_summary": "📧 Email Summary (3 emails)\\n\\n1. John Smith ...",
+            "summaries": [...],
+            "total": 3,
+            "high_urgency_count": 1
         }
-
-    Or pass the raw list directly.
-
-    Example output::
-
-        📧 Email Summary (3 emails)
-
-        1. Deepak Kumar
-           Subject: Q2 Report Review
-           🔴 Urgency: High
-           Summary: Requesting review of the Q2 report before the board meeting on Friday.
-
-        2. Priya Sharma
-           Subject: Invoice #1042 Payment
-           🚨 Urgency: Critical
-           Summary: Invoice is overdue by 15 days. Requesting immediate payment.
-
-        3. Hari Dev
-           Subject: Team Lunch Tomorrow
-           🟢 Urgency: Low
-           Summary: Organizing a team lunch tomorrow at 1pm. Please confirm attendance.
     """
 
     name: str = "summarize_emails"
     description: str = (
-        "Summarize a list of emails from different senders into a clean numbered report in one step. "
-        "Input JSON: {\"emails\": [...]} — the list returned by read_emails. "
-        "Returns formatted_summary (ready to show the user), structured summaries per email, "
-        "total count, and high_urgency_count. "
-        "Use this instead of calling summarize_thread in a loop for each email."
+        "Summarize emails into a clean numbered report. "
+        "Input: {\"emails\": [...]} — pass the 'emails' array from read_emails result. "
+        "Returns formatted_summary with sender name, subject, date, urgency, and content summary for each email."
     )
     zone: ToolZone = ToolZone.GREEN
 
-    # ------------------------------------------------------------------
-    # BaseTool interface
-    # ------------------------------------------------------------------
-
     def run(self, input_str: str) -> str:
-        """Summarize all emails in one pass.
-
-        Args:
-            input_str: JSON string with 'emails' list, or a raw JSON list.
-
-        Returns:
-            JSON string with formatted_summary, summaries, total, high_urgency_count.
-        """
         emails = self._parse_input(input_str)
         if isinstance(emails, str):
-            # Error message from _parse_input
             return json.dumps({"error": emails, "summaries": [], "total": 0})
 
         if not emails:
             return json.dumps({
                 "formatted_summary": "No emails to summarize.",
-                "summaries": [],
-                "total": 0,
-                "high_urgency_count": 0,
+                "summaries": [], "total": 0, "high_urgency_count": 0,
             })
 
-        summaries = [self._summarize_one(i, email) for i, email in enumerate(emails, 1)]
-
-        formatted = self._format_output(summaries)
+        summaries = [self._summarize_one(i, e) for i, e in enumerate(emails, 1)]
         high_urgency = sum(1 for s in summaries if s["urgency"] in ("high", "critical"))
 
         return json.dumps({
-            "formatted_summary": formatted,
-            "summaries": summaries,
-            "total": len(summaries),
+            "formatted_summary": self._format_output(summaries),
+            "summaries":         summaries,
+            "total":             len(summaries),
             "high_urgency_count": high_urgency,
         }, ensure_ascii=False)
+
+    def to_schema(self) -> dict:
+        return {"type": "function", "function": {
+            "name": self.name,
+            "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "emails": {
+                    "type": "array",
+                    "description": "The 'emails' array from read_emails result. Each item has subject, sender, full_body, date, etc.",
+                    "items": {"type": "object"},
+                },
+            }, "required": ["emails"]},
+        }}
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _parse_input(input_str: str):
+    def _parse_input(input_str: Any) -> list | str:
         """Parse input and return the emails list, or an error string."""
         try:
             data = json.loads(input_str) if isinstance(input_str, str) else input_str
         except (json.JSONDecodeError, TypeError):
-            return "Invalid input. Expected JSON with 'emails' list."
+            return "Invalid JSON input."
 
-        # Accept {"emails": [...]} or a raw list
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
-            emails = data.get("emails", [])
+            emails = data.get("emails", data.get("email_list", []))
             if isinstance(emails, list):
                 return emails
-        return "Input must be a list of emails or {\"emails\": [...]}."
+        return "Expected {\"emails\": [...]} or a plain list."
 
     @staticmethod
     def _summarize_one(index: int, email: dict) -> dict:
-        """Build a summary dict for a single email."""
-        sender  = SummarizeEmailsTool._clean_sender(
-            email.get("sender", email.get("from", "Unknown"))
-        )
-        subject = email.get("subject", "(no subject)")
-        date    = email.get("date", "")
-        body    = email.get("full_body") or email.get("body_preview") or email.get("body", "")
-
-        urgency   = SummarizeEmailsTool._detect_urgency(subject, body)
-        key_point = SummarizeEmailsTool._extract_key_point(body)
+        raw_sender   = email.get("sender", email.get("from", "Unknown"))
+        sender_name  = email.get("sender_name") or SummarizeEmailsTool._clean_name(raw_sender)
+        sender_email = email.get("sender_email") or SummarizeEmailsTool._clean_email(raw_sender)
+        subject      = email.get("subject", "(no subject)")
+        date         = SummarizeEmailsTool._clean_date(email.get("date", ""))
+        body         = email.get("full_body") or email.get("body_preview") or email.get("body", "") or email.get("snippet", "")
+        urgency      = SummarizeEmailsTool._detect_urgency(subject, body)
+        summary      = SummarizeEmailsTool._extract_key_point(body)
 
         return {
-            "index":   index,
-            "sender":  sender,
-            "subject": subject,
-            "date":    date,
-            "urgency": urgency,
-            "summary": key_point,
+            "index":        index,
+            "sender_name":  sender_name,
+            "sender_email": sender_email,
+            "subject":      subject,
+            "date":         date,
+            "urgency":      urgency,
+            "summary":      summary,
         }
 
     @staticmethod
     def _format_output(summaries: list[dict]) -> str:
-        """Build the human-readable formatted summary string."""
-        lines = [f"📧 Email Summary ({len(summaries)} email{'s' if len(summaries) != 1 else ''})\n"]
-
+        n     = len(summaries)
+        lines = [f"📧 Email Summary — {n} email{'s' if n != 1 else ''}\n"]
         for s in summaries:
-            icon = _URGENCY_ICON.get(s["urgency"], "⚪")
-            date_str = f"   Date: {s['date']}\n" if s["date"] else ""
+            icon     = _ICON.get(s["urgency"], "⚪")
+            date_str = f"   📅 {s['date']}\n" if s["date"] else ""
             lines.append(
-                f"{s['index']}. {s['sender']}\n"
-                f"   Subject: {s['subject']}\n"
+                f"{s['index']}. {s['sender_name']} <{s['sender_email']}>\n"
+                f"   📌 Subject : {s['subject']}\n"
                 f"{date_str}"
-                f"   {icon} Urgency: {s['urgency'].capitalize()}\n"
-                f"   Summary: {s['summary']}\n"
+                f"   {icon} Urgency : {s['urgency'].capitalize()}\n"
+                f"   💬 Summary : {s['summary']}\n"
             )
-
         return "\n".join(lines)
 
+    # ------------------------------------------------------------------
+    # Sender helpers
+    # ------------------------------------------------------------------
+
     @staticmethod
-    def _clean_sender(sender: str) -> str:
-        """Extract display name from 'Name <email@example.com>' format."""
-        match = re.match(r'^"?([^"<]+)"?\s*<', sender.strip())
-        if match:
-            return match.group(1).strip()
-        return sender.strip()
+    def _clean_name(raw: str) -> str:
+        """Extract display name from 'Name <email>' format."""
+        m = re.match(r'^"?([^"<]+?)"?\s*<', raw.strip())
+        if m:
+            return m.group(1).strip()
+        if "@" in raw:
+            return raw.split("@")[0].strip()
+        return raw.strip()
+
+    @staticmethod
+    def _clean_email(raw: str) -> str:
+        """Extract email address from 'Name <email>' format."""
+        m = re.search(r"<([^>]+)>", raw)
+        if m:
+            return m.group(1).strip()
+        if "@" in raw:
+            return raw.strip()
+        return ""
+
+    # ------------------------------------------------------------------
+    # Date helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _clean_date(raw: str) -> str:
+        """Return a short readable date like 'Mon, 14 Jul 2026' from raw header."""
+        if not raw:
+            return ""
+        # Many Gmail dates look like: "Mon, 14 Jul 2026 10:30:00 +0530"
+        # Just take the first 17 chars which covers "Mon, 14 Jul 2026"
+        try:
+            parts = raw.strip().split()
+            if len(parts) >= 4:
+                # "Mon, 14 Jul 2026 ..."  or  "14 Jul 2026 ..."
+                return " ".join(parts[:4]).rstrip(",")
+        except Exception:
+            pass
+        return raw[:20]
+
+    # ------------------------------------------------------------------
+    # Urgency detection
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _detect_urgency(subject: str, body: str) -> str:
-        """Classify urgency as critical / high / medium / low from keywords."""
-        text = (subject + " " + body[:500]).lower()
-        if any(kw in text for kw in _CRITICAL_KEYWORDS):
+        text = (subject + " " + body[:600]).lower()
+        if any(kw in text for kw in _CRITICAL_KW):
             return "critical"
-        if any(kw in text for kw in _HIGH_KEYWORDS):
+        if any(kw in text for kw in _HIGH_KW):
             return "high"
-        if any(kw in text for kw in _MEDIUM_KEYWORDS):
+        if any(kw in text for kw in _MEDIUM_KW):
             return "medium"
         return "low"
 
+    # ------------------------------------------------------------------
+    # Key point extraction
+    # ------------------------------------------------------------------
+
     @staticmethod
     def _extract_key_point(body: str) -> str:
-        """Extract a proper 2-4 sentence summary covering topic, key facts, and action needed.
-
-        Extracts:
-          - What the email is about (topic sentence)
-          - Key facts: amounts, dates, deadlines, names, order numbers
-          - Any action required from the recipient
-        """
+        """Extract a 2-4 sentence summary: topic + key facts + action needed."""
         if not body or not body.strip():
             return "No content available."
 
-        # Clean up whitespace and split into sentences
-        cleaned = re.sub(r'\s+', ' ', body).strip()
-        # Split on sentence-ending punctuation followed by space + capital letter
-        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z\d"])', cleaned)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+        cleaned = re.sub(r"\s+", " ", body).strip()
+
+        # Split on sentence boundaries
+        sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z\d\"\'])", cleaned)
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 15]
 
         if not sentences:
-            return cleaned[:250] + ("..." if len(cleaned) > 250 else "")
+            return cleaned[:300] + ("…" if len(cleaned) > 300 else "")
 
-        selected = []
+        selected = [sentences[0]]  # always include first sentence
 
-        # 1. Always include the first meaningful sentence (topic)
-        selected.append(sentences[0])
-
-        # 2. Look for sentences with key facts: amounts, dates, deadlines, IDs
-        _fact_patterns = [
-            r'\b(?:₹|Rs\.?|USD|\$|€|£)\s*[\d,]+',         # money
-            r'\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b',     # dates
-            r'\b(?:due|deadline|by|before|expire|overdue)\b',
-            r'\b(?:invoice|order|reference|ticket|id|#)\s*[\w\-]+',  # IDs
-            r'\b(?:meeting|call|appointment|schedule)\b',
-            r'\b(?:attached|attachment|document|file|report)\b',
-            r'\b(?:payment|amount|total|balance|deposit)\b',
+        # Fact sentences — money, dates, IDs, attachments, meetings
+        _facts = [
+            r"\b(?:₹|Rs\.?|USD|\$|€|£)\s*[\d,]+",
+            r"\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b",
+            r"\b(?:due|deadline|by|before|expire|overdue|meeting|call)\b",
+            r"\b(?:invoice|order|ref|ticket|#\s*[\w\-]+)\b",
+            r"\b(?:attached|attachment|document|file|report|pdf|spreadsheet)\b",
+            r"\b(?:payment|amount|total|balance|deposit|refund)\b",
         ]
-        for sentence in sentences[1:]:
-            s_lower = sentence.lower()
-            if any(re.search(p, s_lower) for p in _fact_patterns):
-                if sentence not in selected:
-                    selected.append(sentence)
+        for sent in sentences[1:]:
+            if any(re.search(p, sent, re.IGNORECASE) for p in _facts):
+                if sent not in selected:
+                    selected.append(sent)
                 if len(selected) >= 3:
                     break
 
-        # 3. Look for action-required sentence if not already included
-        _action_patterns = [
-            r'\b(?:please|kindly|could you|can you|request|require|need|must|should)\b',
-            r'\b(?:reply|respond|confirm|approve|review|action|let me know|follow up)\b',
+        # Action sentence
+        _actions = [
+            r"\b(?:please|kindly|could you|can you|need|must|should|require)\b",
+            r"\b(?:reply|respond|confirm|approve|review|let me know|follow up|send)\b",
         ]
-        for sentence in sentences[1:]:
-            s_lower = sentence.lower()
-            if any(re.search(p, s_lower) for p in _action_patterns):
-                if sentence not in selected:
-                    selected.append(sentence)
+        for sent in sentences[1:]:
+            if any(re.search(p, sent, re.IGNORECASE) for p in _actions):
+                if sent not in selected:
+                    selected.append(sent)
                 break
 
-        # Cap at 4 sentences and join
         result = " ".join(selected[:4])
-
-        # Final length guard — keep under 400 chars but don't cut mid-sentence
-        if len(result) > 400:
-            result = result[:400].rsplit(". ", 1)[0] + "."
-
+        if len(result) > 450:
+            result = result[:450].rsplit(". ", 1)[0] + "."
         return result
-
-    def to_schema(self) -> dict:
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "emails": {
-                            "type": "array",
-                            "description": "List of email objects returned by read_emails.",
-                            "items": {"type": "object"},
-                        }
-                    },
-                    "required": ["emails"],
-                },
-            },
-        }

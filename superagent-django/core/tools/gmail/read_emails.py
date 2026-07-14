@@ -3,9 +3,9 @@ Read emails tool — fetches emails from Gmail and returns structured data.
 
 Zone: GREEN — runs automatically, no human approval required.
 
-The tool accepts an optional ``gmail_service`` in its constructor so
-tests can inject a MockGmailService without touching real credentials.
-In production, the service is built lazily from GmailAuth on first use.
+Returns {"emails": [...], "count": N} always so the agent has a consistent
+structure to work with. Each email includes id, thread_id, subject, sender,
+to, date, body_preview, full_body, has_attachments, attachments.
 """
 
 from __future__ import annotations
@@ -13,89 +13,105 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import re
 from typing import Any
 
 from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_LIMIT = 10
-_DEFAULT_FILTER = "-in:spam -in:trash"
-_BODY_PREVIEW_CHARS = 150
-_FULL_BODY_MAX_CHARS = 1200   # keep token usage low — enough for summary tasks
+_DEFAULT_LIMIT        = 10
+_DEFAULT_FILTER       = "-in:spam -in:trash"   # ALL emails by default (read + unread)
+_BODY_PREVIEW_CHARS   = 200
+_FULL_BODY_MAX_CHARS  = 2000                    # enough for summaries, safe on tokens
 
 
 class ReadEmailsTool(BaseTool):
-    """Fetch emails from Gmail and return them as a structured JSON list.
+    """Fetch emails from Gmail and return them as a structured JSON dict.
 
-    Input format (JSON string or plain string)::
+    Input format (JSON string)::
 
-        {"limit": 10, "filter": "-in:spam -in:trash"}
+        {"limit": 5, "filter": "-in:spam -in:trash"}
 
-    If input is not valid JSON, uses defaults (10 most recent emails, read + unread).
+    filter defaults to ALL emails (read + unread). Only use "is:unread" when
+    the user explicitly asks for unread emails.
 
-    Returns:
-        JSON string containing a list of email dicts, each with:
-        ``id``, ``subject``, ``sender``, ``date``, ``body_preview``,
-        ``full_body``, ``has_attachments``.
+    Returns::
 
-        On API failure, returns a JSON dict with ``error`` and
-        ``emails`` (empty list) so the agent can handle it gracefully.
+        {
+            "emails": [
+                {
+                    "id":              "<gmail_id>",
+                    "thread_id":       "<thread_id>",
+                    "subject":         "Invoice #1042",
+                    "sender":          "John Smith <john@company.com>",
+                    "sender_name":     "John Smith",
+                    "sender_email":    "john@company.com",
+                    "to":              "you@krypsos.tech",
+                    "date":            "Mon, 14 Jul 2026 10:30:00 +0530",
+                    "body_preview":    "Hi, please review the attached...",
+                    "full_body":       "Hi, please review the attached invoice...",
+                    "has_attachments": true,
+                    "attachments": [
+                        {
+                            "filename":      "invoice.pdf",
+                            "attachment_id": "ANGjdJ...",
+                            "message_id":    "<gmail_id>",
+                            "mime_type":     "application/pdf",
+                            "size_bytes":    49152
+                        }
+                    ]
+                }
+            ],
+            "count": 1
+        }
     """
 
     name: str = "read_emails"
     description: str = (
-        "Fetches emails from Gmail and returns a structured list. "
-        "Input (JSON): {\"limit\": 10, \"filter\": \"-in:spam -in:trash\"}. "
+        "Fetch emails from Gmail. "
+        "Input JSON: {\"limit\": 5, \"filter\": \"-in:spam -in:trash\"}. "
         "Default fetches ALL recent emails (read + unread). "
-        "Use filter 'is:unread -in:spam -in:trash' ONLY when user explicitly asks for unread emails. "
-        "Returns a JSON list of emails with id, subject, sender, "
-        "date, body_preview, full_body, has_attachments."
+        "Only use 'is:unread' filter when the user explicitly asks for unread emails. "
+        "Returns {\"emails\": [...], \"count\": N}. "
+        "Each email has: id, thread_id, subject, sender, sender_name, sender_email, "
+        "to, date, body_preview, full_body, has_attachments, attachments[]."
     )
     zone: ToolZone = ToolZone.GREEN
 
     def __init__(self, gmail_service: Any = None) -> None:
-        """Initialise the tool with an optional pre-built Gmail service.
-
-        Args:
-            gmail_service: If provided, used directly for all API calls.
-                           If None, a real service is built from GmailAuth
-                           on first call to ``run()``.
-        """
         self._injected_service = gmail_service
-        self._service: Any = None  # lazily built from GmailAuth
+        self._service: Any = None
 
     # ------------------------------------------------------------------
     # BaseTool interface
     # ------------------------------------------------------------------
 
     def run(self, input_str: str) -> str:
-        """Fetch emails from Gmail.
-
-        Args:
-            input_str: JSON string with optional ``limit`` and ``filter``
-                       keys.  Defaults are used if input is invalid JSON.
-
-        Returns:
-            JSON string.  On success: a list of email dicts.
-            On failure: ``{"error": "...", "emails": []}``.
-        """
         limit, query = self._parse_input(input_str)
-
         try:
             service = self._get_service()
             return self._fetch_emails(service, limit, query)
-        except Exception as exc:  # noqa: BLE001
-            error_msg = f"Gmail API error while reading emails: {exc}"
+        except Exception as exc:
+            error_msg = f"Gmail API error: {exc}"
             logger.error(error_msg)
-            return json.dumps({"error": error_msg, "emails": []})
+            return json.dumps({"error": error_msg, "emails": [], "count": 0})
+
+    def to_schema(self) -> dict:
+        return {"type": "function", "function": {
+            "name": self.name,
+            "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "limit":  {"type": "integer", "description": "Number of emails to fetch (default 10)"},
+                "filter": {"type": "string",  "description": "Gmail search filter. Default: '-in:spam -in:trash'. Use 'is:unread -in:spam -in:trash' only for unread."},
+            }},
+        }}
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
     def _get_service(self) -> Any:
-        """Return the Gmail service, building it from GmailAuth if needed."""
         if self._injected_service is not None:
             return self._injected_service
         if self._service is None:
@@ -105,27 +121,15 @@ class ReadEmailsTool(BaseTool):
 
     @staticmethod
     def _parse_input(input_str) -> tuple[int, str]:
-        """Parse the input (dict or JSON string) into (limit, query)."""
         try:
             data = input_str if isinstance(input_str, dict) else json.loads(input_str)
             limit = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
-            query = str(data.get("filter", _DEFAULT_FILTER))
+            query = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
             return limit, query
         except Exception:
             return _DEFAULT_LIMIT, _DEFAULT_FILTER
 
     def _fetch_emails(self, service: Any, limit: int, query: str) -> str:
-        """Fetch and parse emails from the Gmail API.
-
-        Args:
-            service: Gmail API service object.
-            limit:   Maximum number of messages to fetch.
-            query:   Gmail search query string.
-
-        Returns:
-            JSON string containing a list of parsed email dicts.
-        """
-        # Step 1: List matching message IDs
         result = (
             service.users()
             .messages()
@@ -135,9 +139,15 @@ class ReadEmailsTool(BaseTool):
         messages = result.get("messages", [])
 
         if not messages:
-            return json.dumps([])
+            return json.dumps({
+                "emails": [],
+                "count": 0,
+                "note": (
+                    f"No emails matched filter '{query}'. "
+                    "Try search_emails with a different query — do NOT tell the user the inbox is empty."
+                ),
+            })
 
-        # Step 2: Fetch full details for each message
         emails = []
         for msg_ref in messages:
             try:
@@ -148,118 +158,154 @@ class ReadEmailsTool(BaseTool):
                     .execute()
                 )
                 emails.append(self._parse_message(msg))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"Failed to fetch message {msg_ref['id']}: {exc}")
+            except Exception as exc:
+                logger.warning("Failed to fetch message %s: %s", msg_ref["id"], exc)
 
-        return json.dumps(emails, ensure_ascii=False)
+        return json.dumps({"emails": emails, "count": len(emails)}, ensure_ascii=False)
 
     @staticmethod
     def _parse_message(msg: dict[str, Any]) -> dict[str, Any]:
-        """Convert a raw Gmail API message dict into our standard format.
-
-        Args:
-            msg: Raw message dict from the Gmail API.
-
-        Returns:
-            Normalised email dict with standard keys.
-        """
         payload = msg.get("payload", {})
         headers = {
             h["name"].lower(): h["value"]
             for h in payload.get("headers", [])
         }
 
-        subject = headers.get("subject", "(no subject)")
-        sender = headers.get("from", "(unknown sender)")
-        date = headers.get("date", "")
+        raw_sender = headers.get("from", "(unknown sender)")
+        sender_name, sender_email = ReadEmailsTool._parse_sender(raw_sender)
+        subject  = headers.get("subject", "(no subject)")
+        date     = headers.get("date", "")
+        to_field = headers.get("to", "")
 
         full_body = ReadEmailsTool._extract_body(payload)
-        # Collapse excessive whitespace (marketing emails have hundreds of blank lines)
-        import re as _re
-        full_body = _re.sub(r"\n{3,}", "\n\n", full_body).strip()
+        full_body = re.sub(r"\n{3,}", "\n\n", full_body).strip()
         full_body = full_body[:_FULL_BODY_MAX_CHARS]
         body_preview = full_body[:_BODY_PREVIEW_CHARS].replace("\n", " ")
 
-        attachments = ReadEmailsTool._extract_attachments(payload, msg.get("id", ""))
+        attachments   = ReadEmailsTool._extract_attachments(payload, msg.get("id", ""))
         has_attachments = len(attachments) > 0
 
         return {
-            "id": msg.get("id", ""),
-            "subject": subject,
-            "sender": sender,
-            "date": date,
-            "body_preview": body_preview,
-            "full_body": full_body,
+            "id":              msg.get("id", ""),
+            "thread_id":       msg.get("threadId", ""),
+            "subject":         subject,
+            "sender":          raw_sender,
+            "sender_name":     sender_name,
+            "sender_email":    sender_email,
+            "to":              to_field,
+            "date":            date,
+            "body_preview":    body_preview,
+            "full_body":       full_body,
             "has_attachments": has_attachments,
-            "attachments": attachments,  # [{filename, attachment_id, mime_type, size_bytes}]
+            "attachments":     attachments,
         }
+
+    # ------------------------------------------------------------------
+    # Body extraction
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _extract_body(payload: dict[str, Any]) -> str:
-        """Recursively extract plain-text body from a Gmail message payload.
+        """Recursively extract readable text from a Gmail message payload.
 
-        Handles both simple (single-part) and multipart messages.
-
-        Args:
-            payload: The ``payload`` section of a Gmail message dict.
-
-        Returns:
-            Decoded plain-text body string, or empty string if none found.
+        Preference order:
+          1. text/plain directly in payload
+          2. text/plain in any nested part
+          3. text/html stripped of tags (fallback)
         """
-        mime_type = payload.get("mimeType", "")
+        text_plain = ReadEmailsTool._find_part(payload, "text/plain")
+        if text_plain:
+            return ReadEmailsTool._decode_data(text_plain)
 
-        # Simple message: body data is directly in payload.body.data
-        if mime_type == "text/plain":
-            data = payload.get("body", {}).get("data", "")
-            if data:
-                return base64.urlsafe_b64decode(
-                    data + "=="  # add padding for safety
-                ).decode("utf-8", errors="replace")
+        # Fallback to HTML — strip tags so summary is readable
+        text_html = ReadEmailsTool._find_part(payload, "text/html")
+        if text_html:
+            return ReadEmailsTool._strip_html(ReadEmailsTool._decode_data(text_html))
 
-        # Multipart message: recurse into parts
-        if "parts" in payload:
-            for part in payload["parts"]:
-                text = ReadEmailsTool._extract_body(part)
-                if text:
-                    return text
-
-        # Fallback: try body.data regardless of mime type
+        # Last resort: decode body.data regardless of mime type
         data = payload.get("body", {}).get("data", "")
         if data:
             try:
-                return base64.urlsafe_b64decode(data + "==").decode(
-                    "utf-8", errors="replace"
-                )
-            except Exception:  # noqa: BLE001
+                raw = base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
+                return ReadEmailsTool._strip_html(raw)
+            except Exception:
                 pass
 
         return ""
 
     @staticmethod
-    def _has_attachments(payload: dict[str, Any]) -> bool:
-        """Return True if any part of the message has a non-empty filename."""
+    def _find_part(payload: dict[str, Any], mime_type: str) -> dict[str, Any] | None:
+        """Find the first payload part matching mime_type (recursive)."""
+        if payload.get("mimeType", "") == mime_type:
+            body_data = payload.get("body", {}).get("data", "")
+            if body_data:
+                return payload
+
         for part in payload.get("parts", []):
-            if part.get("filename"):
-                return True
-        return False
+            found = ReadEmailsTool._find_part(part, mime_type)
+            if found:
+                return found
+        return None
+
+    @staticmethod
+    def _decode_data(part: dict[str, Any]) -> str:
+        data = part.get("body", {}).get("data", "")
+        if not data:
+            return ""
+        try:
+            return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _strip_html(html: str) -> str:
+        """Strip HTML tags and decode common entities."""
+        # Remove <style> and <script> blocks entirely
+        text = re.sub(r"<(style|script)[^>]*>.*?</(style|script)>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        # Remove all remaining tags
+        text = re.sub(r"<[^>]+>", " ", text)
+        # Decode common HTML entities
+        text = (text
+                .replace("&nbsp;", " ")
+                .replace("&amp;",  "&")
+                .replace("&lt;",   "<")
+                .replace("&gt;",   ">")
+                .replace("&quot;", '"')
+                .replace("&#39;",  "'")
+                .replace("&mdash;", "—")
+                .replace("&ndash;", "–"))
+        # Collapse whitespace
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+    # ------------------------------------------------------------------
+    # Sender parsing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_sender(raw: str) -> tuple[str, str]:
+        """Parse 'Name <email@domain.com>' into (name, email)."""
+        match = re.match(r'^"?([^"<]+?)"?\s*<([^>]+)>', raw.strip())
+        if match:
+            return match.group(1).strip(), match.group(2).strip()
+        # Just an email address
+        if "@" in raw:
+            return raw.strip(), raw.strip()
+        return raw.strip(), ""
+
+    # ------------------------------------------------------------------
+    # Attachment extraction
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _extract_attachments(payload: dict[str, Any], message_id: str) -> list[dict[str, Any]]:
-        """Extract attachment metadata from a Gmail message payload.
+        attachments: list[dict[str, Any]] = []
 
-        Returns a list of dicts, each with:
-            filename      : original filename
-            attachment_id : Gmail attachment ID (pass to download_attachment)
-            mime_type     : file MIME type
-            size_bytes    : attachment size in bytes
-            message_id    : parent message ID (needed by download_attachment)
-        """
-        attachments = []
-
-        def _walk(parts):
+        def _walk(parts: list) -> None:
             for part in parts:
-                filename = part.get("filename", "")
-                body = part.get("body", {})
+                filename      = part.get("filename", "")
+                body          = part.get("body", {})
                 attachment_id = body.get("attachmentId", "")
 
                 if filename and attachment_id:
@@ -271,10 +317,9 @@ class ReadEmailsTool(BaseTool):
                         "message_id":    message_id,
                     })
 
-                # Recurse into nested parts
-                sub_parts = part.get("parts", [])
-                if sub_parts:
-                    _walk(sub_parts)
+                sub = part.get("parts", [])
+                if sub:
+                    _walk(sub)
 
         _walk(payload.get("parts", []))
         return attachments
