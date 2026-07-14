@@ -38,7 +38,7 @@ class GroqProvider(LLMProvider):
     """
 
     def __init__(self, model: str = _MODEL) -> None:
-        """Initialise the Groq client from the GROQ_API_KEY env variable.
+        """Initialise the Groq client.
 
         Args:
             model: Groq model name to use (default: llama-3.3-70b-versatile).
@@ -92,6 +92,8 @@ class GroqProvider(LLMProvider):
         Raises:
             RuntimeError: If all retry attempts are exhausted.
         """
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
         last_error: Exception | None = None
 
         for attempt in range(1, _MAX_RETRIES + 1):

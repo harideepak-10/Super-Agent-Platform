@@ -275,6 +275,28 @@ class BaseAgent:
                         continue
 
                     content = self._clean_result(content)
+
+                    # Grounding check: does the answer match what actually ran?
+                    inconsistency = self._detect_ungrounded_claim(content)
+                    if inconsistency:
+                        # One corrective retry
+                        self._log("grounding_retry", {"step": self._step, "reason": inconsistency})
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                f"Your answer appears inconsistent with what actually happened: {inconsistency} "
+                                "Please correct your response to accurately reflect what was done."
+                            ),
+                        })
+                        response2 = self._llm.send(messages, tool_schemas)
+                        content2 = self._clean_result(response2.get("content", "") or content)
+                        # If still ungrounded, prepend a disclaimer but don't loop
+                        if self._detect_ungrounded_claim(content2):
+                            self._log("grounding_warning", {"step": self._step})
+                            content2 = "⚠️ " + content2
+                        content = content2
+
                     self._log(
                         "task_completed",
                         {"result": content, "total_steps": self._step},
@@ -395,6 +417,42 @@ class BaseAgent:
     # ------------------------------------------------------------------
     # Overrideable hooks
     # ------------------------------------------------------------------
+
+    def _invoked_tool_names(self) -> set[str]:
+        """Return the set of tool names actually called this run (from audit log)."""
+        return {
+            e["details"].get("tool_name", "")
+            for e in self.audit_log
+            if e.get("event_type") == "tool_called"
+        }
+
+    def _detect_ungrounded_claim(self, content: str) -> str | None:
+        """Return a description of the inconsistency if content is ungrounded, else None."""
+        invoked = self._invoked_tool_names()
+        lower = content.lower()
+
+        # Pattern A: answer names a tool that was never actually called
+        _TOOL_MENTIONS = [
+            ("summarize_emails",   ["summarize_emails", "summarised", "summarized"]),
+            ("send_email",         ["send_email", "email sent", "sent the email"]),
+            ("create_gmail_draft", ["create_gmail_draft", "draft saved", "saved to drafts"]),
+            ("reply_to_email",     ["reply_to_email", "replied to"]),
+            ("detect_follow_up",   ["detect_follow_up", "follow-up detected"]),
+        ]
+        for tool_name, phrases in _TOOL_MENTIONS:
+            if any(p in lower for p in phrases) and tool_name not in invoked:
+                return f"Answer mentions '{tool_name}' but that tool was never called."
+
+        # Pattern B: answer denies doing anything while a mutating tool did run
+        _MUTATING = {"send_email", "create_gmail_draft", "reply_to_email",
+                     "forward_email", "schedule_email", "mark_as_read", "create_draft"}
+        _DENIAL_PHRASES = ["no emails", "nothing to", "could not find", "unable to",
+                           "i don't have", "no results", "nothing was"]
+        if invoked & _MUTATING and any(p in lower for p in _DENIAL_PHRASES):
+            ran = ", ".join(invoked & _MUTATING)
+            return f"Answer denies doing anything but mutating tool(s) ran: {ran}."
+
+        return None
 
     def _clean_result(self, text: str) -> str:
         """Strip narration lines the model sometimes includes in its final answer."""

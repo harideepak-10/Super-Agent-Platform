@@ -211,6 +211,28 @@ def reset_password(request):
     return Response({"detail": "Password reset successful."})
 
 
+# ── Emergency password reset (REMOVE AFTER USE) ───────────────────────────────
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def emergency_reset(request):
+    """ONE-TIME USE — delete this endpoint after resetting your password."""
+    secret = request.data.get("secret", "")
+    if secret != "krypsos-reset-2026":   # simple guard
+        return Response({"error": "forbidden"}, status=403)
+    email = request.data.get("email", "")
+    new_password = request.data.get("password", "")
+    if not email or not new_password:
+        return Response({"error": "email and password required"}, status=400)
+    try:
+        user = User.objects.get(email=email)
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+        return Response({"status": "password updated"})
+    except User.DoesNotExist:
+        return Response({"error": "user not found"}, status=404)
+
+
 # ── Email debug (remove after confirming email works) ─────────────────────────
 
 @api_view(["POST"])
@@ -223,26 +245,14 @@ def test_email(request):
     try:
         send_mail(
             subject="Super Agent — test email",
-            message="If you received this, email sending is working.",
+            message="If you received this, email sending is working correctly.",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[to],
             fail_silently=False,
         )
-        return Response({
-            "status": "sent",
-            "backend": settings.EMAIL_BACKEND,
-            "host": settings.EMAIL_HOST,
-            "user": settings.EMAIL_HOST_USER,
-            "from": settings.DEFAULT_FROM_EMAIL,
-        })
+        return Response({"status": "sent"})
     except Exception as exc:
-        return Response({
-            "status": "failed",
-            "error": str(exc),
-            "backend": settings.EMAIL_BACKEND,
-            "host": settings.EMAIL_HOST,
-            "user": settings.EMAIL_HOST_USER,
-        }, status=500)
+        return Response({"status": "failed", "error": str(exc)}, status=500)
 
 
 # ── Profile views ─────────────────────────────────────────────────────────────
@@ -513,3 +523,5 @@ def health_check(request):
         "status": "ok" if db_ok else "degraded",
         "db": "ok" if db_ok else "error",
     }, status=200)
+
+

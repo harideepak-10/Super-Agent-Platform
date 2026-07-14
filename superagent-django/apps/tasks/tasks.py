@@ -39,6 +39,42 @@ from django.utils import timezone
 from core.tools.base_tool import BaseTool, ToolZone
 
 _logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Placeholder-data guard (FIX-4)
+# Prevents the agent from fabricating sends/drafts with example data.
+# ---------------------------------------------------------------------------
+_PLACEHOLDER_DOMAINS = {"example.com", "example.org", "example.net", "test.com", "placeholder.com"}
+_PLACEHOLDER_SUBJECTS = {"example subject", "subject here", "your subject", "test subject", "no subject here"}
+_PLACEHOLDER_BODIES   = {"example body", "body here", "your message", "test body", "message here"}
+
+
+def _placeholder_reason(to: str, subject: str = "", body: str = "") -> str | None:
+    """Return a reason string if the values look like placeholder/fabricated data, else None."""
+    to_lower = (to or "").lower().strip()
+    subj_lower = (subject or "").lower().strip()
+    body_lower = (body or "").lower().strip()
+
+    domain = to_lower.split("@")[-1] if "@" in to_lower else ""
+    if domain in _PLACEHOLDER_DOMAINS:
+        return f"'{to}' looks like a placeholder email address, not a real recipient."
+    if subj_lower in _PLACEHOLDER_SUBJECTS:
+        return f"'{subject}' looks like a placeholder subject, not real content."
+    if body_lower in _PLACEHOLDER_BODIES:
+        return f"'{body[:40]}' looks like placeholder body text, not real content."
+    return None
+
+
+def _placeholder_error_json(reason: str) -> str:
+    return json.dumps({
+        "status": "refused",
+        "error": (
+            "I cannot send or draft this email because it contains placeholder data. "
+            f"{reason} Please provide a real recipient, subject, and message."
+        ),
+    })
+
+
 from core.base_agent import (
     BaseAgent, ApprovalRequired, RedZoneBlocked,
     StepLimitReached, CostLimitReached,
@@ -349,6 +385,11 @@ class SendEmailTool(BaseTool):
         body    = data.get("body", "")
         _run_log.info("SendEmailTool.run to=%r subject=%r body_len=%d", to, subject, len(body))
 
+        reason = _placeholder_reason(to, subject, body)
+        if reason:
+            _run_log.warning("SendEmailTool: placeholder data rejected — %s", reason)
+            return _placeholder_error_json(reason)
+
         service = self._gmail_service()
         _run_log.info("SendEmailTool.run gmail_service_ok=%s", service is not None)
         if service:
@@ -402,11 +443,17 @@ class CreateDraftTool(BaseTool):
             data = json.loads(input_str)
         except Exception:
             data = {}
+        to      = data.get("to", "")
+        subject = data.get("subject", "(no subject)")
+        body    = data.get("body", "")
+        reason  = _placeholder_reason(to, subject, body)
+        if reason:
+            return _placeholder_error_json(reason)
         return json.dumps({
             "status": "draft_created",
-            "to": data.get("to", ""),
-            "subject": data.get("subject", "(no subject)"),
-            "body_preview": data.get("body", "")[:100],
+            "to": to,
+            "subject": subject,
+            "body_preview": body[:100],
             "draft_id": "draft_{}".format(timezone.now().strftime("%Y%m%d%H%M%S")),
         })
 
@@ -1047,6 +1094,13 @@ class CreateGmailDraftTool(BaseTool):
         self._workspace_id = workspace_id
 
     def run(self, input_str):
+        try:
+            _d = json.loads(input_str) if isinstance(input_str, str) else input_str
+        except Exception:
+            _d = {}
+        reason = _placeholder_reason(_d.get("to", ""), _d.get("subject", ""), _d.get("body", ""))
+        if reason:
+            return _placeholder_error_json(reason)
         from core.tools.gmail.create_gmail_draft import CreateGmailDraftTool as CoreTool
         return CoreTool(
             gmail_service=_gmail_service_for_workspace(self._workspace_id),
@@ -1185,6 +1239,13 @@ class ReplyToEmailTool(BaseTool):
         self._workspace_id = workspace_id
 
     def run(self, input_str):
+        try:
+            _d = json.loads(input_str) if isinstance(input_str, str) else input_str
+        except Exception:
+            _d = {}
+        reason = _placeholder_reason(_d.get("to", ""), _d.get("subject", ""), _d.get("body", ""))
+        if reason:
+            return _placeholder_error_json(reason)
         from core.tools.gmail.reply_to_email import ReplyToEmailTool as CoreTool
         return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
 
@@ -1215,6 +1276,16 @@ class ForwardEmailTool(BaseTool):
         self._workspace_id = workspace_id
 
     def run(self, input_str):
+        try:
+            _d = json.loads(input_str) if isinstance(input_str, str) else input_str
+        except Exception:
+            _d = {}
+        to_val = _d.get("to", "")
+        if isinstance(to_val, list):
+            to_val = to_val[0] if to_val else ""
+        reason = _placeholder_reason(to_val)
+        if reason:
+            return _placeholder_error_json(reason)
         from core.tools.gmail.forward_email import ForwardEmailTool as CoreTool
         return CoreTool(gmail_service=_gmail_service_for_workspace(self._workspace_id)).run(input_str)
 
@@ -1243,6 +1314,13 @@ class ScheduleEmailTool(BaseTool):
         self._workspace_id = workspace_id
 
     def run(self, input_str):
+        try:
+            _d = json.loads(input_str) if isinstance(input_str, str) else input_str
+        except Exception:
+            _d = {}
+        reason = _placeholder_reason(_d.get("to", ""), _d.get("subject", ""), _d.get("body", ""))
+        if reason:
+            return _placeholder_error_json(reason)
         from core.tools.gmail.schedule_email import ScheduleEmailTool as CoreTool
         return CoreTool(workspace_id=self._workspace_id).run(input_str)
 
