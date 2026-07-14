@@ -24,9 +24,25 @@ from .base import LLMProvider
 _COST_PER_1K_INPUT_TOKENS: float = 0.00005   # USD (converted to EUR on output)
 _COST_PER_1K_OUTPUT_TOKENS: float = 0.00008  # USD (converted to EUR on output)
 _USD_TO_EUR: float = 0.92
-_MAX_RETRIES: int = 3
+_MAX_RETRIES: int = 2
 _RETRY_DELAY_SECONDS: float = 2.0
+_REQUEST_TIMEOUT_SECONDS: float = 45.0
 _MODEL: str = "llama-3.3-70b-versatile"
+
+_RATE_LIMIT_MESSAGE = (
+    "⚠️ The AI is temporarily busy due to high usage (Groq rate limit reached). "
+    "Please wait about 1 minute and try again."
+)
+
+
+class GroqRateLimitError(RuntimeError):
+    """Raised when Groq returns a 429 / quota-exhaustion error."""
+    pass
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "429" in msg or "rate_limit_exceeded" in msg or "rate limit" in msg or "quota" in msg
 
 
 class GroqProvider(LLMProvider):
@@ -38,7 +54,7 @@ class GroqProvider(LLMProvider):
     """
 
     def __init__(self, model: str = _MODEL) -> None:
-        """Initialise the Groq client from the GROQ_API_KEY env variable.
+        """Initialise the Groq client.
 
         Args:
             model: Groq model name to use (default: llama-3.3-70b-versatile).
@@ -61,7 +77,7 @@ class GroqProvider(LLMProvider):
                 "Run: pip install groq"
             ) from exc
 
-        self._client = Groq(api_key=api_key)
+        self._client = Groq(api_key=api_key, timeout=_REQUEST_TIMEOUT_SECONDS, max_retries=0)
         self._model = model
         self.total_tokens: int = 0
         self.total_cost: float = 0.0
@@ -74,6 +90,7 @@ class GroqProvider(LLMProvider):
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        force_tool: bool = False,
     ) -> dict[str, Any]:
         """Send messages to Groq and return a normalised response dict.
 
@@ -91,12 +108,16 @@ class GroqProvider(LLMProvider):
         Raises:
             RuntimeError: If all retry attempts are exhausted.
         """
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
         last_error: Exception | None = None
 
         for attempt in range(1, _MAX_RETRIES + 1):
             try:
-                return self._call_api(messages, tools)
+                return self._call_api(messages, tools, force_tool=force_tool)
             except Exception as exc:  # noqa: BLE001
+                if _is_rate_limit_error(exc):
+                    raise GroqRateLimitError(_RATE_LIMIT_MESSAGE) from exc
                 last_error = exc
                 if attempt < _MAX_RETRIES:
                     time.sleep(_RETRY_DELAY_SECONDS * attempt)
@@ -135,6 +156,7 @@ class GroqProvider(LLMProvider):
                 if not isinstance(arguments, str):
                     import json as _json
                     arguments = _json.dumps(arguments)
+                # Use a counter to guarantee unique IDs even for repeated tool calls
                 call_counter += 1
                 call_id = "call_{}_{}".format(name, call_counter)
                 last_call_id = call_id
@@ -156,6 +178,7 @@ class GroqProvider(LLMProvider):
                 })
 
             else:
+                # system / user — pass through, strip unknown keys
                 translated.append({
                     "role": role,
                     "content": msg.get("content", ""),
@@ -167,6 +190,7 @@ class GroqProvider(LLMProvider):
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None,
+        force_tool: bool = False,
     ) -> dict[str, Any]:
         """Make a single API call and parse the response.
 
@@ -184,26 +208,83 @@ class GroqProvider(LLMProvider):
         }
         if tools:
             kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
+            # force_tool=True → model MUST call a tool (no plain-text response allowed)
+            kwargs["tool_choice"] = "required" if force_tool else "auto"
 
         try:
             completion = self._client.chat.completions.create(**kwargs)
         except Exception as exc:
-            # Model hallucinated a tool not in our schema (e.g. brave_search).
-            # The bad call was rejected by Groq BEFORE being returned, so it is
-            # NOT in `translated` — the history is already clean.
-            # Simply retry with the same history but NO tools so the model is
-            # forced to produce a plain-text answer from what it already has.
+            # Model used wrong parameter names — Groq rejected the tool call.
             if "tool_use_failed" in str(exc) or "tool call validation failed" in str(exc):
+                # Try to salvage the tool call from the error's failed_generation
+                salvaged = GroqProvider._salvage_failed_tool_call(exc)
+                if salvaged is not None:
+                    return {"content": "", "tool_call": salvaged, "tokens_used": 0, "cost_eur": 0.0}
+                # Fallback: retry with tool_choice=auto
                 retry_kwargs: dict[str, Any] = {
                     "model": self._model,
-                    "messages": translated,  # history already clean
+                    "messages": translated,
                 }
+                if tools:
+                    retry_kwargs["tools"] = tools
+                    retry_kwargs["tool_choice"] = "auto"
                 completion = self._client.chat.completions.create(**retry_kwargs)
             else:
                 raise
 
         return self._parse_response(completion)
+
+    @staticmethod
+    def _salvage_failed_tool_call(exc: Exception) -> "dict | None":
+        """Try to extract a valid tool call from a tool_use_failed error."""
+        import re as _re, json as _json
+
+        # Extract failed_generation string
+        raw = ""
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict):
+            try:
+                raw = body["error"]["failed_generation"]
+            except (KeyError, TypeError):
+                pass
+        if not raw:
+            m = _re.search(
+                r'"failed_generation"\s*:\s*"((?:[^"\\]|\\.)*)"\'',
+                str(exc),
+            )
+            if m:
+                try:
+                    raw = _json.loads('"' + m.group(1) + '"')
+                except Exception:
+                    raw = m.group(1)
+        if not raw:
+            return None
+
+        # Pattern 1: <function=name>{...}</function>
+        m1 = _re.search(r"<function=(\w+)>\s*(\{.*?\})\s*</function>", raw, _re.DOTALL)
+        if m1:
+            return {"name": m1.group(1).strip(), "input": m1.group(2).strip()}
+
+        # Pattern 2: name({...}) or name()
+        m2 = _re.search(r"(\w+)\s*\(\s*(\{.*?\})?\s*\)", raw, _re.DOTALL)
+        if m2:
+            return {"name": m2.group(1).strip(), "input": (m2.group(2) or "{}").strip()}
+
+        # Pattern 3: raw JSON with name/tool/function key
+        try:
+            obj = _json.loads(raw)
+            if isinstance(obj, dict):
+                name = obj.get("name") or obj.get("tool") or obj.get("function")
+                args = obj.get("arguments") or obj.get("parameters") or obj.get("input") or {}
+                if name:
+                    return {
+                        "name": str(name),
+                        "input": args if isinstance(args, str) else _json.dumps(args),
+                    }
+        except Exception:
+            pass
+
+        return None
 
     def _parse_response(self, completion: Any) -> dict[str, Any]:
         """Convert a Groq completion object into our standard response dict.
@@ -215,13 +296,14 @@ class GroqProvider(LLMProvider):
             Dict with ``content``, ``tool_call``, ``tokens_used``,
             ``cost_eur``.
         """
+        import re as _re
+
         message = completion.choices[0].message
 
         # --- Text content ---
         content: str = message.content or ""
 
         # --- Tool call (if any) ---
-        import re as _re
         tool_call: dict[str, Any] | None = None
         if message.tool_calls:
             first = message.tool_calls[0]
@@ -230,10 +312,15 @@ class GroqProvider(LLMProvider):
                 "input": first.function.arguments,  # raw JSON string
             }
         else:
-            # Fallback: llama-3.3-70b-versatile sometimes emits tool calls as
-            # plain text instead of via the API tool_calls field.
-            # Pattern 1: <function=tool_name>{"arg": "val"}</function>
+            # Fallback: some llama variants emit tool calls as text rather than
+            # via the API tool_calls field.  Detect and parse them so the agent
+            # loop can execute the tool instead of treating this as a final answer.
+            #
+            # Pattern 1: <function=tool_name>{"arg": "val"}</function>  ← llama-3.3-70b-versatile
             # Pattern 2: <function>tool_name({"arg": "val"})</function>
+            # Pattern 3: <function_calls><invoke><tool_name>t</tool_name>
+            #              <parameters>{"arg": "val"}</parameters></invoke></function_calls>
+
             fn_match = _re.search(
                 r"<function=(\w+)>\s*(\{.*?\})\s*</function>",
                 content,
@@ -246,16 +333,40 @@ class GroqProvider(LLMProvider):
                     _re.DOTALL,
                 )
             if not fn_match:
-                # Pattern 3: bare Python-style call inside a code block
+                # Try the XML-style format
+                fn_match = _re.search(
+                    r"<invoke>\s*<tool_name>\s*(\w+)\s*</tool_name>\s*"
+                    r"<parameters>\s*(\{.*?\})\s*</parameters>",
+                    content,
+                    _re.DOTALL,
+                )
+
+            if not fn_match:
+                # Pattern 4: bare Python-style call inside a code block
                 # e.g. generate_content({"title": "...", "doc_type": "..."})
+                # or   generate_content(task="...", sections=[...])
                 fn_match = _re.search(
                     r"(\w+)\s*\(\s*(\{[^)]+\})\s*\)",
                     content,
                     _re.DOTALL,
                 )
 
+            if not fn_match:
+                # Pattern 5: bare no-argument tool call, e.g. `summarize_emails()`
+                no_arg_match = _re.fullmatch(
+                    r"\s*`{0,3}\s*(\w+)\s*\(\s*\)\s*`{0,3}\s*",
+                    content,
+                    _re.DOTALL,
+                )
+                if no_arg_match:
+                    tool_call = {"name": no_arg_match.group(1).strip(), "input": "{}"}
+                    content = ""
+
             if fn_match:
-                tool_call = {"name": fn_match.group(1).strip(), "input": fn_match.group(2).strip()}
+                fn_name = fn_match.group(1).strip()
+                fn_args = fn_match.group(2).strip()
+                tool_call = {"name": fn_name, "input": fn_args}
+                # Clear content so it is not surfaced as a final answer
                 content = ""
 
         # --- Token accounting ---

@@ -105,6 +105,23 @@ class StepLimitReached(Exception):
         )
 
 
+class TimeLimitReached(Exception):
+    """Raised when the agent run exceeds ``max_seconds``.
+
+    Attributes:
+        elapsed:     Seconds elapsed since the run started.
+        max_seconds: The configured time ceiling.
+    """
+
+    def __init__(self, elapsed: float, max_seconds: float) -> None:
+        self.elapsed = elapsed
+        self.max_seconds = max_seconds
+        super().__init__(
+            f"Time limit reached: task ran {elapsed:.0f}s, max is {max_seconds:.0f}s. "
+            "The AI provider may be slow or overloaded — please try again."
+        )
+
+
 # ---------------------------------------------------------------------------
 # BaseAgent
 # ---------------------------------------------------------------------------
@@ -135,6 +152,7 @@ class BaseAgent:
         max_steps: int = 20,
         max_cost: float = 1.0,
         task_id: str | None = None,
+        max_seconds: float = 240.0,
     ) -> None:
         """Initialise the agent.
 
@@ -156,12 +174,15 @@ class BaseAgent:
         self._tools: dict[str, BaseTool] = {t.name: t for t in tools}
         self.max_steps = max_steps
         self.max_cost = max_cost
+        self.max_seconds = max_seconds
         self.task_id = task_id or str(uuid.uuid4())
+        self._run_started_at: float = 0.0
 
         self._memory = WorkingMemory()
         self.audit_log: list[dict[str, Any]] = []
         self._step: int = 0
         self._cost_so_far: float = 0.0
+        self._hallucination_reprompts: int = 0
 
         # Populated just before ApprovalRequired is raised so the API
         # layer can save full state and resume after human approval.
@@ -215,21 +236,105 @@ class BaseAgent:
 
         tool_schemas = [t.to_schema() for t in self._tools.values()]
 
+        def _compress_history(msgs: list[dict]) -> list[dict]:
+            """Truncate old tool results to save tokens.
+
+            Keeps the last 2 tool results at full length.
+            Older ones are trimmed to 500 chars so the LLM still has context
+            without burning tokens on large email bodies / JSON blobs.
+            """
+            _MAX_OLD_RESULT = 500
+            tool_indices = [i for i, m in enumerate(msgs) if m.get("role") == "tool"]
+            to_trim = tool_indices[:-2]  # keep last 2 intact
+            compressed = []
+            for i, m in enumerate(msgs):
+                if i in to_trim and len(m.get("content", "")) > _MAX_OLD_RESULT:
+                    m = {**m, "content": m["content"][:_MAX_OLD_RESULT] + "… [truncated]"}
+                compressed.append(m)
+            return compressed
+
         try:
             while True:
                 self._step += 1
                 self._check_limits()
 
                 # --- Step 1: Call the LLM ---
+                messages = _compress_history(messages)
                 self._log("llm_called", {"step": self._step, "message_count": len(messages)})
-                response = self._llm.send(messages, tool_schemas)
+                # Force a tool call when no tool has run yet — prevents the model
+                # from skipping straight to a hallucinated final answer.
+                tools_used_so_far = any(m.get("role") == "tool" for m in messages)
+                force_tool = bool(tool_schemas) and not tools_used_so_far
+                response = self._llm.send(messages, tool_schemas, force_tool=force_tool)
                 self._cost_so_far += response.get("cost_eur", 0.0)
 
                 tool_call = response.get("tool_call")
                 content = response.get("content", "")
 
-                # --- Step 2: No tool call → task complete ---
+                # --- Step 2: No tool call → task complete (or push back if no tools used yet) ---
                 if not tool_call:
+                    # Guard: if no tool has run yet the model is hallucinating success.
+                    # Re-prompt up to 3 times with increasingly explicit instructions.
+                    tools_used_so_far = any(
+                        m.get("role") == "tool" for m in messages
+                    )
+                    if tool_schemas and not tools_used_so_far and self._hallucination_reprompts < 3:
+                        self._hallucination_reprompts += 1
+                        self._log(
+                            "hallucination_guard",
+                            {
+                                "step": self._step,
+                                "reprompt": self._hallucination_reprompts,
+                                "content_preview": content[:120],
+                                "note": "Model returned text without calling any tool — re-prompting",
+                            },
+                        )
+                        # Build list of available tool names for the model
+                        tool_names = ", ".join(
+                            s["function"]["name"]
+                            for s in tool_schemas
+                            if "function" in s
+                        )
+                        messages.append({"role": "assistant", "content": content or ""})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "ERROR: You wrote text but called NO tools. Nothing was executed.\n\n"
+                                "Rules:\n"
+                                "- Do NOT write Python code or pseudocode.\n"
+                                "- Do NOT describe what you will do.\n"
+                                "- You MUST call one of these tools right now using the tool-calling mechanism: "
+                                f"{tool_names}\n\n"
+                                "For document creation tasks, call generate_content with JSON like this:\n"
+                                '{"title": "Report Title", "doc_type": "report", "prompt": "describe what to write"}\n\n'
+                                "Call the tool NOW. Your response must be a tool call, not text."
+                            ),
+                        })
+                        continue
+
+                    content = self._clean_result(content)
+
+                    # Grounding check: does the answer match what actually ran?
+                    inconsistency = self._detect_ungrounded_claim(content)
+                    if inconsistency:
+                        # One corrective retry
+                        self._log("grounding_retry", {"step": self._step, "reason": inconsistency})
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                f"Your answer appears inconsistent with what actually happened: {inconsistency} "
+                                "Please correct your response to accurately reflect what was done."
+                            ),
+                        })
+                        response2 = self._llm.send(messages, tool_schemas)
+                        content2 = self._clean_result(response2.get("content", "") or content)
+                        # If still ungrounded, prepend a disclaimer but don't loop
+                        if self._detect_ungrounded_claim(content2):
+                            self._log("grounding_warning", {"step": self._step})
+                            content2 = "⚠️ " + content2
+                        content = content2
+
                     self._log(
                         "task_completed",
                         {"result": content, "total_steps": self._step},
@@ -316,7 +421,7 @@ class BaseAgent:
                     {"role": "tool", "name": tool_name, "content": result}
                 )
 
-        except (ApprovalRequired, RedZoneBlocked, CostLimitReached, StepLimitReached):
+        except (ApprovalRequired, RedZoneBlocked, CostLimitReached, StepLimitReached, TimeLimitReached):
             raise  # propagate control-flow exceptions unchanged
         except Exception as exc:  # noqa: BLE001
             self._log("error", {"error": str(exc), "step": self._step})
@@ -351,6 +456,81 @@ class BaseAgent:
     # Overrideable hooks
     # ------------------------------------------------------------------
 
+    def _invoked_tool_names(self) -> set[str]:
+        """Return the set of tool names actually called this run (from audit log)."""
+        return {
+            e["details"].get("tool_name", "")
+            for e in self.audit_log
+            if e.get("event_type") == "tool_called"
+        }
+
+    def _detect_ungrounded_claim(self, content: str) -> str | None:
+        """Return a description of the inconsistency if content is ungrounded, else None."""
+        import re as _re
+        invoked = self._invoked_tool_names()
+        lower = content.lower()
+
+        # Pattern A: answer names a tool that was never actually called
+        _TOOL_MENTIONS = [
+            ("read_email",         ["read_email", "'read_email'", "read_emails"]),
+            ("search_emails",      ["search_emails", "'search_emails'"]),
+            ("summarize_emails",   ["summarize_emails", "summarised", "summarized"]),
+            ("send_email",         ["send_email", "email sent", "sent the email"]),
+            ("create_gmail_draft", ["create_gmail_draft", "draft saved", "saved to drafts"]),
+            ("reply_to_email",     ["reply_to_email", "replied to"]),
+            ("detect_follow_up",   ["detect_follow_up", "follow-up detected"]),
+        ]
+        for tool_name, phrases in _TOOL_MENTIONS:
+            if any(p in lower for p in phrases) and tool_name not in invoked:
+                return f"Answer mentions '{tool_name}' but that tool was never called."
+
+        # Pattern B: answer denies doing anything while a mutating tool did run
+        _MUTATING = {"send_email", "create_gmail_draft", "reply_to_email",
+                     "forward_email", "schedule_email", "mark_as_read", "create_draft"}
+        _DENIAL_PHRASES = ["no emails", "nothing to", "could not find", "unable to",
+                           "i don't have", "no results", "nothing was"]
+        if invoked & _MUTATING and any(p in lower for p in _DENIAL_PHRASES):
+            ran = ", ".join(invoked & _MUTATING)
+            return f"Answer denies doing anything but mutating tool(s) ran: {ran}."
+
+        # Pattern C: fabricated / placeholder data — model invented fake results
+        _PLACEHOLDER = [
+            r"subject\s*\d+\s*[-–]\s*sender\s*\d+",   # "Subject 1 - Sender 1"
+            r"\bsender\s*\d+\b",                        # "Sender 1"
+            r"\bsubject\s*\d+\b",                       # "Subject 1"
+            r"assuming the response",                   # "Assuming the response is..."
+            r"assuming.*emails.*count",                 # "Assuming {"emails":[...], "count":5}"
+            r"simple example.*summary",                 # "simple example ... summary"
+            r"for example.*you can print",              # "For example, you can print"
+            r"i don.t have the actual email content",   # "I don't have the actual email content"
+            r"natural language processing techniques to analyze",  # generic NLP suggestion
+        ]
+        for pattern in _PLACEHOLDER:
+            if _re.search(pattern, lower):
+                return (
+                    "Your response contains fabricated placeholder data or describes what the "
+                    "tool response might look like instead of using real data. "
+                    "You MUST call the read_emails or search_emails tool and use the ACTUAL result."
+                )
+
+        return None
+
+    def _clean_result(self, text: str) -> str:
+        """Strip narration lines the model sometimes includes in its final answer."""
+        import re
+        _NARRATION = re.compile(
+            r"^.*(i will use|i am going to|i('ll| will) now|please wait|"
+            r"the tool has finished|i have (successfully|now)|"
+            r"i('m| am) (now |currently )?(using|reading|fetching|checking|calling)|"
+            r"let me (use|read|fetch|check|call|now)).*$",
+            re.IGNORECASE,
+        )
+        lines = text.splitlines()
+        cleaned = [ln for ln in lines if not _NARRATION.match(ln.strip())]
+        # Remove leading/trailing blank lines left after stripping
+        result = "\n".join(cleaned).strip()
+        return result or text  # fallback to original if everything was stripped
+
     def _system_prompt(self) -> str:
         """Return the system prompt sent to the LLM at the start of every task.
 
@@ -367,19 +547,33 @@ class BaseAgent:
 
     def _reset_run_state(self) -> None:
         """Reset per-run counters and log before starting a new task."""
+        import time as _time
         self._step = 0
         self._cost_so_far = 0.0
+        self._hallucination_reprompts = 0
         self.audit_log = []
         self.pending_approval = None
         self._memory.clear()
+        self._run_started_at = _time.monotonic()
 
     def _check_limits(self) -> None:
         """Raise the appropriate exception if a limit has been exceeded.
 
         Raises:
+            TimeLimitReached:  If elapsed wall time exceeds ``max_seconds``.
             StepLimitReached:  If ``self._step > self.max_steps``.
             CostLimitReached:  If ``self._cost_so_far > self.max_cost``.
         """
+        import time as _time
+        if self.max_seconds and self._run_started_at:
+            elapsed = _time.monotonic() - self._run_started_at
+            if elapsed > self.max_seconds:
+                self._log(
+                    "time_limit_reached",
+                    {"elapsed": elapsed, "max_seconds": self.max_seconds},
+                )
+                raise TimeLimitReached(elapsed, self.max_seconds)
+
         if self._step > self.max_steps:
             self._log(
                 "step_limit_reached",
