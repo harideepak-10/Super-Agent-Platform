@@ -446,6 +446,7 @@ class BaseAgent:
 
     def _detect_ungrounded_claim(self, content: str) -> str | None:
         """Return a description of the inconsistency if content is ungrounded, else None."""
+        import re as _re
         invoked = self._invoked_tool_names()
         lower = content.lower()
 
@@ -469,6 +470,26 @@ class BaseAgent:
         if invoked & _MUTATING and any(p in lower for p in _DENIAL_PHRASES):
             ran = ", ".join(invoked & _MUTATING)
             return f"Answer denies doing anything but mutating tool(s) ran: {ran}."
+
+        # Pattern C: fabricated / placeholder data — model invented fake results
+        _PLACEHOLDER = [
+            r"subject\s*\d+\s*[-–]\s*sender\s*\d+",   # "Subject 1 - Sender 1"
+            r"\bsender\s*\d+\b",                        # "Sender 1"
+            r"\bsubject\s*\d+\b",                       # "Subject 1"
+            r"assuming the response",                   # "Assuming the response is..."
+            r"assuming.*emails.*count",                 # "Assuming {"emails":[...], "count":5}"
+            r"simple example.*summary",                 # "simple example ... summary"
+            r"for example.*you can print",              # "For example, you can print"
+            r"i don.t have the actual email content",   # "I don't have the actual email content"
+            r"natural language processing techniques to analyze",  # generic NLP suggestion
+        ]
+        for pattern in _PLACEHOLDER:
+            if _re.search(pattern, lower):
+                return (
+                    "Your response contains fabricated placeholder data or describes what the "
+                    "tool response might look like instead of using real data. "
+                    "You MUST call the read_emails or search_emails tool and use the ACTUAL result."
+                )
 
         return None
 
