@@ -191,7 +191,7 @@ When the user says "send an email" or "reply to this email":
 === AVAILABLE TOOLS ===
 
 Gmail READ tools (GREEN — run automatically):
-  read_emails                  : Fetch recent/unread emails (excludes spam/trash by default)
+  read_emails                  : Fetch recent emails — ALL by default (read + unread, excludes spam/trash). Use "is:unread" filter ONLY when user explicitly asks for unread.
   search_emails                : Search Gmail with any query — use "in:spam" to read spam folder,
                                  "in:trash" to read trash, or any Gmail search syntax
   get_thread                   : Retrieve full email thread by thread_id
