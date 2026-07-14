@@ -243,6 +243,58 @@ def _build_gmail_service(workspace_id):
 # ---------------------------------------------------------------------------
 _LAST_READ_EMAILS: dict = {}
 
+# Tools whose results contain a ready-to-present formatted_summary
+_SUMMARY_TOOLS = ("summarize_emails", "read_email_attachment_content")
+
+# Tools that mutate state — when these ran we do NOT override the LLM answer
+_MUTATING_TOOLS = {
+    "send_email", "reply_to_email", "forward_email", "schedule_email",
+    "delete_email", "create_gmail_draft", "create_draft",
+    "mark_as_read", "label_email", "move_to_folder",
+}
+
+
+def _extract_summary_deliverable(audit_log: list) -> str:
+    """Return the last non-empty formatted_summary from summary tool results."""
+    found = ""
+    for entry in audit_log:
+        if entry.get("event_type") != "tool_result":
+            continue
+        details = entry.get("details", {})
+        if details.get("tool_name") not in _SUMMARY_TOOLS:
+            continue
+        try:
+            data = json.loads(details.get("result", "{}"))
+            fs = data.get("formatted_summary", "")
+            if fs and isinstance(fs, str) and fs.strip():
+                found = fs.strip()
+        except Exception:
+            pass
+    return found
+
+
+def _mutating_tool_ran(audit_log: list) -> bool:
+    """Return True if any mutating tool was called during this run."""
+    for entry in audit_log:
+        if entry.get("event_type") == "tool_called":
+            if entry.get("details", {}).get("tool_name") in _MUTATING_TOOLS:
+                return True
+    return False
+
+
+def _inject_summary_result(result: str, audit_log: list) -> str:
+    """Replace an empty/wrong LLM answer with the tool-produced summary."""
+    summary = _extract_summary_deliverable(audit_log)
+    if not summary:
+        return result
+    if _mutating_tool_ran(audit_log):
+        return result
+    # Don't overwrite if the model already included the summary's first line
+    first_line = summary.split("\n")[0].strip()
+    if first_line and first_line in (result or ""):
+        return result
+    return summary
+
 
 def _cache_emails(workspace_id, result_json: str) -> None:
     """Parse result_json and store its emails list keyed by workspace_id."""
@@ -419,7 +471,7 @@ class SummarizeEmailsTool(BaseTool):
 
         # Fallback: use the workspace cache populated by read_email / search_emails
         if not emails:
-            emails = _get_cached_emails(self._workspace_id)
+            emails = _get_cached_emails(getattr(self, "_workspace_id", None))
 
         if not emails:
             return json.dumps({
@@ -2130,12 +2182,25 @@ class ReadEmailAttachmentContentTool(BaseTool):
             except Exception as exc:
                 results.append({"filename": fname, "error": f"Could not process attachment: {exc}"})
 
+        # Build a formatted_summary so _inject_summary_result can use it directly
+        summary_lines = [f"Email from: {sender}", f"Subject: {subject}", f"Date: {date}", ""]
+        for r in results:
+            summary_lines.append(f"Attachment: {r['filename']}")
+            if r.get("error"):
+                summary_lines.append(f"  Error: {r['error']}")
+            else:
+                body = (r.get("content") or "")[:1200]
+                summary_lines.append(body)
+            summary_lines.append("")
+        formatted_summary = "\n".join(summary_lines).strip()
+
         return json.dumps({
             "email_subject":    subject,
             "email_from":       sender,
             "email_date":       date,
             "attachment_count": len(results),
             "attachments":      results,
+            "formatted_summary": formatted_summary,
         }, ensure_ascii=False)
 
     def to_schema(self):
@@ -2720,6 +2785,7 @@ def run_agent_task(self, task_id: str):
 
     try:
         result = react_agent.run(task.prompt)
+        result = _inject_summary_result(result, react_agent.audit_log)
         _save_audit_steps(task, react_agent.audit_log)
         _save_document_deliverables(task, react_agent.audit_log)
         cost = react_agent.get_cost_summary()
@@ -2909,6 +2975,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
             task=snapshot.get("task", task.prompt),
             initial_messages=messages,
         )
+        result = _inject_summary_result(result, react_agent.audit_log)
         _save_audit_steps(task, react_agent.audit_log, step_offset=step_offset)
         cost = react_agent.get_cost_summary()
         task.status = Task.Status.COMPLETED
@@ -2963,5 +3030,4 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.completed_at = timezone.now()
         task.save(update_fields=["status", "error_message", "completed_at"])
         from apps.notifications.utils import notify_task_failed
-        notify_task_failed(task)
-        raise
+        

@@ -296,6 +296,17 @@ class GroqProvider(LLMProvider):
                     _re.DOTALL,
                 )
 
+            if not fn_match:
+                # Pattern 5: bare no-argument tool call, e.g. `summarize_emails()`
+                no_arg_match = _re.fullmatch(
+                    r"\s*`{0,3}\s*(\w+)\s*\(\s*\)\s*`{0,3}\s*",
+                    content,
+                    _re.DOTALL,
+                )
+                if no_arg_match:
+                    tool_call = {"name": no_arg_match.group(1).strip(), "input": "{}"}
+                    content = ""
+
             if fn_match:
                 fn_name = fn_match.group(1).strip()
                 fn_args = fn_match.group(2).strip()
