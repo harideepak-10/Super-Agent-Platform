@@ -2707,6 +2707,16 @@ def run_agent_task(self, task_id: str):
         return {"status": "failed", "error": str(exc)}
 
     except Exception as exc:
+        from core.llm.groq_provider import GroqRateLimitError
+        if isinstance(exc, GroqRateLimitError):
+            _save_audit_steps(task, getattr(react_agent, "audit_log", []))
+            task.status = Task.Status.COMPLETED
+            task.result = str(exc)
+            task.completed_at = timezone.now()
+            task.save(update_fields=["status", "result", "completed_at"])
+            from apps.notifications.utils import notify_task_complete
+            notify_task_complete(task)
+            return {"status": "completed", "task_id": str(task_id)}
         _save_audit_steps(task, getattr(react_agent, "audit_log", []))
         task.status = Task.Status.FAILED
         task.error_message = str(exc)[:500]
@@ -2870,6 +2880,16 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         return {"status": "waiting_approval", "approval_id": str(new_approval.id)}
 
     except Exception as exc:
+        from core.llm.groq_provider import GroqRateLimitError
+        if isinstance(exc, GroqRateLimitError):
+            _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
+            task.status = Task.Status.COMPLETED
+            task.result = str(exc)
+            task.completed_at = timezone.now()
+            task.save(update_fields=["status", "result", "completed_at"])
+            from apps.notifications.utils import notify_task_complete
+            notify_task_complete(task)
+            return {"status": "completed", "task_id": str(task_id)}
         _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
         task.status = Task.Status.FAILED
         task.error_message = str(exc)[:500]

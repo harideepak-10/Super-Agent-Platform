@@ -26,7 +26,22 @@ _COST_PER_1K_OUTPUT_TOKENS: float = 0.00008  # USD (converted to EUR on output)
 _USD_TO_EUR: float = 0.92
 _MAX_RETRIES: int = 3
 _RETRY_DELAY_SECONDS: float = 2.0
-_MODEL: str = "llama-3.1-8b-instant"
+_MODEL: str = "llama-3.3-70b-versatile"
+
+_RATE_LIMIT_MESSAGE = (
+    "⚠️ The AI is temporarily busy due to high usage (Groq rate limit reached). "
+    "Please wait about 1 minute and try again."
+)
+
+
+class GroqRateLimitError(RuntimeError):
+    """Raised when Groq returns a 429 / quota-exhaustion error."""
+    pass
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "429" in msg or "rate_limit_exceeded" in msg or "rate limit" in msg or "quota" in msg
 
 
 class GroqProvider(LLMProvider):
@@ -100,6 +115,8 @@ class GroqProvider(LLMProvider):
             try:
                 return self._call_api(messages, tools, force_tool=force_tool)
             except Exception as exc:  # noqa: BLE001
+                if _is_rate_limit_error(exc):
+                    raise GroqRateLimitError(_RATE_LIMIT_MESSAGE) from exc
                 last_error = exc
                 if attempt < _MAX_RETRIES:
                     time.sleep(_RETRY_DELAY_SECONDS * attempt)
