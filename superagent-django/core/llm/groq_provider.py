@@ -26,7 +26,7 @@ _COST_PER_1K_OUTPUT_TOKENS: float = 0.00008  # USD (converted to EUR on output)
 _USD_TO_EUR: float = 0.92
 _MAX_RETRIES: int = 3
 _RETRY_DELAY_SECONDS: float = 2.0
-_MODEL: str = "llama-3.3-70b-versatile"
+_MODEL: str = "llama-3.1-8b-instant"
 
 
 class GroqProvider(LLMProvider):

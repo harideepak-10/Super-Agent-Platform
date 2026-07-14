@@ -216,12 +216,30 @@ class BaseAgent:
 
         tool_schemas = [t.to_schema() for t in self._tools.values()]
 
+        def _compress_history(msgs: list[dict]) -> list[dict]:
+            """Truncate old tool results to save tokens.
+
+            Keeps the last 2 tool results at full length.
+            Older ones are trimmed to 500 chars so the LLM still has context
+            without burning tokens on large email bodies / JSON blobs.
+            """
+            _MAX_OLD_RESULT = 500
+            tool_indices = [i for i, m in enumerate(msgs) if m.get("role") == "tool"]
+            to_trim = tool_indices[:-2]  # keep last 2 intact
+            compressed = []
+            for i, m in enumerate(msgs):
+                if i in to_trim and len(m.get("content", "")) > _MAX_OLD_RESULT:
+                    m = {**m, "content": m["content"][:_MAX_OLD_RESULT] + "… [truncated]"}
+                compressed.append(m)
+            return compressed
+
         try:
             while True:
                 self._step += 1
                 self._check_limits()
 
                 # --- Step 1: Call the LLM ---
+                messages = _compress_history(messages)
                 self._log("llm_called", {"step": self._step, "message_count": len(messages)})
                 # Force a tool call when no tool has run yet — prevents the model
                 # from skipping straight to a hallucinated final answer.

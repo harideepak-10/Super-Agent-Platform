@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_LIMIT = 10
 _DEFAULT_FILTER = "-in:spam -in:trash"
-_BODY_PREVIEW_CHARS = 200
-_FULL_BODY_MAX_CHARS = 3000   # prevent token overflow from large HTML/marketing emails
+_BODY_PREVIEW_CHARS = 150
+_FULL_BODY_MAX_CHARS = 1200   # keep token usage low — enough for summary tasks
 
 
 class ReadEmailsTool(BaseTool):
