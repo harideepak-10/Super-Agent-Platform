@@ -185,6 +185,48 @@ class GenerateReportTool(BaseTool):
         }}
 
 
+def _build_gmail_service(workspace_id):
+    """Build a Gmail API service, auto-refreshing the token if expired and saving back to DB."""
+    if not workspace_id:
+        return None
+    try:
+        from apps.integrations.models import Integration
+        integration = Integration.objects.filter(
+            workspace_id=workspace_id,
+            provider=Integration.Provider.GMAIL,
+            status=Integration.Status.ACTIVE,
+        ).first()
+        if not integration or not integration.access_token:
+            return None
+
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        creds = Credentials(
+            token=integration.access_token,
+            refresh_token=integration.refresh_token,
+            client_id=os.environ.get("GOOGLE_CLIENT_ID"),
+            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
+            token_uri="https://oauth2.googleapis.com/token",
+        )
+
+        # Auto-refresh if expired — saves new token back to DB so next call also works
+        if creds.expired and creds.refresh_token:
+            try:
+                from google.auth.transport.requests import Request
+                creds.refresh(Request())
+                integration.access_token = creds.token
+                integration.save(update_fields=["access_token"])
+            except Exception as refresh_exc:
+                _logger.warning("Gmail token refresh failed: %s", refresh_exc)
+                # Continue anyway — token might still be valid
+
+        return build("gmail", "v1", credentials=creds)
+    except Exception as exc:
+        _logger.warning("_build_gmail_service failed: %s", exc)
+        return None
+
+
 class ReadEmailTool(BaseTool):
     name = "read_email"
     description = "Fetch emails from Gmail. Input JSON: {\"limit\": 10, \"filter\": \"-in:spam -in:trash\"}. Default fetches ALL emails (read + unread). Only use 'is:unread' filter when user explicitly asks for unread. Returns {\"emails\":[...], \"count\":N}."
@@ -193,33 +235,8 @@ class ReadEmailTool(BaseTool):
     def __init__(self, workspace_id=None):
         self._workspace_id = workspace_id
 
-    def _gmail_service(self):
-        if not self._workspace_id:
-            return None
-        try:
-            from apps.integrations.models import Integration
-            integration = Integration.objects.filter(
-                workspace_id=self._workspace_id,
-                provider=Integration.Provider.GMAIL,
-                status=Integration.Status.ACTIVE,
-            ).first()
-            if not integration or not integration.access_token:
-                return None
-            from google.oauth2.credentials import Credentials
-            from googleapiclient.discovery import build
-            creds = Credentials(
-                token=integration.access_token,
-                refresh_token=integration.refresh_token,
-                client_id=os.environ.get("GOOGLE_CLIENT_ID"),
-                client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
-                token_uri="https://oauth2.googleapis.com/token",
-            )
-            return build("gmail", "v1", credentials=creds)
-        except Exception:
-            return None
-
     def run(self, input_str: str) -> str:
-        service = self._gmail_service()
+        service = _build_gmail_service(self._workspace_id)
         if service:
             from core.tools.gmail.read_emails import ReadEmailsTool
             result = ReadEmailsTool(gmail_service=service).run(input_str)
@@ -268,33 +285,8 @@ class SearchEmailTool(BaseTool):
     def __init__(self, workspace_id=None):
         self._workspace_id = workspace_id
 
-    def _gmail_service(self):
-        if not self._workspace_id:
-            return None
-        try:
-            from apps.integrations.models import Integration
-            integration = Integration.objects.filter(
-                workspace_id=self._workspace_id,
-                provider=Integration.Provider.GMAIL,
-                status=Integration.Status.ACTIVE,
-            ).first()
-            if not integration or not integration.access_token:
-                return None
-            from google.oauth2.credentials import Credentials
-            from googleapiclient.discovery import build
-            creds = Credentials(
-                token=integration.access_token,
-                refresh_token=integration.refresh_token,
-                client_id=os.environ.get("GOOGLE_CLIENT_ID"),
-                client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
-                token_uri="https://oauth2.googleapis.com/token",
-            )
-            return build("gmail", "v1", credentials=creds)
-        except Exception:
-            return None
-
     def run(self, input_str: str) -> str:
-        service = self._gmail_service()
+        service = _build_gmail_service(self._workspace_id)
         if not service:
             return json.dumps({
                 "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account.",
@@ -330,35 +322,9 @@ class DownloadAttachmentTool(BaseTool):
     def __init__(self, workspace_id=None):
         self._workspace_id = workspace_id
 
-    def _gmail_service(self):
-        if not self._workspace_id:
-            return None
-        try:
-            from apps.integrations.models import Integration
-            from google.oauth2.credentials import Credentials
-            from googleapiclient.discovery import build
-            integration = Integration.objects.filter(
-                workspace_id=self._workspace_id,
-                provider=Integration.Provider.GMAIL,
-                status=Integration.Status.ACTIVE,
-            ).first()
-            if not integration or not integration.access_token:
-                return None
-            import os
-            creds = Credentials(
-                token=integration.access_token,
-                refresh_token=integration.refresh_token,
-                client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
-                client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
-                token_uri="https://oauth2.googleapis.com/token",
-            )
-            return build("gmail", "v1", credentials=creds)
-        except Exception:
-            return None
-
     def run(self, input_str: str) -> str:
         from core.tools.gmail.download_attachment import DownloadAttachmentTool as CoreTool
-        return CoreTool(gmail_service=self._gmail_service()).run(input_str)
+        return CoreTool(gmail_service=_build_gmail_service(self._workspace_id)).run(input_str)
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -415,39 +381,6 @@ class SendEmailTool(BaseTool):
     def __init__(self, workspace_id=None):
         self._workspace_id = workspace_id
 
-    def _gmail_service(self):
-        _svc_log = logging.getLogger("send_email.service")
-        if not self._workspace_id:
-            _svc_log.warning("_gmail_service: no workspace_id")
-            return None
-        try:
-            from apps.integrations.models import Integration
-            from google.oauth2.credentials import Credentials
-            from googleapiclient.discovery import build
-            integration = Integration.objects.filter(
-                workspace_id=self._workspace_id,
-                provider=Integration.Provider.GMAIL,
-                status=Integration.Status.ACTIVE,
-            ).first()
-            if not integration:
-                _svc_log.warning("_gmail_service: no active Gmail integration for workspace=%s", self._workspace_id)
-                return None
-            if not integration.access_token:
-                _svc_log.warning("_gmail_service: integration found but no access_token for workspace=%s", self._workspace_id)
-                return None
-            _svc_log.info("_gmail_service: building service for workspace=%s has_refresh=%s", self._workspace_id, bool(integration.refresh_token))
-            creds = Credentials(
-                token=integration.access_token,
-                refresh_token=integration.refresh_token,
-                client_id=os.environ.get("GOOGLE_CLIENT_ID"),
-                client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
-                token_uri="https://oauth2.googleapis.com/token",
-            )
-            return build("gmail", "v1", credentials=creds)
-        except Exception as exc:
-            _svc_log.error("_gmail_service: exception building service err=%s", exc, exc_info=True)
-            return None
-
     def run(self, input_str: str) -> str:
         _run_log = logging.getLogger("send_email")
         _run_log.info("SendEmailTool.run called input=%r", input_str[:200] if input_str else "")
@@ -467,7 +400,7 @@ class SendEmailTool(BaseTool):
             _run_log.warning("SendEmailTool: placeholder data rejected — %s", reason)
             return _placeholder_error_json(reason)
 
-        service = self._gmail_service()
+        service = _build_gmail_service(self._workspace_id)
         _run_log.info("SendEmailTool.run gmail_service_ok=%s", service is not None)
         if service:
             try:
@@ -1130,30 +1063,8 @@ class UploadToDriveTool(BaseTool):
 # =============================================================================
 
 def _gmail_service_for_workspace(workspace_id):
-    """Helper: build a Gmail service from the workspace's active integration."""
-    if not workspace_id:
-        return None
-    try:
-        from apps.integrations.models import Integration
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-        integration = Integration.objects.filter(
-            workspace_id=workspace_id,
-            provider=Integration.Provider.GMAIL,
-            status=Integration.Status.ACTIVE,
-        ).first()
-        if not integration or not integration.access_token:
-            return None
-        creds = Credentials(
-            token=integration.access_token,
-            refresh_token=integration.refresh_token,
-            client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
-            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
-            token_uri="https://oauth2.googleapis.com/token",
-        )
-        return build("gmail", "v1", credentials=creds)
-    except Exception:
-        return None
+    """Alias for _build_gmail_service — kept for backward compat."""
+    return _build_gmail_service(workspace_id)
 
 
 class CreateGmailDraftTool(BaseTool):
@@ -2028,9 +1939,6 @@ class ReadEmailAttachmentContentTool(BaseTool):
     def __init__(self, workspace_id=None):
         self._workspace_id = workspace_id
 
-    def _gmail_service(self):
-        return _gmail_service_for_workspace(self._workspace_id)
-
     def run(self, input_str: str) -> str:
         import tempfile, base64, os as _os
 
@@ -2046,7 +1954,7 @@ class ReadEmailAttachmentContentTool(BaseTool):
         if "has:attachment" not in email_filter:
             email_filter = "has:attachment " + email_filter
 
-        service = self._gmail_service()
+        service = _build_gmail_service(self._workspace_id)
         if not service:
             return json.dumps({"error": "Gmail not connected. Go to Integrations to connect Gmail."})
 
