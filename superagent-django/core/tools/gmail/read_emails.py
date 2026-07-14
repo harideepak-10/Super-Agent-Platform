@@ -20,7 +20,7 @@ from core.tools.base_tool import BaseTool, ToolZone
 logger = logging.getLogger(__name__)
 
 _DEFAULT_LIMIT = 10
-_DEFAULT_FILTER = "is:unread -in:spam -in:trash"
+_DEFAULT_FILTER = "-in:spam -in:trash"
 _BODY_PREVIEW_CHARS = 200
 _FULL_BODY_MAX_CHARS = 3000   # prevent token overflow from large HTML/marketing emails
 
@@ -30,9 +30,9 @@ class ReadEmailsTool(BaseTool):
 
     Input format (JSON string or plain string)::
 
-        {"limit": 10, "filter": "is:unread"}
+        {"limit": 10, "filter": "-in:spam -in:trash"}
 
-    If input is not valid JSON, uses defaults (10 unread emails).
+    If input is not valid JSON, uses defaults (10 most recent emails, read + unread).
 
     Returns:
         JSON string containing a list of email dicts, each with:
@@ -46,7 +46,9 @@ class ReadEmailsTool(BaseTool):
     name: str = "read_emails"
     description: str = (
         "Fetches emails from Gmail and returns a structured list. "
-        "Input (JSON): {\"limit\": 10, \"filter\": \"is:unread\"}. "
+        "Input (JSON): {\"limit\": 10, \"filter\": \"-in:spam -in:trash\"}. "
+        "Default fetches ALL recent emails (read + unread). "
+        "Use filter 'is:unread -in:spam -in:trash' ONLY when user explicitly asks for unread emails. "
         "Returns a JSON list of emails with id, subject, sender, "
         "date, body_preview, full_body, has_attachments."
     )
