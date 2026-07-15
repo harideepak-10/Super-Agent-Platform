@@ -27,7 +27,7 @@ _USD_TO_EUR: float = 0.92
 _MAX_RETRIES: int = 2
 _RETRY_DELAY_SECONDS: float = 2.0
 _REQUEST_TIMEOUT_SECONDS: float = 45.0
-_MODEL: str = "llama-3.3-70b-versatile"
+_MODEL: str = "llama-3.1-8b-instant"
 
 _RATE_LIMIT_MESSAGE = (
     "⚠️ The AI is temporarily busy due to high usage (Groq rate limit reached). "

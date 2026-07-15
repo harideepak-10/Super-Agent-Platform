@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     13,
+        "version":     15,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -611,20 +611,12 @@ _AGENT_TEMPLATES = [
         "tools": [
             # Read
             "read_email", "search_emails", "summarize_emails",
-            "read_email_attachment_content",
-            "download_attachment",
-            "read_attachment_content", "extract_data_from_attachment",
-            # Inbox management
-            "mark_as_read", "label_email", "move_to_folder", "delete_email",
+            # Attachments
+            "read_email_attachment_content", "download_attachment", "read_attachment_content",
             # Compose
-            "create_draft", "create_gmail_draft",
-            "reply_to_email", "forward_email", "schedule_email", "send_email",
-            # Intelligence
-            "extract_invoice_data", "detect_follow_up_needed",
-            # Customer memory
-            "list_customer_profiles", "search_customer_by_email",
+            "send_email", "reply_to_email", "create_draft",
         ],
-        "llm_model":    "llama-3.3-70b-versatile",
+        "llm_model":    "llama-3.1-8b-instant",
         "system_prompt": (
             "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n\n"
 
@@ -674,17 +666,15 @@ _AGENT_TEMPLATES = [
 
             "=== DRAFTING A REPLY ===\n"
             "  1. read_email or search_emails\n"
-            "  2. draft_reply\n"
-            "  3. [approval] → send_email / reply_to_email\n\n"
+            "  2. [approval] → send_email / reply_to_email\n\n"
 
             "=== YELLOW zone (require human approval) ===\n"
-            "send_email, reply_to_email, forward_email, schedule_email, delete_email\n\n"
+            "send_email, reply_to_email\n\n"
 
             "=== GREEN zone (run automatically) ===\n"
-            "read_email, search_emails, read_email_attachment_content, download_attachment,\n"
-            "read_attachment_content, summarize_emails, mark_as_read, label_email,\n"
-            "move_to_folder, create_draft, create_gmail_draft, extract_invoice_data,\n"
-            "detect_follow_up_needed, list_customer_profiles, search_customer_by_email\n\n"
+            "read_email, search_emails, summarize_emails,\n"
+            "read_email_attachment_content, download_attachment, read_attachment_content,\n"
+            "create_draft\n\n"
 
             "=== HARD RULES ===\n"
             "- NEVER invent email content — only use what tools return\n"
