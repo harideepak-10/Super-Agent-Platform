@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     18,
+        "version":     19,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -659,11 +659,14 @@ _AGENT_TEMPLATES = [
             "  NEVER say 'I cannot read attachments' — you have read_email_attachment_content\n\n"
 
             "=== READ EMAIL RULES ===\n\n"
-            "ALWAYS use filter '-in:spam -in:trash' by default (ALL emails, read + unread).\n"
+            "DEFAULT filter (when user does NOT mention spam or trash): '-in:spam -in:trash'\n"
             "ONLY use 'is:unread' if the user explicitly says 'unread' or 'new emails'.\n\n"
-            "  'read my last 5 emails'  → filter: '-in:spam -in:trash', limit: 5\n"
-            "  'recent emails'          → filter: '-in:spam -in:trash', limit: 10\n"
-            "  'unread emails'          → filter: 'is:unread -in:spam -in:trash', limit: 10\n"
+            "  'read my last 5 emails'       → filter: '-in:spam -in:trash', limit: 5\n"
+            "  'recent emails'               → filter: '-in:spam -in:trash', limit: 10\n"
+            "  'unread emails'               → filter: 'is:unread -in:spam -in:trash', limit: 10\n"
+            "  'emails from spam'            → filter: 'in:spam', limit: 10\n"
+            "  'unread emails from spam'     → filter: 'in:spam is:unread', limit: 10\n"
+            "  'check my spam'               → filter: 'in:spam', limit: 10\n"
             "  NEVER fetch more than 10 unread emails at once — too many tokens.\n"
             "  If user says 'all unread' or implies a large number, still cap at 10 and tell them.\n\n"
             "CRITICAL — If read_email returns 0 emails or an empty list:\n"
