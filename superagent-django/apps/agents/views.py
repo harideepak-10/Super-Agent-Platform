@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     16,
+        "version":     17,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -640,12 +640,22 @@ _AGENT_TEMPLATES = [
 
             "=== READING ATTACHMENTS ===\n\n"
             "When the user asks about an attachment or wants it summarized:\n"
-            "  1. Call read_email_attachment_content({'filter': 'has:attachment', 'limit': 1})\n"
-            "  2. The tool returns the FULL text of every page with page markers\n"
-            "  3. Read through ALL pages in the result and write a comprehensive summary:\n"
-            "     - Cover every section / every page — do not skip anything\n"
-            "     - Note the page number when referencing specific content\n"
-            "     - Include key facts, figures, dates, names, decisions\n"
+            "  1. Call read_email_attachment_content with the right filter\n"
+            "     e.g. {'filter': 'from:someone@email.com has:attachment', 'limit': 1}\n"
+            "  2. The tool returns content for EVERY attachment in the email\n"
+            "  3. For EACH attachment, read through ALL pages and write a comprehensive summary\n\n"
+            "ALWAYS format your attachment response EXACTLY like this:\n\n"
+            "Attachment 1: <filename>\n"
+            "<detailed summary — every section, key facts, figures, dates, names, decisions>\n\n"
+            "Attachment 2: <filename>\n"
+            "<detailed summary>\n\n"
+            "IMAGES / SCANNED PAGES:\n"
+            "  - If a page says '[This page contains an image or photo]' → write:\n"
+            "    'Page N contains an image/photo that cannot be read as text.'\n"
+            "  - If the WHOLE file is image-based → write:\n"
+            "    'This attachment contains only images or scanned content — text could not be extracted.'\n"
+            "  - If SOME pages have text and some are images → summarize the text pages and note the image pages\n"
+            "  NEVER skip an attachment entirely. Always report what it is, even if unreadable.\n"
             "  NEVER say 'I cannot read attachments' — you have read_email_attachment_content\n\n"
 
             "=== READ EMAIL RULES ===\n\n"
@@ -1184,21 +1194,17 @@ def agent_create_form(request):
             "risk_note": "Tools marked high will always require your approval before running.",
         },
         "guardrails": {
-            "max_steps": {
-                "label":    "Max Steps",
-                "subtitle": "Iteration limit per request",
-                "icon":     "repeat",
-                "default":  19,
-                "min":      1,
-                "max":      50,
-            },
-            "max_cost_usd": {
-                "label":    "Max Cost (USD)",
-                "subtitle": "Maximum budget per run",
-                "icon":     "dollar-sign",
-                "default":  1.00,
-                "min":      0.10,
-                "max":      50.00,
+            "max_steps": {"label": "Max Steps", "subtitle": "Iteration limit per request",
+                          "icon": "repeat", "default": 19, "min": 1, "max": 50},
+            "max_cost_usd": {"label": "Max Cost (USD)", "subtitle": "Maximum budget per run",
+                             "icon": "dollar-sign", "default": 1.00, "min": 0.10,
+                             "max": 50.00, "step": 0.10},
+        },
+        "submit_label": "Create Agent",
+        "submit_url":   "/api/v1/agents/create/",
+        "submit_method": "POST",
+    })
+00,
                 "step":     0.10,
             },
         },

@@ -2184,13 +2184,25 @@ class ReadEmailAttachmentContentTool(BaseTool):
 
         # Build a formatted_summary so _inject_summary_result can use it directly
         summary_lines = [f"Email from: {sender}", f"Subject: {subject}", f"Date: {date}", ""]
-        for r in results:
-            summary_lines.append(f"Attachment: {r['filename']}")
-            if r.get("error"):
-                summary_lines.append(f"  Error: {r['error']}")
+        for idx, r in enumerate(results, 1):
+            summary_lines.append(f"Attachment {idx}: {r['filename']}")
+            err = r.get("error", "")
+            content = r.get("content", "") or ""
+            if err:
+                # Image/scanned PDF — tell user clearly instead of showing a raw error
+                if any(k in err.lower() for k in ("scanned", "image", "ocr", "no text")):
+                    summary_lines.append(
+                        "⚠️ This attachment contains images or scanned content — "
+                        "text could not be extracted. An OCR tool would be needed to read it."
+                    )
+                else:
+                    summary_lines.append(f"⚠️ Could not read this attachment: {err}")
+            elif content:
+                summary_lines.append(content[:3000])
+                if r.get("truncated"):
+                    summary_lines.append("... [content truncated — full text passed to LLM above]")
             else:
-                body = (r.get("content") or "")[:1200]
-                summary_lines.append(body)
+                summary_lines.append("[No content extracted]")
             summary_lines.append("")
         formatted_summary = "\n".join(summary_lines).strip()
 
@@ -3047,16 +3059,17 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
             _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
             task.status = Task.Status.COMPLETED
             task.result = str(exc)
-            task.completed_at = timezone.now()
-            task.save(update_fields=["status", "result", "completed_at"])
-            from apps.notifications.utils import notify_task_complete
-            notify_task_complete(task)
-            return {"status": "completed", "task_id": str(task_id)}
-        _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
-        task.status = Task.Status.FAILED
-        task.error_message = str(exc)[:500]
         task.completed_at = timezone.now()
-        task.save(update_fields=["status", "error_message", "completed_at"])
-        from apps.notifications.utils import notify_task_failed
-        notify_task_failed(task)
-        return {"status": "failed", "task_id": str(task_id)}
+        task.save(update_fields=["status", "result", "completed_at"])
+        from apps.notifications.utils import notify_task_complete
+        notify_task_complete(task)
+        return {"status": "completed", "task_id": str(task_id)}
+    _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
+    task.status = Task.Status.FAILED
+    task.error_message = str(exc)[:500]
+    task.completed_at = timezone.now()
+    task.save(update_fields=["status", "error_message", "completed_at"])
+    from apps.notifications.utils import notify_task_failed
+    notify_task_failed(task)
+    return {"status": "failed", "task_id": str(task_id)}
+eturn {"status": "failed", "task_id": str(task_id)}
