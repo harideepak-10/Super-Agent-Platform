@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_LIMIT        = 10
 _DEFAULT_FILTER       = "-in:spam -in:trash"   # ALL emails by default (read + unread)
 _BODY_PREVIEW_CHARS   = 200
-_FULL_BODY_MAX_CHARS  = 2000                    # enough for summaries, safe on tokens
+_FULL_BODY_MAX_CHARS  = 600                     # keep 10-email calls under 6000 TPM Groq limit
 
 
 class ReadEmailsTool(BaseTool):
