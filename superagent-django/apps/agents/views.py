@@ -1192,4 +1192,26 @@ def agent_create_form(request):
             ],
             "risk_note": "Tools marked high will always require your approval before running.",
         },
-      
+        "guardrails": {
+            "max_steps": {
+                "label":    "Max Steps",
+                "subtitle": "Iteration limit per request",
+                "icon":     "repeat",
+                "default":  19,
+                "min":      1,
+                "max":      50,
+            },
+            "max_cost_usd": {
+                "label":    "Max Cost (USD)",
+                "subtitle": "Maximum budget per run",
+                "icon":     "dollar-sign",
+                "default":  1.00,
+                "min":      0.10,
+                "max":      50.00,
+                "step":     0.10,
+            },
+        },
+        "submit_label": "Create Agent",
+        "submit_url":   "/api/v1/agents/create/",
+        "submit_method": "POST",
+    })
