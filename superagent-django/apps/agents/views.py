@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     10,
+        "version":     11,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -630,15 +630,17 @@ _AGENT_TEMPLATES = [
 
             "=== CORE WORKFLOWS ===\n\n"
 
-            "Reading / summarising emails:\n"
+            "Reading / summarising emails (NO send):\n"
             "  1. read_email(limit=N, filter='-in:spam -in:trash')\n"
             "  2. summarize_emails()  — automatically uses the emails just read\n"
-            "  3. Present the formatted_summary exactly — do not rewrite it.\n\n"
+            "  3. Present the formatted_summary exactly — do not rewrite it.\n"
+            "  STOP HERE. Do NOT call send_email. Display the summary directly to the user.\n\n"
 
-            "Summarise AND send the summary to someone:\n"
+            "Summarise AND send to someone else (only if user says 'send it to X' or 'email the summary to X'):\n"
             "  1. read_email(limit=N, filter='-in:spam -in:trash')\n"
-            "  2. summarize_emails()  — automatically uses the emails just read  → formatted_summary\n"
-            "  3. send_email(to=<recipient>, subject='Email Summary', body=<formatted_summary>)\n"
+            "  2. summarize_emails()  → formatted_summary\n"
+            "  3. send_email(to=<recipient_they_specified>, subject='Email Summary', body=<formatted_summary>)\n"
+            "  CRITICAL: ONLY do step 3 if the user explicitly named a recipient to send to.\n"
             "  CRITICAL: body MUST be the FULL formatted_summary text — never use a placeholder.\n\n"
 
             "Reading an attachment:\n"
@@ -664,6 +666,13 @@ _AGENT_TEMPLATES = [
             "  → Only say 'no emails found' if search_emails ALSO returns 0 results\n"
             "  → NEVER describe, assume, or guess email content\n\n"
 
+            "=== SEND EMAIL RULE ===\n"
+            "NEVER call send_email unless the user explicitly says to send or email something to someone.\n"
+            "  'read my emails' → NO send_email\n"
+            "  'summarize my emails' → NO send_email\n"
+            "  'read and summarize' → NO send_email\n"
+            "  'send the summary to john@example.com' → YES, send_email(to='john@example.com', ...)\n\n"
+
             "=== YELLOW zone tools (require human approval) ===\n"
             "send_email, reply_to_email, forward_email, schedule_email, delete_email\n\n"
 
@@ -678,6 +687,7 @@ _AGENT_TEMPLATES = [
             "- NEVER invent email content — only use what tools return\n"
             "- NEVER use placeholder names like 'Subject 1', 'Sender 1', 'example@email.com'\n"
             "- NEVER say 'I don't have the ability to fetch emails' — you have read_email\n"
+            "- NEVER call send_email just because you summarized emails — summarizing is display-only\n"
             "- NEVER put a generic placeholder as send_email body — always use the real summary\n"
             "- For meeting scheduling, direct user to Calendar Agent\n"
             "- Use current_time for relative times like 'at 11' or 'tomorrow'\n"
@@ -1182,26 +1192,4 @@ def agent_create_form(request):
             ],
             "risk_note": "Tools marked high will always require your approval before running.",
         },
-        "guardrails": {
-            "max_steps": {
-                "label":    "Max Steps",
-                "subtitle": "Iteration limit per request",
-                "icon":     "repeat",
-                "default":  19,
-                "min":      1,
-                "max":      50,
-            },
-            "max_cost_usd": {
-                "label":    "Max Cost (USD)",
-                "subtitle": "Maximum budget per run",
-                "icon":     "dollar-sign",
-                "default":  1.00,
-                "min":      0.10,
-                "max":      50.00,
-                "step":     0.10,
-            },
-        },
-        "submit_label": "Create Agent",
-        "submit_url":   "/api/v1/agents/create/",
-        "submit_method": "POST",
-    })
+      
