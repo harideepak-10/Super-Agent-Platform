@@ -33,7 +33,7 @@ _RATE_LIMIT_WAIT_SECONDS: float = 62.0   # Groq bucket refills every 60 s; add 2
 
 _RATE_LIMIT_MESSAGE = (
     "⚠️ The AI is temporarily busy due to high usage (Groq rate limit reached). "
-    "Please wait about 1 minute and try again."
+    "Please try again later."
 )
 
 
