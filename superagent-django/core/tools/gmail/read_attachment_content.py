@@ -115,6 +115,21 @@ class ReadAttachmentContentTool(BaseTool):
                 return f"[Cannot read file type: {ext}]"
 
     @staticmethod
+    def _clean_pdf_text(text: str) -> str:
+        """Remove per-word newline artifacts produced by pypdf on position-based PDFs.
+
+        pypdf often extracts text as "word\\n \\nword" (each word on its own line
+        separated by a blank line containing a single space).  Collapse these into
+        normal prose while preserving genuine paragraph breaks (\\n\\n).
+        """
+        import re
+        # \n<whitespace>\n  →  single space  (word-level artifact)
+        text = re.sub(r'\n[ \t]+\n', ' ', text)
+        # collapse any accidental double-spaces introduced above
+        text = re.sub(r'  +', ' ', text)
+        return text
+
+    @staticmethod
     def _read_pdf(file_path: str) -> str:
         """Read every page of a PDF with page markers so the LLM knows page boundaries."""
         # Try pypdf first — gives us per-page control
@@ -124,7 +139,9 @@ class ReadAttachmentContentTool(BaseTool):
             total  = len(reader.pages)
             parts  = []
             for i, page in enumerate(reader.pages, 1):
-                text = (page.extract_text() or "").strip()
+                text = ReadAttachmentContentTool._clean_pdf_text(
+                    (page.extract_text() or "").strip()
+                )
                 if text:
                     parts.append(f"--- Page {i} of {total} ---\n{text}")
                 else:
