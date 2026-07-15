@@ -851,8 +851,9 @@ _AGENT_TEMPLATES = [
     },
 ]
 
-_TEMPLATE_MAP    = {t["slug"]: t for t in _AGENT_TEMPLATES}
-_TEMPLATE_ID_MAP = {t["id"]:   t for t in _AGENT_TEMPLATES}
+_TEMPLATE_MAP           = {t["slug"]:       t for t in _AGENT_TEMPLATES}
+_TEMPLATE_ID_MAP        = {t["id"]:         t for t in _AGENT_TEMPLATES}
+_TEMPLATE_AGENT_TYPE_MAP = {t["agent_type"]: t for t in _AGENT_TEMPLATES}
 
 
 def sync_agent_from_template(agent, template: dict) -> bool:

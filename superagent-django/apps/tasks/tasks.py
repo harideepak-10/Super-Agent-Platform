@@ -2752,11 +2752,11 @@ def run_agent_task(self, task_id: str):
     # ── Auto-sync agent from template if template has been updated ──────────
     if agent_model:
         try:
-            from apps.agents.views import _TEMPLATE_ID_MAP, _TEMPLATE_MAP, sync_agent_from_template
-            # Primary: match by template_id; fallback: match by agent_type slug
+            from apps.agents.views import _TEMPLATE_ID_MAP, _TEMPLATE_AGENT_TYPE_MAP, sync_agent_from_template
+            # Primary: match by template_id; fallback: match by agent_type ("email", "document", etc.)
             tmpl = _TEMPLATE_ID_MAP.get(agent_model.template_id)
             if tmpl is None and agent_model.agent_type:
-                tmpl = _TEMPLATE_MAP.get(agent_model.agent_type)
+                tmpl = _TEMPLATE_AGENT_TYPE_MAP.get(agent_model.agent_type)
             if tmpl and tmpl.get("version", 0) > (agent_model.template_version or 0):
                 synced = sync_agent_from_template(agent_model, tmpl)
                 if synced:
@@ -3058,4 +3058,5 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.completed_at = timezone.now()
         task.save(update_fields=["status", "error_message", "completed_at"])
         from apps.notifications.utils import notify_task_failed
-        
+        notify_task_failed(task)
+        return {"status": "failed", "task_id": str(task_id)}
