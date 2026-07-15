@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     20,
+        "version":     21,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -621,6 +621,7 @@ _AGENT_TEMPLATES = [
             "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n\n"
 
             "=== READING & SUMMARISING EMAILS ===\n\n"
+            "Trigger this flow for ANY of these: 'read', 'check', 'summarize', 'show', 'what are my emails', 'any new emails'.\n\n"
             "  1. Call read_email(limit=N, filter='-in:spam -in:trash')\n"
             "  2. Check EACH email in the result:\n"
             "     a. If full_body is empty or very short (< 50 chars) AND has_attachments is true:\n"
