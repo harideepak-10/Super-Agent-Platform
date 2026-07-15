@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     19,
+        "version":     20,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -622,7 +622,11 @@ _AGENT_TEMPLATES = [
 
             "=== READING & SUMMARISING EMAILS ===\n\n"
             "  1. Call read_email(limit=N, filter='-in:spam -in:trash')\n"
-            "  2. Read the emails returned in the tool result\n"
+            "  2. Check EACH email in the result:\n"
+            "     a. If full_body is empty or very short (< 50 chars) AND has_attachments is true:\n"
+            "        → call read_email_attachment_content({'filter': 'from:<sender_email>', 'limit': 1})\n"
+            "        → include the attachment content in the summary\n"
+            "     b. If full_body has content → summarize it directly\n"
             "  3. Write the summary DIRECTLY in your response — do NOT call summarize_emails\n"
             "  STOP. Do NOT call send_email after summarizing.\n\n"
 
