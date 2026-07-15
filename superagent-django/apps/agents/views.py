@@ -625,7 +625,7 @@ _AGENT_TEMPLATES = [
             "  Determine limit from the request:\n"
             "    'last email' / 'latest email' (singular, no number) → limit=1\n"
             "    'last N emails' / 'last N' → limit=N\n"
-            "    'check my emails' / no number specified → limit=10\n\n"
+            "    'check my emails' / no number specified → limit=1\n\n"
             "  1. Call read_email(limit=<limit>, filter='-in:spam -in:trash')\n"
             "  2. For EACH email returned (even if subject or body is empty):\n"
             "     - If full_body has content → summarize it\n"
