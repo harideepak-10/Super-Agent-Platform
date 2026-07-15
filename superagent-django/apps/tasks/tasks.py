@@ -2169,7 +2169,7 @@ class ReadEmailAttachmentContentTool(BaseTool):
                 with open(file_path, "wb") as f:
                     f.write(file_bytes)
 
-                content_raw  = RAC().run(json.dumps({"file_path": file_path, "max_chars": 8000}))
+                content_raw  = RAC().run(json.dumps({"file_path": file_path, "max_chars": 60000}))
                 content_data = json.loads(content_raw)
                 results.append({
                     "filename":   fname,

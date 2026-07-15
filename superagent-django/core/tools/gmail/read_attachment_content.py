@@ -13,7 +13,7 @@ import os
 from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
-_MAX_CHARS = 8000  # cap to avoid overwhelming the LLM context
+_MAX_CHARS = 60000  # enough to cover ~30-40 pages; LLM context handles this fine
 
 
 class ReadAttachmentContentTool(BaseTool):
@@ -116,27 +116,30 @@ class ReadAttachmentContentTool(BaseTool):
 
     @staticmethod
     def _read_pdf(file_path: str) -> str:
-        # Try pdfminer.six first — handles embedded fonts and complex layouts
-        # far better than pypdf. Fall back to pypdf if pdfminer isn't available.
+        """Read every page of a PDF with page markers so the LLM knows page boundaries."""
+        # Try pypdf first — gives us per-page control
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(file_path)
+            total  = len(reader.pages)
+            parts  = []
+            for i, page in enumerate(reader.pages, 1):
+                text = (page.extract_text() or "").strip()
+                if text:
+                    parts.append(f"--- Page {i} of {total} ---\n{text}")
+            if parts:
+                return "\n\n".join(parts)
+        except Exception:
+            pass
+
+        # Fallback: pdfminer (full document, no page markers)
         try:
             from pdfminer.high_level import extract_text as pdfminer_extract
             text = pdfminer_extract(file_path)
             if text and text.strip():
                 return text.strip()
-            # pdfminer returned blank — likely a scanned/image PDF, fall through
         except ImportError:
             pass
-        except Exception:
-            pass
-
-        # Fallback: pypdf
-        try:
-            import pypdf
-            reader = pypdf.PdfReader(file_path)
-            pages  = [page.extract_text() or "" for page in reader.pages]
-            text   = "\n\n".join(pages).strip()
-            if text:
-                return text
         except Exception:
             pass
 
@@ -165,7 +168,7 @@ class ReadAttachmentContentTool(BaseTool):
             "parameters": {"type": "object",
                 "properties": {
                     "file_path": {"type": "string"},
-                    "max_chars": {"type": "integer"},
+                                    "max_chars": {"type": "integer"},
                 },
                 "required": ["file_path"],
             },
