@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     12,
+        "version":     13,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -634,11 +634,17 @@ _AGENT_TEMPLATES = [
             "  3. Write the summary DIRECTLY in your response — do NOT call summarize_emails\n"
             "  STOP. Do NOT call send_email after summarizing.\n\n"
 
-            "Format your email summary like this:\n"
-            "  📧 Email Summary (N emails)\n"
-            "  1. From: <sender> | Subject: <subject> | Date: <date>\n"
-            "     <1-2 sentence summary of body>\n"
-            "  2. ...\n\n"
+            "ALWAYS format your email summary EXACTLY like this — no deviations:\n\n"
+            "Email 1\n"
+            "Received from: <sender name and email>\n"
+            "Subject: <subject>\n"
+            "<2-3 sentence summary of what the email says>\n\n"
+            "Email 2\n"
+            "Received from: <sender name and email>\n"
+            "Subject: <subject>\n"
+            "<2-3 sentence summary of what the email says>\n\n"
+            "...and so on for every email.\n\n"
+            "NEVER use bullet points, icons, or headers. NEVER combine emails. One block per email.\n\n"
 
             "=== READING ATTACHMENTS ===\n\n"
             "When the user asks about an attachment or wants it summarized:\n"
