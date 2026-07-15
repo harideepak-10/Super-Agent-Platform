@@ -2750,10 +2750,13 @@ def run_agent_task(self, task_id: str):
     _clear_cached_emails(workspace_id)
 
     # ── Auto-sync agent from template if template has been updated ──────────
-    if agent_model and agent_model.template_id:
+    if agent_model:
         try:
-            from apps.agents.views import _TEMPLATE_ID_MAP, sync_agent_from_template
+            from apps.agents.views import _TEMPLATE_ID_MAP, _TEMPLATE_MAP, sync_agent_from_template
+            # Primary: match by template_id; fallback: match by agent_type slug
             tmpl = _TEMPLATE_ID_MAP.get(agent_model.template_id)
+            if tmpl is None and agent_model.agent_type:
+                tmpl = _TEMPLATE_MAP.get(agent_model.agent_type)
             if tmpl and tmpl.get("version", 0) > (agent_model.template_version or 0):
                 synced = sync_agent_from_template(agent_model, tmpl)
                 if synced:
