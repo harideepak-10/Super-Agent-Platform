@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     21,
+        "version":     22,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
