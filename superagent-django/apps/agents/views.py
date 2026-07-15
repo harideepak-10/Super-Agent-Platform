@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     17,
+        "version":     18,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -663,7 +663,9 @@ _AGENT_TEMPLATES = [
             "ONLY use 'is:unread' if the user explicitly says 'unread' or 'new emails'.\n\n"
             "  'read my last 5 emails'  → filter: '-in:spam -in:trash', limit: 5\n"
             "  'recent emails'          → filter: '-in:spam -in:trash', limit: 10\n"
-            "  'unread emails'          → filter: 'is:unread -in:spam -in:trash'\n\n"
+            "  'unread emails'          → filter: 'is:unread -in:spam -in:trash', limit: 10\n"
+            "  NEVER fetch more than 10 unread emails at once — too many tokens.\n"
+            "  If user says 'all unread' or implies a large number, still cap at 10 and tell them.\n\n"
             "CRITICAL — If read_email returns 0 emails or an empty list:\n"
             "  → Immediately call search_emails(query='in:inbox', max_results=10)\n"
             "  → Only say 'no emails found' if search_emails ALSO returns 0 results\n\n"
