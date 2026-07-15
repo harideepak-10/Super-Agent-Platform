@@ -152,7 +152,7 @@ class BaseAgent:
         max_steps: int = 20,
         max_cost: float = 1.0,
         task_id: str | None = None,
-        max_seconds: float = 240.0,
+        max_seconds: float = 600.0,
     ) -> None:
         """Initialise the agent.
 

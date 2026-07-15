@@ -27,7 +27,9 @@ _USD_TO_EUR: float = 0.92
 _MAX_RETRIES: int = 2
 _RETRY_DELAY_SECONDS: float = 2.0
 _REQUEST_TIMEOUT_SECONDS: float = 45.0
-_MODEL: str = "llama-3.1-8b-instant"
+_MODEL: str = "llama-3.3-70b-versatile"
+_MAX_RATE_LIMIT_RETRIES: int = 5          # wait up to 5×62 s ≈ 5 min for token bucket to refill
+_RATE_LIMIT_WAIT_SECONDS: float = 62.0   # Groq bucket refills every 60 s; add 2 s buffer
 
 _RATE_LIMIT_MESSAGE = (
     "⚠️ The AI is temporarily busy due to high usage (Groq rate limit reached). "
@@ -111,21 +113,32 @@ class GroqProvider(LLMProvider):
         import logging as _logging
         _log = _logging.getLogger(__name__)
         last_error: Exception | None = None
+        rate_limit_waits: int = 0
+        normal_attempts: int = 0
 
-        for attempt in range(1, _MAX_RETRIES + 1):
+        while True:
             try:
                 return self._call_api(messages, tools, force_tool=force_tool)
             except Exception as exc:  # noqa: BLE001
                 if _is_rate_limit_error(exc):
+                    rate_limit_waits += 1
+                    if rate_limit_waits <= _MAX_RATE_LIMIT_RETRIES:
+                        _log.warning(
+                            "Groq rate limit hit — waiting %.0fs before retry %d/%d",
+                            _RATE_LIMIT_WAIT_SECONDS, rate_limit_waits, _MAX_RATE_LIMIT_RETRIES,
+                        )
+                        time.sleep(_RATE_LIMIT_WAIT_SECONDS)
+                        continue  # retry without counting as a normal failure
                     raise GroqRateLimitError(_RATE_LIMIT_MESSAGE) from exc
+                normal_attempts += 1
                 last_error = exc
-                if attempt < _MAX_RETRIES:
-                    time.sleep(_RETRY_DELAY_SECONDS * attempt)
-
-        raise RuntimeError(
-            f"Groq API call failed after {_MAX_RETRIES} attempts. "
-            f"Last error: {last_error}"
-        ) from last_error
+                if normal_attempts < _MAX_RETRIES:
+                    time.sleep(_RETRY_DELAY_SECONDS * normal_attempts)
+                else:
+                    raise RuntimeError(
+                        f"Groq API call failed after {_MAX_RETRIES} attempts. "
+                        f"Last error: {last_error}"
+                    ) from last_error
 
     # ------------------------------------------------------------------
     # Private helpers

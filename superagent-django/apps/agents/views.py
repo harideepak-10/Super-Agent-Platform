@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     15,
+        "version":     16,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -616,7 +616,7 @@ _AGENT_TEMPLATES = [
             # Compose
             "send_email", "reply_to_email", "create_draft",
         ],
-        "llm_model":    "llama-3.1-8b-instant",
+        "llm_model":    "llama-3.3-70b-versatile",
         "system_prompt": (
             "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n\n"
 
@@ -1205,4 +1205,4 @@ def agent_create_form(request):
         "submit_label": "Create Agent",
         "submit_url":   "/api/v1/agents/create/",
         "submit_method": "POST",
-    })
+        })
