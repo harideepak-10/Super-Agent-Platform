@@ -3072,3 +3072,4 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     from apps.notifications.utils import notify_task_failed
     notify_task_failed(task)
     return {"status": "failed", "task_id": str(task_id)}
+eturn {"status": "failed", "task_id": str(task_id)}

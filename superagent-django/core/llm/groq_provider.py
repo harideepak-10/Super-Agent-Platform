@@ -386,4 +386,30 @@ class GroqProvider(LLMProvider):
         usage = completion.usage
         input_tokens: int = getattr(usage, "prompt_tokens", 0)
         output_tokens: int = getattr(usage, "completion_tokens", 0)
-   
+        tokens_used: int = input_tokens + output_tokens
+
+        cost_eur: float = (
+            (input_tokens / 1000) * _COST_PER_1K_INPUT_TOKENS
+            + (output_tokens / 1000) * _COST_PER_1K_OUTPUT_TOKENS
+        ) * _USD_TO_EUR
+
+        self.total_tokens += tokens_used
+        self.total_cost += cost_eur
+
+        return {
+            "content": content,
+            "tool_call": tool_call,
+            "tokens_used": tokens_used,
+            "cost_eur": cost_eur,
+        }
+
+    def get_cost_summary(self) -> dict[str, Any]:
+        """Return cumulative token and cost totals for this provider instance.
+
+        Returns:
+            Dict with ``total_tokens`` (int) and ``total_cost_eur`` (float).
+        """
+        return {
+            "total_tokens": self.total_tokens,
+            "total_cost_eur": round(self.total_cost, 6),
+        }
