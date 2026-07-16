@@ -70,8 +70,8 @@ class ReadEmailsTool(BaseTool):
     name: str = "read_emails"
     description: str = (
         "Fetch emails from Gmail. "
-        "Input JSON: {\"limit\": 5, \"filter\": \"-in:spam -in:trash\"}. "
-        "Default fetches ALL recent emails (read + unread). "
+        "IMPORTANT: default limit is 1. Only pass a higher limit if the user explicitly asked for more emails. "
+        "Input JSON: {\"limit\": 1, \"filter\": \"-in:spam -in:trash\"}. "
         "Only use 'is:unread' filter when the user explicitly asks for unread emails. "
         "Returns {\"emails\": [...], \"count\": N}. "
         "Each email has: id, thread_id, subject, sender, sender_name, sender_email, "
@@ -124,6 +124,8 @@ class ReadEmailsTool(BaseTool):
         try:
             data = input_str if isinstance(input_str, dict) else json.loads(input_str)
             limit = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
+            # Hard cap: never fetch more than 10; default is 1
+            limit = max(1, min(limit, 10))
             query = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
             return limit, query
         except Exception:
