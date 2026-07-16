@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     28,
+        "version":     29,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -711,7 +711,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     4,
+        "version":     5,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -780,7 +780,14 @@ _AGENT_TEMPLATES = [
             "2. For READ tasks: call read_from_drive or summarize_document directly.\n"
             "3. upload_to_drive is YELLOW — always explain and wait for approval.\n"
             "4. After Drive upload, include drive_url in your final answer.\n"
-            "5. If Drive is not connected, still create the local file and share the path."
+            "5. If Drive is not connected, still create the local file and share the path.\n"
+            "6. LISTING DRIVE FILES: When user says summarize/read a document from Drive \n"
+            "   without naming a specific file, call read_from_drive with action='list' \n"
+            "   and NO folder_name and NO query — list all files first, then ask user which one.\n"
+            "7. TOOL NAMES — use exactly: read_from_drive, summarize_document, extract_tables,\n"
+            "   ocr_document, generate_content, create_pdf, create_docx, create_presentation,\n"
+            "   fill_template, merge_pdfs, export_csv, compare_documents, translate_document, upload_to_drive.\n"
+            "   Never abbreviate or guess tool names."
         ),
         "max_steps":   20,
         "max_cost_usd": 1.0,
