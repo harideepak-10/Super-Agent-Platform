@@ -324,7 +324,12 @@ def _clear_cached_emails(workspace_id) -> None:
 
 class ReadEmailTool(BaseTool):
     name = "read_email"
-    description = "Fetch emails from Gmail. Input JSON: {\"limit\": 10, \"filter\": \"-in:spam -in:trash\"}. Default fetches ALL emails (read + unread). Only use 'is:unread' filter when user explicitly asks for unread. Returns {\"emails\":[...], \"count\":N}."
+    description = (
+        "Fetch the most recent 1 email from Gmail. Always returns exactly 1 email \u2014 no limit parameter. "
+        "Use for: 'read my email', 'last email', 'check my email', 'my email'. "
+        "For multiple emails use read_multiple_emails. "
+        "Input JSON: {\"filter\": \"-in:spam -in:trash\"}. Returns {\"emails\":[...], \"count\":1}."
+    )
     zone = ToolZone.GREEN
 
     def __init__(self, workspace_id=None):
@@ -334,17 +339,21 @@ class ReadEmailTool(BaseTool):
         service = _build_gmail_service(self._workspace_id)
         if service:
             from core.tools.gmail.read_emails import ReadEmailsTool
-            result = ReadEmailsTool(gmail_service=service).run(input_str)
-            # Detect auth/token errors and give user a clear message
+            import json as _j
             try:
-                import json as _j
+                data = _j.loads(input_str) if isinstance(input_str, str) else input_str
+                filt = data.get("filter", "-in:spam -in:trash") if isinstance(data, dict) else "-in:spam -in:trash"
+            except Exception:
+                filt = "-in:spam -in:trash"
+            result = ReadEmailsTool(gmail_service=service).run(_j.dumps({"limit": 1, "filter": filt}))
+            try:
                 data = _j.loads(result)
                 if data.get("error") and any(
                     k in str(data["error"]).lower()
                     for k in ("401", "403", "invalid_grant", "token", "credential", "unauthorized", "expired")
                 ):
                     return _j.dumps({
-                        "error": "Gmail authentication failed. Your Gmail token has expired. Please go to Integrations → disconnect Gmail → reconnect it to get a fresh token.",
+                        "error": "Gmail authentication failed. Your Gmail token has expired. Please go to Integrations \u2192 disconnect Gmail \u2192 reconnect it to get a fresh token.",
                         "emails": [], "count": 0,
                     })
             except Exception:
@@ -361,11 +370,59 @@ class ReadEmailTool(BaseTool):
             "name": self.name, "description": self.description,
             "parameters": {"type": "object",
                 "properties": {
-                    "limit": {"type": "integer"},
-                    "filter": {"type": "string"},
+                    "filter": {"type": "string", "description": "Gmail search filter. Default: '-in:spam -in:trash'."},
                 }},
         }}
 
+
+class ReadMultipleEmailsTool(BaseTool):
+    name = "read_multiple_emails"
+    description = (
+        "Fetch multiple emails from Gmail. Use ONLY when the user explicitly says a number: "
+        "'last 5 emails', 'recent 3', 'show me 10 emails', "
+        "or plural with no number like 'check my emails' / 'read my emails' (use limit=5). "
+        "Do NOT use for 'read my email' or 'last email' \u2014 use read_email for those. "
+        "Input JSON: {\"limit\": 5, \"filter\": \"-in:spam -in:trash\"}. Returns {\"emails\":[...], \"count\":N}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str: str) -> str:
+        service = _build_gmail_service(self._workspace_id)
+        if service:
+            from core.tools.gmail.read_emails import ReadEmailsTool
+            import json as _j
+            result = ReadEmailsTool(gmail_service=service).run(input_str)
+            try:
+                data = _j.loads(result)
+                if data.get("error") and any(
+                    k in str(data["error"]).lower()
+                    for k in ("401", "403", "invalid_grant", "token", "credential", "unauthorized", "expired")
+                ):
+                    return _j.dumps({
+                        "error": "Gmail authentication failed. Your Gmail token has expired. Please go to Integrations \u2192 disconnect Gmail \u2192 reconnect it to get a fresh token.",
+                        "emails": [], "count": 0,
+                    })
+            except Exception:
+                pass
+            _cache_emails(self._workspace_id, result)
+            return result
+        return json.dumps({
+            "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account first.",
+            "emails": [], "count": 0,
+        })
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Number of emails (2-20). Use what the user said, or 5 for plural with no number."},
+                    "filter": {"type": "string", "description": "Gmail search filter. Default: '-in:spam -in:trash'."},
+                }, "required": ["limit"]},
+        }}
 
 class SearchEmailTool(BaseTool):
     """Search Gmail using Gmail search syntax."""

@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     26,
+        "version":     27,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -610,7 +610,7 @@ _AGENT_TEMPLATES = [
         ],
         "tools": [
             # Read
-            "read_email", "search_emails", "summarize_emails",
+            "read_email", "read_multiple_emails", "search_emails", "summarize_emails",
             # Attachments
             "read_email_attachment_content", "download_attachment", "read_attachment_content",
             # Compose
@@ -622,11 +622,14 @@ _AGENT_TEMPLATES = [
 
             "=== READING & SUMMARISING EMAILS ===\n\n"
             "Trigger for: 'read', 'check', 'summarize', 'show', 'what are my emails', 'any new emails'.\n\n"
-            "LIMIT — always 1 unless user gives a number:\n"
-            "  'last' or singular 'email' with no number → limit=1\n"
-            "  'last N' / 'recent N' / 'N emails' → limit=N\n"
-            "  plural 'emails' with no number → limit=5\n\n"
-            "  1. Call read_email(limit=<limit>, filter='-in:spam -in:trash')\n"
+            "TOOL SELECTION:\n"
+            "  Single email: 'read my email' / 'last email' / 'check my email' / 'my email'\n"
+            "    → call read_email (no limit parameter)\n"
+            "  Multiple with explicit number: 'last 5 emails' / 'recent 3'\n"
+            "    → call read_multiple_emails(limit=N)\n"
+            "  Plural with no number: 'check my emails' / 'read my emails'\n"
+            "    → call read_multiple_emails(limit=5)\n\n"
+            "  1. Call the correct tool: read_email OR read_multiple_emails(limit=N)\n"
             "  2. For EACH email (never skip any):\n"
             "     - Summarize body if it has content\n"
             "     - If has_attachments is true → call read_email_attachment_content and summarize\n"
