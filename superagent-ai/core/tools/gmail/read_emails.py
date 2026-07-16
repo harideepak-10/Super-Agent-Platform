@@ -20,7 +20,7 @@ from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_LIMIT        = 10
+_DEFAULT_LIMIT        = 1
 _DEFAULT_FILTER       = "-in:spam -in:trash"   # ALL emails by default (read + unread)
 _BODY_PREVIEW_CHARS   = 200
 _FULL_BODY_MAX_CHARS  = 600                     # keep 10-email calls under 6000 TPM Groq limit
@@ -102,7 +102,7 @@ class ReadEmailsTool(BaseTool):
             "name": self.name,
             "description": self.description,
             "parameters": {"type": "object", "properties": {
-                "limit":  {"type": "integer", "description": "Number of emails to fetch (default 10)"},
+                "limit":  {"type": "integer", "description": "Number of emails to fetch (default 1)"},
                 "filter": {"type": "string",  "description": "Gmail search filter. Default: '-in:spam -in:trash'. Use 'is:unread -in:spam -in:trash' only for unread."},
             }},
         }}
