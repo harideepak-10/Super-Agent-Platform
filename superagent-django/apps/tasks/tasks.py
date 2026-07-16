@@ -324,7 +324,7 @@ def _clear_cached_emails(workspace_id) -> None:
 
 class ReadEmailTool(BaseTool):
     name = "read_email"
-    description = "Fetch emails from Gmail. Input JSON: {\"limit\": 10, \"filter\": \"-in:spam -in:trash\"}. Default fetches ALL emails (read + unread). Only use 'is:unread' filter when user explicitly asks for unread. Returns {\"emails\":[...], \"count\":N}."
+    description = "Fetch emails from Gmail. Input JSON: {\"limit\": 1, \"filter\": \"-in:spam -in:trash\"}. Default limit is 1. Only use 'is:unread' filter when user explicitly asks for unread. Returns {\"emails\":[...], \"count\":N}."
     zone = ToolZone.GREEN
 
     def __init__(self, workspace_id=None):
