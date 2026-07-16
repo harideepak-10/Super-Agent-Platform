@@ -2309,6 +2309,53 @@ _HIGH_ZONE_TOOLS = {
 }
 
 
+# =============================================================================
+# TASK OUTCOME DETECTION
+# =============================================================================
+
+_FAILURE_PHRASES = [
+    # Connection / auth
+    "not connected", "not connect", "gmail is not connected", "drive is not connected",
+    "please go to integrations", "token has expired", "authentication failed",
+    # Not found
+    "no files found", "no emails found", "no events found", "couldn't find",
+    "could not find", "unable to find", "not found", "does not exist",
+    "no results", "0 results",
+    # Recipient / address
+    "recipient", "no email address", "missing email", "invalid email",
+    "please provide", "please specify", "please share",
+    # Rate limit
+    "rate limit", "temporarily busy", "try again later",
+    # Generic failure
+    "i cannot", "i'm unable", "i am unable", "i was unable",
+    "failed to", "could not complete", "unable to complete",
+    "an error occurred", "something went wrong",
+]
+
+def _task_actually_failed(result: str, audit_log: list) -> tuple[bool, str]:
+    """Return (failed, reason) based on result text and tool errors."""
+    lower = result.lower()
+
+    # 1. Keyword check in final result
+    for phrase in _FAILURE_PHRASES:
+        if phrase in lower:
+            return True, f"Task incomplete: {phrase}"
+
+    # 2. Check if ALL tool calls errored (no successful tool result)
+    tool_calls   = [e for e in audit_log if e.get("event") == "tool_called"]
+    tool_results = [e for e in audit_log if e.get("event") == "tool_result"]
+    if tool_calls and tool_results:
+        errors = [
+            r for r in tool_results
+            if "error" in str(r.get("details", {}).get("result", "")).lower()
+            or "error" in str(r.get("details", {}).get("output", "")).lower()
+        ]
+        if len(errors) == len(tool_results):
+            return True, "All tool calls returned errors"
+
+    return False, ""
+
+
 def _build_tools(agent_model, workspace_id=None):
     tools = []
     for tool_name in (agent_model.tools or []):
@@ -2827,6 +2874,20 @@ def run_agent_task(self, task_id: str):
         _save_audit_steps(task, react_agent.audit_log)
         _save_document_deliverables(task, react_agent.audit_log)
         cost = react_agent.get_cost_summary()
+        # Detect if task actually failed despite agent finishing
+        _failed, _reason = _task_actually_failed(result or "", react_agent.audit_log)
+        if _failed:
+            task.status = Task.Status.FAILED
+            task.error_message = _reason[:500]
+            task.result = result
+            task.completed_at = timezone.now()
+            task.steps_taken = cost["total_steps"]
+            task.cost_usd = cost["total_cost_eur"]
+            task.total_tokens = llm.total_tokens
+            task.save()
+            from apps.notifications.utils import notify_task_failed
+            notify_task_failed(task)
+            return {"status": "failed", "task_id": task_id}
         task.status = Task.Status.COMPLETED
         task.result = result
         task.completed_at = timezone.now()
@@ -2880,13 +2941,13 @@ def run_agent_task(self, task_id: str):
         from core.llm.groq_provider import GroqRateLimitError
         if isinstance(exc, GroqRateLimitError):
             _save_audit_steps(task, getattr(react_agent, "audit_log", []))
-            task.status = Task.Status.COMPLETED
-            task.result = str(exc)
+            task.status = Task.Status.FAILED
+            task.error_message = str(exc)[:500]
             task.completed_at = timezone.now()
-            task.save(update_fields=["status", "result", "completed_at"])
-            from apps.notifications.utils import notify_task_complete
-            notify_task_complete(task)
-            return {"status": "completed", "task_id": str(task_id)}
+            task.save(update_fields=["status", "error_message", "completed_at"])
+            from apps.notifications.utils import notify_task_failed
+            notify_task_failed(task)
+            return {"status": "failed", "error": str(exc)}
         _save_audit_steps(task, getattr(react_agent, "audit_log", []))
         task.status = Task.Status.FAILED
         task.error_message = str(exc)[:500]
