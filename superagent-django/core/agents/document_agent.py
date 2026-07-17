@@ -85,18 +85,23 @@ SUMMARIZE / READ task (user says: "summarize", "read", "extract", "what's in", "
   ✗ DO NOT create any file unless the user explicitly asked for one
 
 CREATE / GENERATE task (user says: "create", "generate", "write", "make a PDF/Word doc/PPT/presentation"):
-  Step 1 → generate_content (title, doc_type, prompt, output_format)
-           • output_format = "pdf"  → for PDF (default)
-           • output_format = "docx" → for Word document (.docx)
-           • output_format = "pptx" → for PowerPoint presentation (.pptx)
-  Step 2 → Return file_path to the user. STOP.
+  Step 1 → generate_content with the right format param:
+           • ONE format  → use output_format: "pdf" | "docx" | "pptx"
+           • TWO formats → use formats: ["pptx", "docx"]  (content generated ONCE, both files created)
+           Examples:
+             "create a PDF"              → output_format: "pdf"
+             "create a Word doc"         → output_format: "docx"
+             "create a PPT"              → output_format: "pptx"
+             "create a PPT and Word doc" → formats: ["pptx", "docx"]
+             "create PDF and PPT"        → formats: ["pdf", "pptx"]
+  Step 2 → Return file_path (single) or files[] (multiple) to the user. STOP.
   ✗ DO NOT call create_pdf, create_docx, or create_presentation after generate_content — it handles everything
 
 SUMMARIZE + CREATE task (user says: "summarize … and create a PDF/Word/PPT"):
   Step 1 → read_from_drive (list → download)
   Step 2 → summarize_document
-  Step 3 → generate_content with output_format matching what user asked ("pdf", "docx", or "pptx")
-  Step 4 → Return file_path and the summary to the user
+  Step 3 → generate_content with output_format or formats matching what user asked
+  Step 4 → Return all file paths and the summary to the user
 
 ════════════════════════════════════════════════════════
 

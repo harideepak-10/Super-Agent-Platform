@@ -43,12 +43,14 @@ class GenerateContentTool(BaseTool):
 
     name: str = "generate_content"
     description: str = (
-        "Generate document content AND automatically create the file in one step. "
+        "Generate document content AND automatically create one or more files in one step. "
         "Input JSON: {\"title\": \"...\", \"doc_type\": \"report|summary|proposal|letter|table\", "
-        "\"prompt\": \"...\", \"output_format\": \"pdf|docx|pptx\" (default pdf), "
+        "\"prompt\": \"...\", "
+        "\"output_format\": \"pdf|docx|pptx\" (single format, default pdf), "
+        "\"formats\": [\"pptx\", \"docx\"] (multiple formats — content generated ONCE, all files created), "
         "\"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
-        "Returns file_path of the created file. "
-        "Use output_format='docx' for Word, output_format='pptx' for PowerPoint. "
+        "Use formats=[\"pptx\",\"docx\"] when user wants BOTH PowerPoint AND Word. "
+        "Returns file_path (single) or files[] (multiple). "
         "Do NOT call create_pdf, create_docx, or create_presentation separately — this tool handles everything."
     )
     zone: ToolZone = ToolZone.GREEN
@@ -83,15 +85,22 @@ class GenerateContentTool(BaseTool):
         except (json.JSONDecodeError, TypeError):
             return json.dumps({"error": "Invalid input. Expected JSON."})
 
-        title         = data.get("title", "Document")
-        doc_type      = data.get("doc_type", "report").lower()
-        prompt        = data.get("prompt", "")
-        source_data   = data.get("source_data", "")
-        sections      = data.get("sections", [])
-        max_points    = data.get("max_points", 5)
-        output_format = data.get("output_format", "pdf").lower()
-        if output_format not in ("pdf", "docx", "pptx"):
-            output_format = "pdf"
+        title       = data.get("title", "Document")
+        doc_type    = data.get("doc_type", "report").lower()
+        prompt      = data.get("prompt", "")
+        source_data = data.get("source_data", "")
+        sections    = data.get("sections", [])
+        max_points  = data.get("max_points", 5)
+        author      = data.get("author", "KRYPSOS Agent")
+
+        # Resolve the list of formats to produce
+        _valid = {"pdf", "docx", "pptx"}
+        raw_formats = data.get("formats", [])
+        if raw_formats and isinstance(raw_formats, list):
+            formats = [f.lower() for f in raw_formats if f.lower() in _valid]
+        else:
+            single = data.get("output_format", "pdf").lower()
+            formats = [single if single in _valid else "pdf"]
 
         if not prompt and not source_data:
             return json.dumps({"error": "Either 'prompt' or 'source_data' is required."})
@@ -99,7 +108,6 @@ class GenerateContentTool(BaseTool):
         type_instruction = self._DOC_TYPE_INSTRUCTIONS.get(
             doc_type, self._DOC_TYPE_INSTRUCTIONS["report"]
         )
-
         section_list = sections or self._default_sections(doc_type)
 
         # Build system + user prompt for content generation
@@ -118,18 +126,37 @@ class GenerateContentTool(BaseTool):
         user_msg_parts.append(f"Sections to write: {', '.join(section_list)}")
         user_msg = "\n\n".join(user_msg_parts)
 
-        # Call Groq directly to generate real content
+        # Generate content ONCE — reuse for all formats
         written_sections = self._call_llm(system_msg, user_msg, section_list)
 
-        # Automatically build the output file so the agent doesn't need a second tool call
-        file_result = self._auto_create_file(title, doc_type, written_sections, data.get("author", "KRYPSOS Agent"), output_format)
+        # Create all requested files from the same content
+        created_files = []
+        for fmt in formats:
+            file_result = self._auto_create_file(title, doc_type, written_sections, author, fmt)
+            if file_result.get("status") == "created":
+                created_files.append(file_result)
 
         result = {
             "title":    title,
             "doc_type": doc_type,
             "sections": written_sections,
         }
-        result.update(file_result)
+
+        if len(created_files) == 1:
+            # Single format — flat response (backward compatible)
+            result.update(created_files[0])
+        elif len(created_files) > 1:
+            # Multiple formats — return files list
+            result["files"] = created_files
+            result["status"] = "created"
+            result["note"] = (
+                f"{len(created_files)} files created: "
+                + ", ".join(f["filename"] for f in created_files)
+                + ". Pass each file_path to upload_to_drive to save to Google Drive."
+            )
+        else:
+            result["error"] = "No files could be created."
+
         return json.dumps(result, ensure_ascii=False)
 
     def _auto_create_file(self, title: str, doc_type: str, sections: list, author: str, output_format: str = "pdf") -> dict:
@@ -248,7 +275,9 @@ class GenerateContentTool(BaseTool):
                     "doc_type":      {"type": "string", "enum": ["report", "summary", "proposal", "letter", "table"]},
                     "prompt":        {"type": "string", "description": "What to write"},
                     "output_format": {"type": "string", "enum": ["pdf", "docx", "pptx"],
-                                      "description": "Output file format: 'pdf' (default), 'docx' for Word, 'pptx' for PowerPoint."},
+                                      "description": "Single output format: 'pdf' (default), 'docx' for Word, 'pptx' for PowerPoint."},
+                    "formats":       {"type": "array", "items": {"type": "string", "enum": ["pdf", "docx", "pptx"]},
+                                      "description": "Multiple output formats in one call e.g. [\"pptx\", \"docx\"]. Content is generated once and all files are created."},
                     "source_data":   {"type": "string", "description": "Optional raw content to base the doc on"},
                     "sections":      {"type": "array",  "items": {"type": "string"}, "description": "Optional list of section headings"},
                 },
