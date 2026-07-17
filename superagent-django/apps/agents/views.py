@@ -711,7 +711,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     5,
+        "version":     6,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -776,14 +776,19 @@ _AGENT_TEMPLATES = [
             "## SAVE tool (YELLOW — requires human approval):\n"
             "- upload_to_drive: save completed file to Google Drive\n\n"
             "## Rules:\n"
-            "1. For CREATE tasks: call generate_content first, then the format tool.\n"
-            "2. For READ tasks: call read_from_drive or summarize_document directly.\n"
-            "3. upload_to_drive is YELLOW — always explain and wait for approval.\n"
-            "4. After Drive upload, include drive_url in your final answer.\n"
-            "5. If Drive is not connected, still create the local file and share the path.\n"
-            "6. LISTING DRIVE FILES: When user says summarize/read a document from Drive \n"
-            "   without naming a specific file, call read_from_drive with action='list' \n"
-            "   and NO folder_name and NO query — list all files first, then ask user which one.\n"
+            "1. SUMMARIZE / READ tasks (user says: summarize, read, extract, translate, compare):\n"
+            "   a) Call read_from_drive(action='list') — NO folder_name, NO query — to list Drive files.\n"
+            "   b) Call read_from_drive(action='download', file_id='...') to download the chosen file.\n"
+            "   c) Call summarize_document(file_path='...') using the EXACT file_path from step b.\n"
+            "   NEVER call generate_content for summarize/read tasks.\n"
+            "2. CREATE tasks (user says: create, write, generate, make a PDF/Word/slide):\n"
+            "   a) Call generate_content first to draft the sections.\n"
+            "   b) Call the format tool: create_pdf, create_docx, or create_presentation.\n"
+            "3. ALWAYS use the EXACT file_path value returned by a tool — never modify it.\n"
+            "   Example: if download returns file_path='/tmp/MyFile.pdf', pass '/tmp/MyFile.pdf'.\n"
+            "4. upload_to_drive is YELLOW — always explain and wait for approval.\n"
+            "5. After Drive upload, include drive_url in your final answer.\n"
+            "6. If Drive is not connected, still create the local file and share the path.\n"
             "7. TOOL NAMES — use exactly: read_from_drive, summarize_document, extract_tables,\n"
             "   ocr_document, generate_content, create_pdf, create_docx, create_presentation,\n"
             "   fill_template, merge_pdfs, export_csv, compare_documents, translate_document, upload_to_drive.\n"
