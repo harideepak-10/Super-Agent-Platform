@@ -100,14 +100,16 @@ CREATE / GENERATE task (user says: "create", "generate", "write", "make a PDF/Wo
              "create a PPT and Word doc"      → formats: ["pptx", "docx"]
              "create PDF and PPT"             → formats: ["pdf", "pptx"]
              "create PDF, Word and PPT"       → formats: ["pdf", "docx", "pptx"]
-  Step 2 → Return file_path (single) or files[] (multiple) to the user. STOP.
+  Step 2 → upload_to_drive for EACH file_path returned (one call per file)
+  Step 3 → Return all drive_url(s) to the user. STOP.
   ✗ DO NOT call create_pdf, create_docx, or create_presentation after generate_content — it handles everything
 
 SUMMARIZE + CREATE task (user says: "summarize … and create a PDF/Word/PPT"):
   Step 1 → read_from_drive (list → download)
   Step 2 → summarize_document
   Step 3 → generate_content with output_format or formats matching what user asked
-  Step 4 → Return all file paths and the summary to the user
+  Step 4 → upload_to_drive for EACH file_path returned
+  Step 5 → Return the summary text AND all drive_url(s) to the user
 
 ════════════════════════════════════════════════════════
 
@@ -137,19 +139,20 @@ SUMMARIZE + CREATE task (user says: "summarize … and create a PDF/Word/PPT"):
                        target_lang codes: ta=Tamil, hi=Hindi, fr=French, de=German,
                        es=Spanish, ar=Arabic, zh=Chinese, ja=Japanese, pt=Portuguese, ru=Russian
 
-=== SAVE TOOL (YELLOW — requires human approval) ===
+=== SAVE TOOL (GREEN — runs automatically after every file creation) ===
 
-  upload_to_drive    — save the completed file to Google Drive
-                       Pass file_path from any create/translate/merge tool
-                       Returns drive_url — include this in your final answer
+  upload_to_drive    — upload a file to Google Drive automatically
+                       Call this immediately after generate_content (or any create tool)
+                       Pass the EXACT file_path returned by the create tool
+                       Returns drive_url — always include this in your final answer
 
 === HARD RULES ===
 
-1. NEVER upload to Drive without explicit human approval (YELLOW zone)
-2. NEVER call generate_content for summarize-only tasks — return the summary text directly
-3. For PDF creation, call generate_content ONCE — it creates the file automatically
-4. If Drive is not connected, still create the local file and share the path with the user
-5. After Drive upload, always include drive_url in your final answer
+1. ALWAYS call upload_to_drive immediately after every file is created — no exceptions
+2. For multiple files (formats=[...]), call upload_to_drive once per file_path
+3. NEVER call generate_content for summarize-only tasks — return the summary text directly
+4. For file creation, call generate_content ONCE — it creates the file automatically
+5. If Drive is not connected, skip upload_to_drive and share the local file_path instead
 6. Always pass file_path (not filename) to upload_to_drive
 7. Use EXACT file_path returned by tools — never modify or trim it
 8. NEVER ask the user for a file path or save location. The tools choose the path automatically.
@@ -162,13 +165,22 @@ SUMMARIZE + CREATE task (user says: "summarize … and create a PDF/Word/PPT"):
 """
 
 
+def _auto_upload_tool(workspace_id: str | None) -> UploadToDriveTool:
+    """Return UploadToDriveTool with zone overridden to GREEN so the document agent
+    uploads automatically after every file creation — no approval required."""
+    tool = UploadToDriveTool(workspace_id=workspace_id)
+    from core.tools.base_tool import ToolZone
+    tool.zone = ToolZone.GREEN
+    return tool
+
+
 class DocumentAgent(BaseAgent):
     """KRYPSOS Document Agent — full document lifecycle.
 
     READ:   Google Drive listing, file download, summarisation, OCR, table extraction
     CREATE: PDF, Word, PowerPoint, template filling, PDF merge, CSV export
     ANALYSE: Document comparison (diff), translation to 10+ languages
-    SAVE:   Upload to Google Drive (YELLOW — requires approval)
+    SAVE:   Upload to Google Drive (GREEN — auto-upload after every file creation)
 
     Default limits:
         max_steps : 20  (read + create + analyse + upload = typical 5-8 steps)
@@ -223,8 +235,8 @@ class DocumentAgent(BaseAgent):
             # Analyse
             CompareDocumentsTool(),
             TranslateDocumentTool(workspace_id=workspace_id),
-            # Save (YELLOW)
-            UploadToDriveTool(workspace_id=workspace_id),
+            # Save — GREEN in document agent (auto-upload after every file creation)
+            _auto_upload_tool(workspace_id=workspace_id),
         ]
 
         # Optional web search
