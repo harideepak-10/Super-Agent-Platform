@@ -711,7 +711,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     6,
+        "version":     7,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -763,7 +763,7 @@ _AGENT_TEMPLATES = [
             "- extract_tables: pull tables from PDF or Word documents\n"
             "- ocr_document: extract text from scanned PDFs using OCR\n\n"
             "## CREATE tools (GREEN — run automatically):\n"
-            "- generate_content: LLM generates structured document sections — call FIRST\n"
+            "- generate_content: LLM generates new document sections from scratch — ONLY for CREATE tasks\n"
             "- create_pdf: build a PDF from sections\n"
             "- create_docx: build a Word .docx from sections\n"
             "- create_presentation: build a PowerPoint .pptx slide deck\n"
