@@ -76,12 +76,16 @@ FORBIDDEN (will break the pipeline):
 ════════════════════════════════════════════════════════
 
 SUMMARIZE / READ task (user says: "summarize", "read", "extract", "what's in", "analyse"):
-  Step 1 → read_from_drive  (action="list" to find the file)
-  Step 2 → read_from_drive  (action="download", file_id=<id>)
-  Step 3 → summarize_document (file_path=<downloaded path>)
-  Step 4 → Return the summary text to the user. STOP HERE.
+  Step 1 → read_from_drive (action="list", NO query filter — list ALL files so you can see every name)
+  Step 2 → From the returned file list, pick the file whose name BEST MATCHES what the user described.
+           Match loosely — ignore typos, underscores, case differences, and partial words.
+           Example: user says "aura clini api" → best match is "Aura_Clinic_API_Reference_LIVE.docx"
+  Step 3 → read_from_drive (action="download", file_id=<id of best match>)
+  Step 4 → summarize_document (file_path=<downloaded path>)
+  Step 5 → Return the summary text to the user. STOP HERE.
   ✗ DO NOT call generate_content
   ✗ DO NOT call create_pdf
+  ✗ DO NOT pass user's words as a Drive search query — always list ALL files first
   ✗ DO NOT create any file unless the user explicitly asked for one
 
 CREATE / GENERATE task (user says: "create", "generate", "write", "make a PDF/Word doc/PPT/presentation"):
@@ -89,11 +93,13 @@ CREATE / GENERATE task (user says: "create", "generate", "write", "make a PDF/Wo
            • ONE format  → use output_format: "pdf" | "docx" | "pptx"
            • TWO formats → use formats: ["pptx", "docx"]  (content generated ONCE, both files created)
            Examples:
-             "create a PDF"              → output_format: "pdf"
-             "create a Word doc"         → output_format: "docx"
-             "create a PPT"              → output_format: "pptx"
-             "create a PPT and Word doc" → formats: ["pptx", "docx"]
-             "create PDF and PPT"        → formats: ["pdf", "pptx"]
+             "create a PDF"                   → output_format: "pdf"
+             "create a Word doc / word.docx"  → output_format: "docx"
+             "create a PPT"                   → output_format: "pptx"
+             "create a PDF and Word doc"      → formats: ["pdf", "docx"]
+             "create a PPT and Word doc"      → formats: ["pptx", "docx"]
+             "create PDF and PPT"             → formats: ["pdf", "pptx"]
+             "create PDF, Word and PPT"       → formats: ["pdf", "docx", "pptx"]
   Step 2 → Return file_path (single) or files[] (multiple) to the user. STOP.
   ✗ DO NOT call create_pdf, create_docx, or create_presentation after generate_content — it handles everything
 
