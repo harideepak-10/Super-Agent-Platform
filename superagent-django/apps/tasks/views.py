@@ -18,21 +18,46 @@ from apps.audit.utils import log_event
 
 _VAGUE_READ_WORDS = {"summarize", "summarise", "read", "extract", "review",
                      "analyse", "analyze", "open", "show", "get", "what"}
-_VAGUE_FILE_WORDS = {"document", "file", "pdf", "doc", "drive"}
-# A specific filename has an extension or is quoted
-_HAS_FILENAME_RE  = re.compile(r'\.[a-zA-Z]{2,5}\b|"[^"]+"', re.IGNORECASE)
+
+# Matches truly generic file references: "the document", "a file", "the pdf", "my doc"
+# The article/possessive must be followed DIRECTLY by the file word (no name in between).
+_GENERIC_FILE_RE = re.compile(
+    r'\b(the|a|my|your|some)\s+(document|file|pdf|doc|files|documents)s?\b',
+    re.IGNORECASE,
+)
+
+# A specific filename — has an extension or is quoted
+_HAS_FILENAME_RE = re.compile(r'\.[a-zA-Z]{2,5}\b|"[^"]+"', re.IGNORECASE)
 
 
 def _is_vague_drive_request(prompt: str) -> bool:
-    """Return True when the user wants to read/summarize a Drive file but hasn't named it."""
+    """Return True ONLY when the file reference is generic (no specific name given).
+
+    Triggers:   "summarize the document in my Drive"  → (the document = generic)
+                "read a file from Drive"               → (a file = generic)
+    No-trigger: "summarize the Aura Clinic API document" → has a specific name
+                "read Q2 report from Drive"            → has a specific name
+                "summarize report.pdf"                 → has a filename with extension
+    """
     lower = prompt.lower()
+
+    # Must be a read/summarize type request
     if not any(w in lower for w in _VAGUE_READ_WORDS):
         return False
-    if not any(w in lower for w in _VAGUE_FILE_WORDS):
+
+    # Must mention Drive or a file-type word
+    if "drive" not in lower and not any(
+        w in lower for w in ("document", "file", "pdf", "doc")
+    ):
         return False
+
+    # Already has a specific filename (extension or quotes) → not vague
     if _HAS_FILENAME_RE.search(prompt):
-        return False  # already has a specific filename
-    return True
+        return False
+
+    # Only trigger when the file reference is article + file-word directly
+    # e.g. "the document", "a file", "my pdf" — with no name before the file word
+    return bool(_GENERIC_FILE_RE.search(prompt))
 
 
 def _list_drive_files_for_workspace(workspace) -> list | None:
