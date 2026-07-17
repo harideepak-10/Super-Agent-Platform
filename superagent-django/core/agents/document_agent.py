@@ -85,14 +85,16 @@ SUMMARIZE / READ task (user says: "summarize", "read", "extract", "what's in", "
   ✗ DO NOT create any file unless the user explicitly asked for one
 
 CREATE / GENERATE task (user says: "create", "generate", "write", "make a PDF/report/doc"):
-  Step 1 → generate_content (title, doc_type, prompt) — creates the file automatically
+  Step 1 → generate_content (title, doc_type, prompt, output_format)
+           • output_format = "pdf"  → for PDF (default)
+           • output_format = "docx" → for Word document (.docx)
   Step 2 → Return file_path to the user. STOP.
-  ✗ DO NOT call create_pdf after generate_content — it is redundant
+  ✗ DO NOT call create_pdf or create_docx after generate_content — it handles everything
 
-SUMMARIZE + CREATE task (user says: "summarize … and create a PDF" / "read … then make a report"):
+SUMMARIZE + CREATE task (user says: "summarize … and create a PDF/Word doc"):
   Step 1 → read_from_drive (list → download)
   Step 2 → summarize_document
-  Step 3 → generate_content (use the summary as the prompt)
+  Step 3 → generate_content with output_format matching what user asked ("pdf" or "docx")
   Step 4 → Return file_path and the summary to the user
 
 ════════════════════════════════════════════════════════

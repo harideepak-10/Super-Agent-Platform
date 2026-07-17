@@ -43,11 +43,13 @@ class GenerateContentTool(BaseTool):
 
     name: str = "generate_content"
     description: str = (
-        "Generate document content AND automatically create the PDF file in one step. "
+        "Generate document content AND automatically create the file in one step. "
         "Input JSON: {\"title\": \"...\", \"doc_type\": \"report|summary|proposal|letter|table\", "
-        "\"prompt\": \"...\", \"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
-        "Returns file_path of the created PDF. Pass file_path to upload_to_drive to save to Google Drive. "
-        "Do NOT call create_pdf separately — this tool handles everything."
+        "\"prompt\": \"...\", \"output_format\": \"pdf|docx\" (default pdf), "
+        "\"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
+        "Returns file_path of the created file. Pass file_path to upload_to_drive to save to Google Drive. "
+        "Use output_format='docx' when the user asks for a Word document. "
+        "Do NOT call create_pdf or create_docx separately — this tool handles everything."
     )
     zone: ToolZone = ToolZone.GREEN
 
@@ -81,12 +83,15 @@ class GenerateContentTool(BaseTool):
         except (json.JSONDecodeError, TypeError):
             return json.dumps({"error": "Invalid input. Expected JSON."})
 
-        title       = data.get("title", "Document")
-        doc_type    = data.get("doc_type", "report").lower()
-        prompt      = data.get("prompt", "")
-        source_data = data.get("source_data", "")
-        sections    = data.get("sections", [])
-        max_points  = data.get("max_points", 5)
+        title         = data.get("title", "Document")
+        doc_type      = data.get("doc_type", "report").lower()
+        prompt        = data.get("prompt", "")
+        source_data   = data.get("source_data", "")
+        sections      = data.get("sections", [])
+        max_points    = data.get("max_points", 5)
+        output_format = data.get("output_format", "pdf").lower()
+        if output_format not in ("pdf", "docx"):
+            output_format = "pdf"
 
         if not prompt and not source_data:
             return json.dumps({"error": "Either 'prompt' or 'source_data' is required."})
@@ -116,8 +121,8 @@ class GenerateContentTool(BaseTool):
         # Call Groq directly to generate real content
         written_sections = self._call_llm(system_msg, user_msg, section_list)
 
-        # Automatically build the PDF/DOCX so the agent doesn't need a second tool call
-        file_result = self._auto_create_file(title, doc_type, written_sections, data.get("author", "KRYPSOS Agent"))
+        # Automatically build the output file so the agent doesn't need a second tool call
+        file_result = self._auto_create_file(title, doc_type, written_sections, data.get("author", "KRYPSOS Agent"), output_format)
 
         result = {
             "title":    title,
@@ -127,28 +132,34 @@ class GenerateContentTool(BaseTool):
         result.update(file_result)
         return json.dumps(result, ensure_ascii=False)
 
-    def _auto_create_file(self, title: str, doc_type: str, sections: list, author: str) -> dict:
-        """Immediately build the output file so no second tool call is needed."""
+    def _auto_create_file(self, title: str, doc_type: str, sections: list, author: str, output_format: str = "pdf") -> dict:
+        """Immediately build the output file (PDF or DOCX) so no second tool call is needed."""
+        import json as _json
+        payload = _json.dumps({"title": title, "sections": sections, "author": author})
         try:
-            from core.tools.document.create_pdf import CreatePdfTool
-            import json as _json
-            payload = _json.dumps({"title": title, "sections": sections, "author": author})
-            raw = CreatePdfTool().run(payload)
+            if output_format == "docx":
+                from core.tools.document.create_docx import CreateDocxTool
+                raw = CreateDocxTool().run(payload)
+            else:
+                from core.tools.document.create_pdf import CreatePdfTool
+                raw = CreatePdfTool().run(payload)
+
             result = _json.loads(raw)
             if result.get("status") == "created":
+                fmt = result.get("format", output_format)
                 return {
                     "status":    "created",
                     "file_path": result["file_path"],
                     "filename":  result["filename"],
                     "size_kb":   result["size_kb"],
-                    "format":    "pdf",
+                    "format":    fmt,
                     "note": (
-                        f"PDF created at {result['file_path']}. "
+                        f"{fmt.upper()} created at {result['file_path']}. "
                         "Call upload_to_drive with this file_path to save it to Google Drive."
                     ),
                 }
         except Exception as exc:
-            return {"pdf_error": str(exc)}
+            return {"file_error": str(exc)}
         return {}
 
     def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
@@ -196,11 +207,13 @@ class GenerateContentTool(BaseTool):
             "name": self.name, "description": self.description,
             "parameters": {"type": "object",
                 "properties": {
-                    "title":       {"type": "string", "description": "Document title"},
-                    "doc_type":    {"type": "string", "enum": ["report", "summary", "proposal", "letter", "table"]},
-                    "prompt":      {"type": "string", "description": "What to write"},
-                    "source_data": {"type": "string", "description": "Optional raw content to base the doc on"},
-                    "sections":    {"type": "array",  "items": {"type": "string"}, "description": "Optional list of section headings"},
+                    "title":         {"type": "string", "description": "Document title"},
+                    "doc_type":      {"type": "string", "enum": ["report", "summary", "proposal", "letter", "table"]},
+                    "prompt":        {"type": "string", "description": "What to write"},
+                    "output_format": {"type": "string", "enum": ["pdf", "docx"],
+                                      "description": "Output file format. Use 'docx' for Word documents, 'pdf' for PDF (default)."},
+                    "source_data":   {"type": "string", "description": "Optional raw content to base the doc on"},
+                    "sections":      {"type": "array",  "items": {"type": "string"}, "description": "Optional list of section headings"},
                 },
                 "required": ["title", "doc_type", "prompt"],
             },
