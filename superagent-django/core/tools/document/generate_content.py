@@ -45,11 +45,11 @@ class GenerateContentTool(BaseTool):
     description: str = (
         "Generate document content AND automatically create the file in one step. "
         "Input JSON: {\"title\": \"...\", \"doc_type\": \"report|summary|proposal|letter|table\", "
-        "\"prompt\": \"...\", \"output_format\": \"pdf|docx\" (default pdf), "
+        "\"prompt\": \"...\", \"output_format\": \"pdf|docx|pptx\" (default pdf), "
         "\"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
-        "Returns file_path of the created file. Pass file_path to upload_to_drive to save to Google Drive. "
-        "Use output_format='docx' when the user asks for a Word document. "
-        "Do NOT call create_pdf or create_docx separately — this tool handles everything."
+        "Returns file_path of the created file. "
+        "Use output_format='docx' for Word, output_format='pptx' for PowerPoint. "
+        "Do NOT call create_pdf, create_docx, or create_presentation separately — this tool handles everything."
     )
     zone: ToolZone = ToolZone.GREEN
 
@@ -90,7 +90,7 @@ class GenerateContentTool(BaseTool):
         sections      = data.get("sections", [])
         max_points    = data.get("max_points", 5)
         output_format = data.get("output_format", "pdf").lower()
-        if output_format not in ("pdf", "docx"):
+        if output_format not in ("pdf", "docx", "pptx"):
             output_format = "pdf"
 
         if not prompt and not source_data:
@@ -133,34 +133,71 @@ class GenerateContentTool(BaseTool):
         return json.dumps(result, ensure_ascii=False)
 
     def _auto_create_file(self, title: str, doc_type: str, sections: list, author: str, output_format: str = "pdf") -> dict:
-        """Immediately build the output file (PDF or DOCX) so no second tool call is needed."""
+        """Immediately build the output file (PDF, DOCX, or PPTX) so no second tool call is needed."""
         import json as _json
-        payload = _json.dumps({"title": title, "sections": sections, "author": author})
         try:
-            if output_format == "docx":
-                from core.tools.document.create_docx import CreateDocxTool
-                raw = CreateDocxTool().run(payload)
+            if output_format == "pptx":
+                from core.tools.document.create_presentation import CreatePresentationTool
+                slides = self._sections_to_slides(sections)
+                payload = _json.dumps({"title": title, "author": author, "slides": slides})
+                raw = CreatePresentationTool().run(payload)
+                result = _json.loads(raw)
+                if result.get("status") == "created":
+                    return {
+                        "status":    "created",
+                        "file_path": result["file_path"],
+                        "filename":  result["filename"],
+                        "slides":    result.get("slides", len(slides)),
+                        "format":    "pptx",
+                        "note": (
+                            f"PowerPoint created at {result['file_path']}. "
+                            "Call upload_to_drive with this file_path to save it to Google Drive."
+                        ),
+                    }
             else:
-                from core.tools.document.create_pdf import CreatePdfTool
-                raw = CreatePdfTool().run(payload)
-
-            result = _json.loads(raw)
-            if result.get("status") == "created":
-                fmt = result.get("format", output_format)
-                return {
-                    "status":    "created",
-                    "file_path": result["file_path"],
-                    "filename":  result["filename"],
-                    "size_kb":   result["size_kb"],
-                    "format":    fmt,
-                    "note": (
-                        f"{fmt.upper()} created at {result['file_path']}. "
-                        "Call upload_to_drive with this file_path to save it to Google Drive."
-                    ),
-                }
+                payload = _json.dumps({"title": title, "sections": sections, "author": author})
+                if output_format == "docx":
+                    from core.tools.document.create_docx import CreateDocxTool
+                    raw = CreateDocxTool().run(payload)
+                else:
+                    from core.tools.document.create_pdf import CreatePdfTool
+                    raw = CreatePdfTool().run(payload)
+                result = _json.loads(raw)
+                if result.get("status") == "created":
+                    fmt = result.get("format", output_format)
+                    return {
+                        "status":    "created",
+                        "file_path": result["file_path"],
+                        "filename":  result["filename"],
+                        "size_kb":   result["size_kb"],
+                        "format":    fmt,
+                        "note": (
+                            f"{fmt.upper()} created at {result['file_path']}. "
+                            "Call upload_to_drive with this file_path to save it to Google Drive."
+                        ),
+                    }
         except Exception as exc:
             return {"file_error": str(exc)}
         return {}
+
+    @staticmethod
+    def _sections_to_slides(sections: list) -> list:
+        """Convert generate_content sections → create_presentation slides format."""
+        import re
+        slides = []
+        for sec in sections:
+            heading = sec.get("heading", "Slide")
+            content = sec.get("content", "")
+            # Split content into bullet points (by sentence or newline)
+            raw_bullets = [b.strip() for b in re.split(r"\n|(?<=[.!?])\s+", content) if b.strip()]
+            # Keep bullets short — max 120 chars each, max 6 per slide
+            bullets = [b[:120] for b in raw_bullets if len(b) > 5][:6]
+            slides.append({
+                "title":   heading,
+                "content": content[:200],   # brief slide body text
+                "bullets": bullets,
+            })
+        return slides
 
     def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
         """Call Groq to generate actual section content. Falls back to stubs on error."""
@@ -210,8 +247,8 @@ class GenerateContentTool(BaseTool):
                     "title":         {"type": "string", "description": "Document title"},
                     "doc_type":      {"type": "string", "enum": ["report", "summary", "proposal", "letter", "table"]},
                     "prompt":        {"type": "string", "description": "What to write"},
-                    "output_format": {"type": "string", "enum": ["pdf", "docx"],
-                                      "description": "Output file format. Use 'docx' for Word documents, 'pdf' for PDF (default)."},
+                    "output_format": {"type": "string", "enum": ["pdf", "docx", "pptx"],
+                                      "description": "Output file format: 'pdf' (default), 'docx' for Word, 'pptx' for PowerPoint."},
                     "source_data":   {"type": "string", "description": "Optional raw content to base the doc on"},
                     "sections":      {"type": "array",  "items": {"type": "string"}, "description": "Optional list of section headings"},
                 },
