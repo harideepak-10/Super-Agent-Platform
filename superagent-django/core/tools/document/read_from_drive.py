@@ -138,6 +138,17 @@ class ReadFromDriveTool(BaseTool):
             orderBy="modifiedTime desc",
         ).execute()
 
+        # If query returned nothing, fall back to listing all files so the agent
+        # can find the closest match (handles typos, underscores vs spaces, etc.)
+        if not result.get("files") and query:
+            fallback_q = [p for p in q_parts if f"name contains" not in p]
+            result = service.files().list(
+                q=" and ".join(fallback_q) if fallback_q else "trashed = false",
+                pageSize=max_results,
+                fields="files(id, name, mimeType, size, modifiedTime, webViewLink)",
+                orderBy="modifiedTime desc",
+            ).execute()
+
         files = []
         for f in result.get("files", []):
             size_bytes = int(f.get("size", 0) or 0)
