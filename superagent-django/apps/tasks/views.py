@@ -1,4 +1,5 @@
 import json
+import re
 import threading
 
 from django.shortcuts import get_object_or_404
@@ -11,6 +12,83 @@ from rest_framework.response import Response
 from .models import Task, TaskStep
 from .serializers import TaskSerializer, TaskListSerializer, CreateTaskSerializer, TaskStepSerializer
 from apps.audit.utils import log_event
+
+
+# ── Drive file-selection helpers ───────────────────────────────────────────────
+
+_VAGUE_READ_WORDS = {"summarize", "summarise", "read", "extract", "review",
+                     "analyse", "analyze", "open", "show", "get", "what"}
+_VAGUE_FILE_WORDS = {"document", "file", "pdf", "doc", "drive"}
+# A specific filename has an extension or is quoted
+_HAS_FILENAME_RE  = re.compile(r'\.[a-zA-Z]{2,5}\b|"[^"]+"', re.IGNORECASE)
+
+
+def _is_vague_drive_request(prompt: str) -> bool:
+    """Return True when the user wants to read/summarize a Drive file but hasn't named it."""
+    lower = prompt.lower()
+    if not any(w in lower for w in _VAGUE_READ_WORDS):
+        return False
+    if not any(w in lower for w in _VAGUE_FILE_WORDS):
+        return False
+    if _HAS_FILENAME_RE.search(prompt):
+        return False  # already has a specific filename
+    return True
+
+
+def _list_drive_files_for_workspace(workspace) -> list | None:
+    """Fetch up to 20 recent Drive files. Returns None when Drive is not connected."""
+    try:
+        import os
+        from apps.integrations.models import Integration
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        integration = Integration.objects.filter(
+            workspace=workspace,
+            provider=Integration.Provider.GOOGLE_DRIVE,
+            status=Integration.Status.ACTIVE,
+        ).first()
+        if not integration or not integration.access_token:
+            return None
+
+        creds = Credentials(
+            token=integration.access_token,
+            refresh_token=integration.refresh_token,
+            client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            token_uri="https://oauth2.googleapis.com/token",
+        )
+        service = build("drive", "v3", credentials=creds)
+        result = service.files().list(
+            q="trashed = false",
+            pageSize=20,
+            fields="files(id, name, mimeType, size, modifiedTime)",
+            orderBy="modifiedTime desc",
+        ).execute()
+
+        _MIME_LABELS = {
+            "application/vnd.google-apps.document":     "Google Doc",
+            "application/vnd.google-apps.spreadsheet":  "Google Sheet",
+            "application/vnd.google-apps.presentation": "Google Slides",
+            "application/pdf":                          "PDF",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word (.docx)",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":       "Excel (.xlsx)",
+            "text/plain":                               "Text",
+        }
+
+        files = []
+        for f in result.get("files", []):
+            size_bytes = int(f.get("size", 0) or 0)
+            files.append({
+                "file_id":  f.get("id", ""),
+                "name":     f.get("name", ""),
+                "type":     _MIME_LABELS.get(f.get("mimeType", ""), "File"),
+                "size_kb":  round(size_bytes / 1024, 1),
+                "modified": f.get("modifiedTime", ""),
+            })
+        return files
+    except Exception:
+        return None
 
 
 def _ask_clarification(prompt: str) -> str:
@@ -103,6 +181,23 @@ def task_create(request):
             {"detail": "needs_clarification", "message": clarification},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    # If user wants to read/summarize a Drive file but hasn't named one,
+    # list their Drive files so they can pick the right one.
+    if _is_vague_drive_request(prompt):
+        drive_files = _list_drive_files_for_workspace(workspace)
+        if drive_files is not None:
+            return Response(
+                {
+                    "detail": "needs_file_selection",
+                    "message": (
+                        "Here are the files in your Google Drive. "
+                        "Which one would you like me to work with?"
+                    ),
+                    "files": drive_files,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     task = Task.objects.create(
         workspace=workspace,

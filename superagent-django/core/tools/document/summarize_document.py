@@ -126,20 +126,21 @@ class SummarizeDocumentTool(BaseTool):
             scored.append((score, s))
 
         scored.sort(key=lambda x: -x[0])
-        key_points = [s for _, s in scored[:max_points]]
+        # Truncate each key point to 200 chars to keep token count low
+        key_points = [s[:200] for _, s in scored[:max_points]]
 
-        # Simple overview — first 2 non-trivial sentences
+        # Simple overview — first 2 non-trivial sentences, capped at 400 chars
         overview_sents = [s for s in sentences if len(s) > 40][:2]
-        overview = " ".join(overview_sents)
+        overview = " ".join(overview_sents)[:400]
 
-        # Action items — sentences with action words
+        # Action items — sentences with action words, each capped at 150 chars
         action_items = []
         for s in sentences:
             sl = s.lower()
             if any(w in sl for w in ["follow up", "send", "review", "approve", "confirm",
                                       "schedule", "contact", "submit", "complete", "action"]):
                 if len(s) > 20:
-                    action_items.append(s.strip())
+                    action_items.append(s.strip()[:150])
         action_items = action_items[:5]
 
         summary_text = (
@@ -147,6 +148,9 @@ class SummarizeDocumentTool(BaseTool):
             f"**Key Points:**\n" + "\n".join(f"• {p}" for p in key_points) +
             (f"\n\n**Action Items:**\n" + "\n".join(f"• {a}" for a in action_items) if action_items else "")
         )
+        # Hard cap: keep summary_text under ~1500 tokens (~6000 chars)
+        if len(summary_text) > 6000:
+            summary_text = summary_text[:6000] + "\n\n[truncated]"
 
         return {
             "overview":     overview,
