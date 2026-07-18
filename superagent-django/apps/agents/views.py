@@ -739,11 +739,11 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     9,
+        "version":     10,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
-        "description": "Full document lifecycle — read from Drive, summarise, create PDFs/DOCX/PPTX, OCR, compare versions, translate, and upload back to Drive.",
+        "description": "Full document lifecycle — read from Drive, summarise, create PDFs/DOCX, OCR, compare versions, translate, and upload back to Drive.",
         "icon":        "file-text",
         "icon_bg":     "#0F766E",
         "border_color":"#14B8A6",
@@ -754,7 +754,7 @@ _AGENT_TEMPLATES = [
             "Summarises documents and extracts key points & action items",
             "Extracts tables from PDFs and Word documents",
             "Runs OCR on scanned PDFs to extract text",
-            "Generates structured PDFs, Word docs, and PowerPoint presentations",
+            "Generates structured PDFs and Word documents",
             "Fills Word templates with dynamic data (invoices, letters, reports)",
             "Merges multiple PDF files into one",
             "Compares two document versions and highlights differences",
@@ -772,7 +772,6 @@ _AGENT_TEMPLATES = [
             "generate_content",
             "create_pdf",
             "create_docx",
-            "create_presentation",
             "fill_template",
             "merge_pdfs",
             "export_csv",
@@ -802,42 +801,37 @@ _AGENT_TEMPLATES = [
             "  Step 4 → summarize_document(file_path=<exact path from step 3>)\n"
             "  Step 5 → Return the summary text. STOP HERE.\n"
             "  ✗ DO NOT call generate_content\n"
-            "  ✗ DO NOT create any file unless the user explicitly said 'create a PDF/Word/PPT'\n\n"
+            "  ✗ DO NOT create any file unless the user explicitly said 'create a PDF' or 'create a Word doc'\n\n"
+            "PPT / POWERPOINT REQUESTS — if the user asks for a PPT, presentation, or slide deck:\n"
+            "  Do NOT attempt to create it. Respond immediately with:\n"
+            "  'I can create PDF and Word documents for you, but I'm not able to create PowerPoint presentations at the moment. Would you like a PDF or Word document instead?'\n"
+            "  STOP. Do not call any tool.\n\n"
             "CREATE task (user says: 'create', 'generate', 'write', 'make' — NO Drive file mentioned):\n"
             "  Step 1 → generate_content with correct format:\n"
-            "           • output_format: 'pdf' | 'docx' | 'pptx'  (single)\n"
-            "           • formats: ['pptx','docx'] etc.            (multiple — content generated ONCE)\n"
+            "           • output_format: 'pdf'   → PDF document\n"
+            "           • output_format: 'docx'  → Word document\n"
+            "           • formats: ['pdf','docx'] → both in one call\n"
             "           Examples:\n"
-            "             'create a Word doc'         → output_format: 'docx'\n"
-            "             'create a PPT'              → output_format: 'pptx'\n"
-            "             'create a PPT and Word doc' → formats: ['pptx', 'docx']\n"
-            "             'create PDF, Word and PPT'  → formats: ['pdf', 'docx', 'pptx']\n"
+            "             'create a Word doc'        → output_format: 'docx'\n"
+            "             'create a PDF'             → output_format: 'pdf'\n"
+            "             'create a PDF and Word doc'→ formats: ['pdf', 'docx']\n"
             "  Step 2 → upload_to_drive for EACH file_path returned. ALWAYS do this.\n"
             "  Step 3 → Return all drive_url(s). STOP.\n\n"
             "FORMAT MAPPING — always apply before calling generate_content:\n"
-            "  User says 'PPT' or 'PowerPoint' or 'presentation' → format = 'pptx'\n"
-            "  User says 'Word' or 'word doc' or '.docx'         → format = 'docx'\n"
-            "  User says 'PDF'                                    → format = 'pdf'\n"
-            "  Multiple formats → use formats=[...] array, NOT output_format\n"
-            "  ✗ NEVER default to 'pdf' if the user said 'PPT' or 'pptx'\n\n"
-            "SUMMARIZE + CREATE task (user says: 'summarize [Drive file] AND create a PPT/Word/PDF'):\n"
+            "  User says 'Word' or 'word doc' or '.docx' → output_format: 'docx'\n"
+            "  User says 'PDF'                           → output_format: 'pdf'\n"
+            "  Multiple formats → use formats=[...] array, NOT output_format\n\n"
+            "SUMMARIZE + CREATE task (user says: 'summarize [Drive file] AND create a Word/PDF'):\n"
             "  *** MANDATORY ORDER — DO NOT SKIP OR REORDER ***\n"
             "  Step 1 → read_from_drive(action='list')\n"
             "  Step 2 → read_from_drive(action='download', file_id=<REAL id from step 1>)\n"
             "  Step 3 → summarize_document(file_path=<path from step 2>) — get REAL summary text\n"
-            "  Step 4 → Apply FORMAT MAPPING above, then call:\n"
-            "           generate_content(source_data=<summary_text from step 3>, formats=[<mapped formats>])\n"
+            "  Step 4 → generate_content(source_data=<summary_text from step 3>, formats=[<mapped formats>])\n"
             "           ⚠️ source_data MUST be the actual text from summarize_document — NOT a description\n"
             "  Step 5 → upload_to_drive for EACH file_path returned\n"
             "  Step 6 → Return summary text AND all drive_url(s). STOP.\n\n"
-            "  CONCRETE EXAMPLE:\n"
-            "  User: 'summarize the Aura Clinic API doc in my Drive and create a ppt and word.docx'\n"
-            "    → read_from_drive(action='list')\n"
-            "    → read_from_drive(action='download', file_id='<id of Aura Clinic file>')\n"
-            "    → summarize_document(file_path='<downloaded path>')\n"
-            "    → generate_content(source_data='<real summary text>', formats=['pptx','docx'])\n"
-            "       'ppt' → 'pptx', 'word.docx' → 'docx'   ← FORMAT MAPPING applied\n"
-            "    → upload_to_drive(file_path='<pptx path>') → upload_to_drive(file_path='<docx path>')\n\n"
+            "  EXAMPLE: 'summarize the Aura Clinic API doc in my Drive and create a word.docx'\n"
+            "    → list → download → summarize → generate_content(source_data=<real summary>, output_format='docx') → upload\n\n"
             "════════════════════════════════════════════════════════\n\n"
             "HARD RULES:\n"
             "1. ALWAYS call upload_to_drive immediately after every file is created — no exceptions\n"
@@ -851,10 +845,9 @@ _AGENT_TEMPLATES = [
             "  summarize_document — extract key points and overview from PDF/DOCX/TXT\n"
             "  extract_tables     — pull tables from PDF or DOCX\n"
             "  ocr_document       — OCR scanned PDFs to extract text\n"
-            "  generate_content   — generate content AND auto-create file(s) in one step\n"
+            "  generate_content   — generate content AND auto-create PDF or Word file(s) in one step\n"
             "  create_pdf         — build PDF from manually-supplied sections\n"
             "  create_docx        — build Word .docx from sections\n"
-            "  create_presentation— build PowerPoint .pptx slide deck\n"
             "  fill_template      — populate a .docx template with {{FIELD}} placeholders\n"
             "  merge_pdfs         — combine multiple PDFs into one\n"
             "  export_csv         — create a CSV from tabular data\n"
