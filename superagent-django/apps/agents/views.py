@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     30,
+        "version":     31,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -615,6 +615,8 @@ _AGENT_TEMPLATES = [
             "read_email_attachment_content", "download_attachment", "read_attachment_content",
             # Compose
             "send_email", "reply_to_email", "create_draft",
+            # Utility
+            "current_time",
         ],
         "llm_model":    "llama-3.3-70b-versatile",
         "system_prompt": (
@@ -677,16 +679,27 @@ _AGENT_TEMPLATES = [
             "  'check my spam'               → filter: 'in:spam', limit: 10\n"
             "  NEVER fetch more than 10 unread emails at once — too many tokens.\n"
             "  If user says 'all unread' or implies a large number, still cap at 10 and tell them.\n\n"
-            "DATE FILTERS — Gmail date syntax is YYYY/MM/DD (always use this format):\n"
-            "  Single date  'emails from 13-07-26' or 'emails on July 13'\n"
-            "               → filter: 'after:2026/07/13 before:2026/07/14 -in:spam -in:trash'\n"
-            "               (before: is exclusive — add 1 day to include the target date)\n"
-            "  Date range   'emails from 13-07-26 to 15-07-26' or 'emails between July 13 and 15'\n"
-            "               → filter: 'after:2026/07/13 before:2026/07/16 -in:spam -in:trash'\n"
-            "               (before: must be 1 day AFTER the last date to include it)\n"
+            "DATE FILTERS — when ANY date is mentioned, the date filter ALWAYS takes priority.\n"
+            "  ⚠️ 'last email from 07-07-26' means email FROM THAT DATE — NOT the most recent email.\n"
+            "     Do NOT use the default filter. Use the date filter.\n\n"
+            "  Gmail date syntax: YYYY/MM/DD only. before: is exclusive (add 1 day to include target).\n\n"
+            "  DATE FORMAT CONVERSION — accept any format the user gives:\n"
+            "    07-07-26  → 2026/07/07\n"
+            "    7-7-26    → 2026/07/07\n"
+            "    07/07/26  → 2026/07/07\n"
+            "    7/7/26    → 2026/07/07\n"
+            "    7-7       → use current year (call current_time if unsure) → 2026/07/07\n"
+            "    7/7       → use current year → 2026/07/07\n"
+            "    July 7    → 2026/07/07\n"
+            "    07-07-2026→ 2026/07/07\n\n"
+            "  EXAMPLES:\n"
+            "  Single date  'read my email from 07-07-26' or 'last email from 7/7'\n"
+            "               → filter: 'after:2026/07/07 before:2026/07/08 -in:spam -in:trash', limit: 10\n"
+            "  Date range   'emails from 13-07-26 to 15-07-26'\n"
+            "               → filter: 'after:2026/07/13 before:2026/07/16 -in:spam -in:trash', limit: 10\n"
             "  Month        'emails from July' or 'July emails'\n"
-            "               → filter: 'after:2026/07/01 before:2026/08/01 -in:spam -in:trash'\n"
-            "  ALWAYS convert DD-MM-YY or DD/MM/YY or any user format to YYYY/MM/DD before building the filter.\n\n"
+            "               → filter: 'after:2026/07/01 before:2026/08/01 -in:spam -in:trash', limit: 10\n\n"
+            "  LIMIT with date filter: default to 10 (date already narrows results — don't use limit=1).\n\n"
             "CRITICAL — If read_email returns 0 emails or an empty list:\n"
             "  → Immediately call search_emails(query='in:inbox', max_results=10)\n"
             "  → Only say 'no emails found' if search_emails ALSO returns 0 results\n\n"

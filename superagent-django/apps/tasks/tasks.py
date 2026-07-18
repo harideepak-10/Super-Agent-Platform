@@ -2223,6 +2223,26 @@ class ReadEmailAttachmentContentTool(BaseTool):
         }}
 
 
+class CurrentTimeTool(BaseTool):
+    """Return the current date and time (GREEN — no approval needed)."""
+    name = "current_time"
+    description = "Returns the current date, time, and day of the week. Input is ignored."
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str: str) -> str:
+        from core.tools.current_time import CurrentTimeTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {}},
+        }}
+
+
 # =============================================================================
 # TOOL REGISTRY
 # =============================================================================
@@ -2288,6 +2308,7 @@ _TOOL_REGISTRY: dict = {
     "translate_document":       TranslateDocumentTool,
     "upload_to_drive":          UploadToDriveTool,
     # General
+    "current_time":             CurrentTimeTool,
     "web_search":               WebSearchTool,
     "browse_web":               BrowseWebTool,
     "classify_text":            ClassifyTextTool,
