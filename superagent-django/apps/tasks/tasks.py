@@ -1155,15 +1155,15 @@ class CreateDocxTool(BaseTool):
 
 
 class UploadToDriveTool(BaseTool):
-    """Delegate to core UploadToDriveTool (YELLOW — requires approval)."""
+    """Delegate to core UploadToDriveTool (GREEN — runs automatically after file creation)."""
     name = "upload_to_drive"
     description = (
-        "Upload a file to Google Drive. ALWAYS requires human approval (YELLOW zone). "
+        "Upload a file to Google Drive. GREEN zone — runs automatically after every file creation. "
         "Input JSON: {\"file_path\": \"...\", \"filename\": \"...(optional)\", "
         "\"folder_name\": \"...(optional)\"}. "
         "Returns drive_url saved to task deliverables. Requires Drive integration."
     )
-    zone = ToolZone.YELLOW
+    zone = ToolZone.GREEN
 
     def __init__(self, workspace_id=None):
         self._workspace_id = workspace_id
@@ -2303,7 +2303,7 @@ _TOOL_REGISTRY: dict = {
 _HIGH_ZONE_TOOLS = {
     "send_email", "reply_to_email", "forward_email", "schedule_email",
     "delete_email", "delete_file", "cal_write", "file_write",
-    "create_meeting", "upload_to_drive",
+    "create_meeting",
     "update_event", "delete_event", "respond_to_invite",
     "create_recurring_event", "block_focus_time", "send_meeting_summary",
 }
@@ -2313,45 +2313,48 @@ _HIGH_ZONE_TOOLS = {
 # TASK OUTCOME DETECTION
 # =============================================================================
 
-_FAILURE_PHRASES = [
-    # Connection / auth
-    "not connected", "not connect", "gmail is not connected", "drive is not connected",
+# Strict phrases — always a failure regardless of tool success
+_FAILURE_PHRASES_STRICT = [
+    "not connected", "gmail is not connected", "drive is not connected",
     "please go to integrations", "token has expired", "authentication failed",
-    # Not found
-    "no files found", "no emails found", "no events found", "couldn't find",
-    "could not find", "unable to find", "not found", "does not exist",
-    "no results", "0 results",
-    # Recipient / address
-    "recipient", "no email address", "missing email", "invalid email",
-    "please provide", "please specify", "please share",
-    # Rate limit
-    "rate limit", "temporarily busy", "try again later",
-    # Generic failure
-    "i cannot", "i'm unable", "i am unable", "i was unable",
-    "failed to", "could not complete", "unable to complete",
-    "an error occurred", "something went wrong",
+    "rate limit", "temporarily busy",
 ]
+
+# Broad phrases — only checked when NO tool succeeded (avoids false positives from email content)
+_FAILURE_PHRASES_BROAD = [
+    "not connect", "no files found", "no emails found", "no events found",
+    "no results", "0 results", "no email address", "missing email", "invalid email",
+    "could not complete", "unable to complete", "an error occurred", "something went wrong",
+]
+
 
 def _task_actually_failed(result: str, audit_log: list) -> tuple[bool, str]:
     """Return (failed, reason) based on result text and tool errors."""
     lower = result.lower()
 
-    # 1. Keyword check in final result
-    for phrase in _FAILURE_PHRASES:
+    # 1. Always check strict phrases
+    for phrase in _FAILURE_PHRASES_STRICT:
         if phrase in lower:
             return True, f"Task incomplete: {phrase}"
 
-    # 2. Check if ALL tool calls errored (no successful tool result)
-    tool_calls   = [e for e in audit_log if e.get("event") == "tool_called"]
+    # 2. Determine whether at least one tool call succeeded
     tool_results = [e for e in audit_log if e.get("event") == "tool_result"]
-    if tool_calls and tool_results:
-        errors = [
-            r for r in tool_results
-            if "error" in str(r.get("details", {}).get("result", "")).lower()
-            or "error" in str(r.get("details", {}).get("output", "")).lower()
-        ]
-        if len(errors) == len(tool_results):
-            return True, "All tool calls returned errors"
+    successful = [
+        r for r in tool_results
+        if "error" not in str(r.get("details", {}).get("result", "")).lower()
+        and "error" not in str(r.get("details", {}).get("output", "")).lower()
+    ]
+
+    # 3. Only check broad phrases when nothing succeeded
+    if not successful:
+        for phrase in _FAILURE_PHRASES_BROAD:
+            if phrase in lower:
+                return True, f"Task incomplete: {phrase}"
+
+    # 4. Check if ALL tool calls errored (no successful tool result)
+    tool_calls = [e for e in audit_log if e.get("event") == "tool_called"]
+    if tool_calls and tool_results and not successful:
+        return True, "All tool calls returned errors"
 
     return False, ""
 

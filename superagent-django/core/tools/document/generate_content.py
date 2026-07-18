@@ -228,7 +228,10 @@ class GenerateContentTool(BaseTool):
 
     def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
         """Call Groq to generate actual section content. Falls back to stubs on error."""
+        import logging
         import os
+        import re
+        _log = logging.getLogger(__name__)
         try:
             from groq import Groq
             client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
@@ -243,16 +246,17 @@ class GenerateContentTool(BaseTool):
             )
             raw = completion.choices[0].message.content or ""
             # Extract JSON array from response
-            import re
             match = re.search(r"\[.*\]", raw, re.DOTALL)
             if match:
                 sections = json.loads(match.group())
                 if isinstance(sections, list) and sections:
                     return sections
-        except Exception:
-            pass
+            _log.warning("generate_content._call_llm: LLM returned no valid JSON array. raw=%r", raw[:200])
+        except Exception as exc:
+            _log.error("generate_content._call_llm: LLM call failed: %s", exc)
 
         # Fallback: return stub sections so create_pdf can still run
+        _log.warning("generate_content._call_llm: falling back to stub content for sections=%s", section_list)
         return [{"heading": h, "content": f"Content for {h}."} for h in section_list]
 
     @staticmethod
