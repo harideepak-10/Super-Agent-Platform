@@ -88,10 +88,10 @@ class ReadEmailsTool(BaseTool):
     # ------------------------------------------------------------------
 
     def run(self, input_str: str) -> str:
-        limit, query = self._parse_input(input_str)
+        requested, limit, query = self._parse_input(input_str)
         try:
             service = self._get_service()
-            return self._fetch_emails(service, limit, query)
+            return self._fetch_emails(service, limit, query, capped=(requested > 10))
         except Exception as exc:
             error_msg = f"Gmail API error: {exc}"
             logger.error(error_msg)
@@ -120,18 +120,19 @@ class ReadEmailsTool(BaseTool):
         return self._service
 
     @staticmethod
-    def _parse_input(input_str) -> tuple[int, str]:
+    def _parse_input(input_str) -> tuple[int, int, str]:
+        """Returns (requested_limit, capped_limit, query)."""
         try:
             data = input_str if isinstance(input_str, dict) else json.loads(input_str)
-            limit = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
-            # Hard cap: never fetch more than 10; default is 1
-            limit = max(1, min(limit, 10))
+            requested = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
+            # Hard cap: never fetch more than 10
+            limit = max(1, min(requested, 10))
             query = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
-            return limit, query
+            return requested, limit, query
         except Exception:
-            return _DEFAULT_LIMIT, _DEFAULT_FILTER
+            return _DEFAULT_LIMIT, _DEFAULT_LIMIT, _DEFAULT_FILTER
 
-    def _fetch_emails(self, service: Any, limit: int, query: str) -> str:
+    def _fetch_emails(self, service: Any, limit: int, query: str, capped: bool = False) -> str:
         result = (
             service.users()
             .messages()
@@ -163,7 +164,13 @@ class ReadEmailsTool(BaseTool):
             except Exception as exc:
                 logger.warning("Failed to fetch message %s: %s", msg_ref["id"], exc)
 
-        return json.dumps({"emails": emails, "count": len(emails)}, ensure_ascii=False)
+        response: dict = {"emails": emails, "count": len(emails)}
+        if capped:
+            response["note"] = (
+                "I can only read up to 10 emails at a time. "
+                f"Showing the latest {len(emails)} emails."
+            )
+        return json.dumps(response, ensure_ascii=False)
 
     @staticmethod
     def _parse_message(msg: dict[str, Any]) -> dict[str, Any]:

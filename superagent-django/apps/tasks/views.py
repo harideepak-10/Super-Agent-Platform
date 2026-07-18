@@ -591,15 +591,19 @@ def task_retry(request, pk):
     if task.status not in (Task.Status.FAILED, Task.Status.CANCELLED):
         return Response({"detail": "Only failed or cancelled tasks can be retried."}, status=status.HTTP_400_BAD_REQUEST)
 
-    new_task = Task.objects.create(
-        workspace=workspace,
-        agent=task.agent,
-        created_by=request.user,
-        prompt=task.prompt,
-        status=Task.Status.QUEUED,
-    )
-    _run_in_thread(run_agent_task, str(new_task.id))
-    return Response(TaskSerializer(new_task).data, status=status.HTTP_201_CREATED)
+    # Reset the existing task in place — do NOT create a new one
+    task.status = Task.Status.QUEUED
+    task.result = ""
+    task.error_message = ""
+    task.celery_task_id = ""
+    task.save(update_fields=["status", "result", "error_message", "celery_task_id"])
+
+    # Clear previous steps so the retry starts clean
+    from .models import TaskStep
+    TaskStep.objects.filter(task=task).delete()
+
+    _run_in_thread(run_agent_task, str(task.id))
+    return Response(TaskSerializer(task).data, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
