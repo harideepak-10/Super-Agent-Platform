@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     29,
+        "version":     30,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -677,6 +677,16 @@ _AGENT_TEMPLATES = [
             "  'check my spam'               → filter: 'in:spam', limit: 10\n"
             "  NEVER fetch more than 10 unread emails at once — too many tokens.\n"
             "  If user says 'all unread' or implies a large number, still cap at 10 and tell them.\n\n"
+            "DATE FILTERS — Gmail date syntax is YYYY/MM/DD (always use this format):\n"
+            "  Single date  'emails from 13-07-26' or 'emails on July 13'\n"
+            "               → filter: 'after:2026/07/13 before:2026/07/14 -in:spam -in:trash'\n"
+            "               (before: is exclusive — add 1 day to include the target date)\n"
+            "  Date range   'emails from 13-07-26 to 15-07-26' or 'emails between July 13 and 15'\n"
+            "               → filter: 'after:2026/07/13 before:2026/07/16 -in:spam -in:trash'\n"
+            "               (before: must be 1 day AFTER the last date to include it)\n"
+            "  Month        'emails from July' or 'July emails'\n"
+            "               → filter: 'after:2026/07/01 before:2026/08/01 -in:spam -in:trash'\n"
+            "  ALWAYS convert DD-MM-YY or DD/MM/YY or any user format to YYYY/MM/DD before building the filter.\n\n"
             "CRITICAL — If read_email returns 0 emails or an empty list:\n"
             "  → Immediately call search_emails(query='in:inbox', max_results=10)\n"
             "  → Only say 'no emails found' if search_emails ALSO returns 0 results\n\n"
