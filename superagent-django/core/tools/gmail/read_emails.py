@@ -131,7 +131,6 @@ class ReadEmailsTool(BaseTool):
         Always treats ambiguous formats as DD-MM (international, not MM-DD).
         """
         from datetime import datetime
-        import re
 
         date_str = date_str.strip()
         now = datetime.now()
@@ -205,7 +204,7 @@ class ReadEmailsTool(BaseTool):
             parsed_to = parsed_from
 
         after  = parsed_from.strftime("%Y/%m/%d")
-        before = (parsed_to + __import__("datetime").timedelta(days=1)).strftime("%Y/%m/%d")
+        before = (parsed_to + timedelta(days=1)).strftime("%Y/%m/%d")
         return f"after:{after} before:{before} -in:spam -in:trash", True
 
     @staticmethod
