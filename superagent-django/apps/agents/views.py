@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     32,
+        "version":     33,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -679,35 +679,20 @@ _AGENT_TEMPLATES = [
             "  'check my spam'               → filter: 'in:spam', limit: 10\n"
             "  NEVER fetch more than 10 unread emails at once — too many tokens.\n"
             "  If user says 'all unread' or implies a large number, still cap at 10 and tell them.\n\n"
-            "DATE FILTERS — when ANY date is mentioned, follow these steps EXACTLY:\n"
-            "  Step 1 → Call current_time to get today's date (so you know the current year).\n"
-            "  Step 2 → Convert the user's date to YYYY/MM/DD using the current year if year is missing.\n"
-            "  Step 3 → Build the Gmail filter and call read_email.\n\n"
-            "  ⚠️ 'last email from 07-07-26' = email FROM THAT DATE. Do NOT use default filter.\n"
-            "  ⚠️ Gmail only accepts YYYY/MM/DD. Wrong format → 0 results.\n"
-            "  ⚠️ before: is EXCLUSIVE — always add 1 day to include the target date.\n\n"
-            "  DATE FORMAT CONVERSION — any format the user gives:\n"
-            "    07-07-26   → 2026/07/07\n"
-            "    7-7-26     → 2026/07/07\n"
-            "    07/07/26   → 2026/07/07\n"
-            "    7/7/26     → 2026/07/07\n"
-            "    7-7        → <current year>/07/07  (get year from current_time)\n"
-            "    7/7        → <current year>/07/07\n"
-            "    July 7     → <current year>/07/07\n"
-            "    07-07-2026 → 2026/07/07\n\n"
-            "  EXAMPLES:\n"
-            "  Single date  'read my email from 07-07-26' or 'last email from 7/7'\n"
-            "               → current_time → 2026/07/07\n"
-            "               → read_email(filter='after:2026/07/07 before:2026/07/08 -in:spam -in:trash', limit=10)\n"
-            "  Date range   'emails from 13-07-26 to 15-07-26'\n"
-            "               → read_email(filter='after:2026/07/13 before:2026/07/16 -in:spam -in:trash', limit=10)\n"
-            "  Month        'emails from July'\n"
-            "               → read_email(filter='after:2026/07/01 before:2026/08/01 -in:spam -in:trash', limit=10)\n\n"
-            "  LIMIT with date filter: always use limit=10 (date already narrows results).\n\n"
-            "CRITICAL — If read_email returns 0 emails or an empty list:\n"
-            "  → If NO date filter was used: call search_emails(query='in:inbox', max_results=10)\n"
-            "  → If a DATE filter was used: say 'No emails found for [that date].' DO NOT fall back to inbox.\n"
-            "  → Only say 'no emails found' after both attempts return 0 results (non-date case).\n\n"
+            "DATE REQUESTS — when user mentions any date, use the 'date' parameter on read_email.\n"
+            "  DO NOT build Gmail filters manually. DO NOT call current_time first.\n"
+            "  Just pass the date EXACTLY as the user typed it — the tool handles conversion.\n\n"
+            "  Single date:  'read my email from 14-07-26'\n"
+            "                → read_email(date='14-07-26', limit=10)\n"
+            "  Short format: 'emails from 7/7' or '7-7'\n"
+            "                → read_email(date='7/7', limit=10)\n"
+            "  Date range:   'emails from 13-07-26 to 15-07-26'\n"
+            "                → read_email(date='13-07-26', date_to='15-07-26', limit=10)\n\n"
+            "  ⚠️ Always use limit=10 for date requests.\n"
+            "  ⚠️ Never pass 'filter' when using 'date' — they are separate params.\n\n"
+            "CRITICAL — If read_email returns 0 emails:\n"
+            "  → If 'date' was used: report 'No emails found for that date.' DO NOT fall back to inbox.\n"
+            "  → If no date: call search_emails(query='in:inbox', max_results=10) as fallback.\n\n"
 
             "=== SEND EMAIL RULE ===\n"
             "NEVER call send_email unless the user explicitly says to send to someone.\n"

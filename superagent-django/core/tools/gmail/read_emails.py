@@ -88,10 +88,11 @@ class ReadEmailsTool(BaseTool):
     # ------------------------------------------------------------------
 
     def run(self, input_str: str) -> str:
-        requested, limit, query = self._parse_input(input_str)
+        requested, limit, query, date_used = self._parse_input(input_str)
         try:
             service = self._get_service()
-            return self._fetch_emails(service, limit, query, capped=(requested > 10))
+            return self._fetch_emails(service, limit, query,
+                                      capped=(requested > 10), date_used=date_used)
         except Exception as exc:
             error_msg = f"Gmail API error: {exc}"
             logger.error(error_msg)
@@ -102,8 +103,10 @@ class ReadEmailsTool(BaseTool):
             "name": self.name,
             "description": self.description,
             "parameters": {"type": "object", "properties": {
-                "limit":  {"type": "integer", "description": "Number of emails to fetch (default 1)"},
-                "filter": {"type": "string",  "description": "Gmail search filter. Default: '-in:spam -in:trash'. Use 'is:unread -in:spam -in:trash' only for unread."},
+                "limit":   {"type": "integer", "description": "Number of emails to fetch (default 1, max 10)"},
+                "date":    {"type": "string",  "description": "Fetch emails from a specific date. Pass EXACTLY what the user typed — any format works: '14-07-26', '7-7-26', '7/7', '14/07/2026', 'July 14'. The tool converts it automatically."},
+                "date_to": {"type": "string",  "description": "End date for a date range (inclusive). Same format flexibility as 'date'. Use together with 'date' for ranges like 13-07-26 to 15-07-26."},
+                "filter":  {"type": "string",  "description": "Gmail search filter for non-date queries. Default: '-in:spam -in:trash'. Use 'is:unread -in:spam -in:trash' for unread. Do NOT use this for date queries — use 'date' instead."},
             }},
         }}
 
@@ -120,19 +123,117 @@ class ReadEmailsTool(BaseTool):
         return self._service
 
     @staticmethod
-    def _parse_input(input_str) -> tuple[int, int, str]:
-        """Returns (requested_limit, capped_limit, query)."""
+    def _parse_date(date_str: str) -> "datetime | None":
+        """Parse any user date format into a datetime object.
+
+        Handles: DD-MM-YY, DD/MM/YY, D-M-YY, D-M-YYYY, DD/MM/YYYY,
+                 D-M (no year → current year), D/M, 'July 14', 'Jul 14 2026', etc.
+        Always treats ambiguous formats as DD-MM (international, not MM-DD).
+        """
+        from datetime import datetime
+        import re
+
+        date_str = date_str.strip()
+        now = datetime.now()
+
+        _MONTH_NAMES = {
+            "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+            "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+            "january": 1, "february": 2, "march": 3, "april": 4, "june": 6,
+            "july": 7, "august": 8, "september": 9, "october": 10,
+            "november": 11, "december": 12,
+        }
+
+        # "July 14", "14 July", "Jul 14 2026", "14 July 2026"
+        m = re.match(
+            r'^([a-zA-Z]+)\s+(\d{1,2})(?:\s+(\d{2,4}))?$|'
+            r'^(\d{1,2})\s+([a-zA-Z]+)(?:\s+(\d{2,4}))?$',
+            date_str
+        )
+        if m:
+            if m.group(1):  # "July 14 ..."
+                month = _MONTH_NAMES.get(m.group(1).lower())
+                day = int(m.group(2))
+                raw_year = m.group(3)
+            else:           # "14 July ..."
+                day = int(m.group(4))
+                month = _MONTH_NAMES.get(m.group(5).lower())
+                raw_year = m.group(6)
+            if month:
+                year = (2000 + int(raw_year)) if raw_year and len(raw_year) == 2 \
+                    else (int(raw_year) if raw_year else now.year)
+                try:
+                    return datetime(year, month, day)
+                except ValueError:
+                    pass
+
+        # Numeric formats: DD-MM-YYYY, DD/MM/YY, D-M, D/M, etc.
+        m = re.match(r'^(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?$', date_str)
+        if m:
+            day, month = int(m.group(1)), int(m.group(2))
+            raw_year = m.group(3)
+            year = now.year
+            if raw_year:
+                year = 2000 + int(raw_year) if len(raw_year) == 2 else int(raw_year)
+            try:
+                return datetime(year, month, day)
+            except ValueError:
+                # Might be MM-DD — try swapping
+                try:
+                    return datetime(year, day, month)
+                except ValueError:
+                    pass
+
+        logger.warning("ReadEmailsTool._parse_date: could not parse %r", date_str)
+        return None
+
+    @staticmethod
+    def _date_to_gmail_filter(date_str: str, date_to_str: str | None) -> tuple[str, bool]:
+        """Convert date string(s) to a Gmail after:/before: filter.
+        Returns (filter_string, success).
+        """
+        from datetime import timedelta
+        parsed_from = ReadEmailsTool._parse_date(date_str)
+        if not parsed_from:
+            return _DEFAULT_FILTER, False
+
+        if date_to_str:
+            parsed_to = ReadEmailsTool._parse_date(date_to_str)
+            if not parsed_to:
+                parsed_to = parsed_from
+        else:
+            parsed_to = parsed_from
+
+        after  = parsed_from.strftime("%Y/%m/%d")
+        before = (parsed_to + __import__("datetime").timedelta(days=1)).strftime("%Y/%m/%d")
+        return f"after:{after} before:{before} -in:spam -in:trash", True
+
+    @staticmethod
+    def _parse_input(input_str) -> tuple[int, int, str, bool]:
+        """Returns (requested_limit, capped_limit, query, date_was_used)."""
         try:
             data = input_str if isinstance(input_str, dict) else json.loads(input_str)
-            requested = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
-            # Hard cap: never fetch more than 10
-            limit = max(1, min(requested, 10))
-            query = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
-            return requested, limit, query
-        except Exception:
-            return _DEFAULT_LIMIT, _DEFAULT_LIMIT, _DEFAULT_FILTER
 
-    def _fetch_emails(self, service: Any, limit: int, query: str, capped: bool = False) -> str:
+            # --- Date params take priority over manual filter ---
+            date_str    = data.get("date", "")
+            date_to_str = data.get("date_to", data.get("date_from_to", ""))
+            date_used   = False
+
+            if date_str:
+                query, date_used = ReadEmailsTool._date_to_gmail_filter(date_str, date_to_str or None)
+                # Default limit=10 when date filter is used (date narrows results already)
+                default_limit = 10
+            else:
+                query = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
+                default_limit = _DEFAULT_LIMIT
+
+            requested = int(data.get("limit", data.get("max_results", default_limit)))
+            limit = max(1, min(requested, 10))
+            return requested, limit, query, date_used
+        except Exception:
+            return _DEFAULT_LIMIT, _DEFAULT_LIMIT, _DEFAULT_FILTER, False
+
+    def _fetch_emails(self, service: Any, limit: int, query: str, capped: bool = False, date_used: bool = False) -> str:
         result = (
             service.users()
             .messages()
@@ -142,14 +243,14 @@ class ReadEmailsTool(BaseTool):
         messages = result.get("messages", [])
 
         if not messages:
-            return json.dumps({
-                "emails": [],
-                "count": 0,
-                "note": (
+            if date_used:
+                note = f"No emails found for that date (filter: {query})."
+            else:
+                note = (
                     f"No emails matched filter '{query}'. "
                     "Try search_emails with a different query — do NOT tell the user the inbox is empty."
-                ),
-            })
+                )
+            return json.dumps({"emails": [], "count": 0, "note": note})
 
         emails = []
         for msg_ref in messages:

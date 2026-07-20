@@ -324,7 +324,14 @@ def _clear_cached_emails(workspace_id) -> None:
 
 class ReadEmailTool(BaseTool):
     name = "read_email"
-    description = "Fetch emails from Gmail. Input JSON: {\"limit\": 1, \"filter\": \"-in:spam -in:trash\"}. Default limit is 1. Only use 'is:unread' filter when user explicitly asks for unread. Returns {\"emails\":[...], \"count\":N}."
+    description = (
+        "Fetch emails from Gmail. "
+        "For date-based requests use the 'date' param — pass EXACTLY what the user typed (e.g. '14-07-26', '7/7', 'July 14'). "
+        "The tool converts any format automatically. "
+        "For date ranges also pass 'date_to'. "
+        "For non-date queries use 'filter'. "
+        "Returns {\"emails\":[...], \"count\":N}."
+    )
     zone = ToolZone.GREEN
 
     def __init__(self, workspace_id=None):
@@ -360,8 +367,10 @@ class ReadEmailTool(BaseTool):
             "name": self.name, "description": self.description,
             "parameters": {"type": "object",
                 "properties": {
-                    "limit": {"type": "integer"},
-                    "filter": {"type": "string"},
+                    "limit":   {"type": "integer", "description": "Number of emails (default 1, max 10)"},
+                    "date":    {"type": "string",  "description": "Fetch emails from this date. Pass exactly what the user typed — any format: '14-07-26', '7/7', '7-7-26', 'July 14'. Converted automatically."},
+                    "date_to": {"type": "string",  "description": "End date for a range (inclusive). Same format as 'date'."},
+                    "filter":  {"type": "string",  "description": "Gmail search filter for non-date queries. Default: '-in:spam -in:trash'."},
                 }},
         }}
 
