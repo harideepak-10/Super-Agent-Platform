@@ -196,6 +196,7 @@ class BaseAgent:
         self,
         task: str,
         initial_messages: list[dict[str, Any]] | None = None,
+        force_first_tool: bool = True,
     ) -> str:
         """Execute the agent loop for the given task.
 
@@ -263,8 +264,9 @@ class BaseAgent:
                 self._log("llm_called", {"step": self._step, "message_count": len(messages)})
                 # Force a tool call when no tool has run yet — prevents the model
                 # from skipping straight to a hallucinated final answer.
+                # Disabled for conversational follow-ups (force_first_tool=False).
                 tools_used_so_far = any(m.get("role") == "tool" for m in messages)
-                force_tool = bool(tool_schemas) and not tools_used_so_far
+                force_tool = bool(tool_schemas) and not tools_used_so_far and force_first_tool
                 response = self._llm.send(messages, tool_schemas, force_tool=force_tool)
                 self._cost_so_far += response.get("cost_eur", 0.0)
 
@@ -278,7 +280,7 @@ class BaseAgent:
                     tools_used_so_far = any(
                         m.get("role") == "tool" for m in messages
                     )
-                    if tool_schemas and not tools_used_so_far and self._hallucination_reprompts < 3:
+                    if tool_schemas and not tools_used_so_far and self._hallucination_reprompts < 3 and force_first_tool:
                         self._hallucination_reprompts += 1
                         self._log(
                             "hallucination_guard",

@@ -1,9 +1,17 @@
 #!/bin/bash
-# Start Celery worker in background
-celery -A superagent worker --loglevel=info --concurrency 1 &
+# Celery worker — auto-restarts if it crashes
+(while true; do
+    celery -A superagent worker --loglevel=info --concurrency 1
+    echo "worker died, restarting in 5s"
+    sleep 5
+done) &
 
-# Start Celery beat (scheduled tasks) in background
-celery -A superagent beat --loglevel=info &
+# Celery beat — auto-restarts if it crashes
+(while true; do
+    celery -A superagent beat --loglevel=info
+    echo "beat died, restarting in 5s"
+    sleep 5
+done) &
 
-# Start gunicorn in foreground (keeps the service alive)
-gunicorn superagent.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+# Gunicorn in foreground (keeps the service alive)
+gunicorn superagent.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --timeout 120

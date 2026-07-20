@@ -2837,7 +2837,7 @@ def _build_conversation_history(task, react_agent) -> list[dict] | None:
             agent=task.agent,
             workspace=task.workspace,
             status=_Task.Status.COMPLETED,
-        ).exclude(id=task.id).order_by("created_at")
+        ).exclude(id=task.id).order_by("created_at")[-6:]
     )
 
     if not previous:
@@ -2853,7 +2853,8 @@ def _build_conversation_history(task, react_agent) -> list[dict] | None:
     for prev in previous:
         messages.append({"role": "user", "content": prev.prompt})
         if prev.result:
-            messages.append({"role": "assistant", "content": prev.result})
+            result_text = prev.result if len(prev.result) <= 1500 else prev.result[:1500] + "…"
+            messages.append({"role": "assistant", "content": result_text})
 
     # Add current task prompt as the final user message.
     # base_agent skips adding it when initial_messages is provided,
@@ -2941,7 +2942,7 @@ def run_agent_task(self, task_id: str):
         # ── Build conversation history if this task belongs to a chat session ─
         initial_messages = _build_conversation_history(task, react_agent)
         if initial_messages:
-            result = react_agent.run(task=task.prompt, initial_messages=initial_messages)
+            result = react_agent.run(task=task.prompt, initial_messages=initial_messages, force_first_tool=False)
         else:
             result = react_agent.run(task.prompt)
 
@@ -2953,7 +2954,10 @@ def run_agent_task(self, task_id: str):
             _logger.warning("run_agent_task: no tool called on first run — retrying task=%s", task_id)
             react_agent._step = 0
             react_agent.audit_log = []
-            result = react_agent.run(task.prompt)
+            if initial_messages:
+                result = react_agent.run(task=task.prompt, initial_messages=initial_messages, force_first_tool=False)
+            else:
+                result = react_agent.run(task.prompt)
             _tool_called = any(
                 e.get("event_type") == "tool_called" for e in react_agent.audit_log
             )
