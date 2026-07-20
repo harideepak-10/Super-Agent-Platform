@@ -9,9 +9,11 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from core.tools.base_tool import BaseTool, ToolZone
 
@@ -31,53 +33,76 @@ _MONTH_MAP: dict[str, int] = {
 }
 
 
+def _local_now() -> datetime:
+    """Return the current time in the configured local timezone (default: Asia/Kolkata)."""
+    tz = ZoneInfo(os.getenv("EMAIL_DATE_TZ", "Asia/Kolkata"))
+    return datetime.now(tz)
+
+
 def _parse_date(date_str: str) -> datetime | None:
-    """Parse any common date string into a datetime.
+    """Parse any common date string into a timezone-aware datetime (midnight, local tz).
 
     Handles:
-      D-M   DD-MM-YY   DD-MM-YYYY
-      D/M   DD/MM/YY   DD/MM/YYYY
-      "July 14"  "14 July"  "Jul 14 2026"
+      Relative: "today", "now", "yesterday", "day before yesterday", "N days ago"
+      Month:    "July 14"  "14 July"  "Jul 14 2026"
+      Numeric:  D-M  DD-MM-YY  DD-MM-YYYY  (also / and . separators)
     Always treats numeric formats as DD-MM (not MM-DD).
     Returns None if the string cannot be parsed.
     """
-    s = date_str.strip()
-    now = datetime.now()
+    s = date_str.lower().strip()
+    # Strip noise words so "yesterday's emails" → "yesterday"
+    s = re.sub(r"'s\b|\bemails?\b|\bmails?\b", "", s).strip()
+
+    # Midnight in the user's local timezone — all results are built from this
+    local_now = _local_now()
+    midnight  = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # --- Relative words ---
+    if s in ("today", "now"):
+        return midnight
+    if s == "yesterday":
+        return midnight - timedelta(days=1)
+    if s in ("day before yesterday", "the day before yesterday"):
+        return midnight - timedelta(days=2)
+    mo = re.match(r'^(\d{1,3})\s+days?\s+ago$', s)
+    if mo:
+        return midnight - timedelta(days=int(mo.group(1)))
 
     def _year(raw: str | None) -> int:
         if not raw:
-            return now.year
+            return local_now.year
         n = int(raw)
         return 2000 + n if n < 100 else n
 
-    def _make(y: int, m: int, d: int) -> datetime | None:
+    def _make(y: int, month: int, d: int) -> datetime | None:
         try:
-            return datetime(y, m, d)
+            return midnight.replace(year=y, month=month, day=d)
         except ValueError:
             return None
 
     # --- "July 14", "14 July", "Jul 14 2026", "14 July 2026" ---
-    m = re.match(r'^([A-Za-z]+)\s+(\d{1,2})(?:\s+(\d{2,4}))?$', s)
-    if m:
-        month = _MONTH_MAP.get(m.group(1).lower())
+    mo = re.match(r'^([a-z]+)\s+(\d{1,2})(?:\s+(\d{2,4}))?$', s)
+    if mo:
+        month = _MONTH_MAP.get(mo.group(1))
         if month:
-            result = _make(_year(m.group(3)), month, int(m.group(2)))
+            result = _make(_year(mo.group(3)), month, int(mo.group(2)))
             if result:
                 return result
 
-    m = re.match(r'^(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{2,4}))?$', s)
-    if m:
-        month = _MONTH_MAP.get(m.group(2).lower())
+    mo = re.match(r'^(\d{1,2})\s+([a-z]+)(?:\s+(\d{2,4}))?$', s)
+    if mo:
+        month = _MONTH_MAP.get(mo.group(2))
         if month:
-            result = _make(_year(m.group(3)), month, int(m.group(1)))
+            result = _make(_year(mo.group(3)), month, int(mo.group(1)))
             if result:
                 return result
 
-    # --- Numeric: D-M, D/M, DD-MM-YY, DD/MM/YYYY, etc. ---
-    m = re.match(r'^(\d{1,2})[-/](\d{1,2})(?:[-/](\d{2,4}))?$', s)
-    if m:
-        d_val, m_val = int(m.group(1)), int(m.group(2))
-        y_val = _year(m.group(3))
+    # --- Numeric: D-M, D/M, D.M, DD-MM-YY, DD/MM/YYYY, DD.MM.YYYY, etc. ---
+    mo = re.match(r'^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?$', s)
+    if mo:
+        d_val  = int(mo.group(1))
+        m_val  = int(mo.group(2))
+        y_val  = _year(mo.group(3))
         result = _make(y_val, m_val, d_val)   # DD-MM first
         if result:
             return result
@@ -89,27 +114,24 @@ def _parse_date(date_str: str) -> datetime | None:
     return None
 
 
-def _build_gmail_filter(date_str: str, date_to_str: str | None) -> tuple[str, bool]:
-    """Convert date string(s) to a Gmail after:/before: filter.
+def _build_gmail_filter(date_str: str, date_to_str: str | None) -> tuple[str | None, bool]:
+    """Convert date string(s) to a Gmail after:/before: filter using exact epoch timestamps.
 
-    Returns (filter_string, success).
-    Falls back to default filter with success=False on parse failure.
+    Epoch-based filters are timezone-exact — no day-buffer needed.
+    Returns (filter_string, True) on success, (None, False) on parse failure.
     """
     parsed_from = _parse_date(date_str)
     if not parsed_from:
         logger.warning("read_emails._build_gmail_filter: failed to parse date=%r", date_str)
-        return _DEFAULT_FILTER, False
+        return None, False
 
     parsed_to = _parse_date(date_to_str) if date_to_str else None
-    if parsed_to is None:
+    if parsed_to is None or parsed_to < parsed_from:
         parsed_to = parsed_from
 
-    # Shift 1 day back on `after` to handle timezone offsets (e.g. IST +5:30).
-    # Gmail date filters are UTC — an email at 2am IST on July 7 is UTC July 6,
-    # so without this buffer that email is missed.
-    after        = (parsed_from - timedelta(days=1)).strftime("%Y/%m/%d")
-    before       = (parsed_to + timedelta(days=1)).strftime("%Y/%m/%d")
-    gmail_filter = f"after:{after} before:{before} -in:spam -in:trash"
+    after_epoch  = int(parsed_from.timestamp())
+    before_epoch = int((parsed_to + timedelta(days=1)).timestamp())
+    gmail_filter = f"after:{after_epoch} before:{before_epoch} -in:spam -in:trash"
     logger.info("read_emails._build_gmail_filter: %s", gmail_filter)
     return gmail_filter, True
 
@@ -156,6 +178,20 @@ class ReadEmailsTool(BaseTool):
         logger.info("read_emails.run: input=%r", input_str)
         requested, limit, query, date_used = self._parse_input(input_str)
         logger.info("read_emails.run: limit=%d  query=%r  date_used=%s", limit, query, date_used)
+
+        if isinstance(query, str) and query.startswith("__DATE_PARSE_ERROR__:"):
+            bad_date = query[len("__DATE_PARSE_ERROR__:"):]
+            logger.warning("read_emails.run: unrecognised date %r — returning error", bad_date)
+            return json.dumps({
+                "error": (
+                    f"Could not understand the date '{bad_date}'. "
+                    "Ask the user to give the date like 'yesterday', 'today', '2 days ago', "
+                    "'July 14', or '14-07-2026'."
+                ),
+                "emails": [],
+                "count": 0,
+            })
+
         try:
             service = self._get_service()
             return self._fetch_emails(service, limit, query,
@@ -218,6 +254,8 @@ class ReadEmailsTool(BaseTool):
 
             if date_str:
                 query, date_used = _build_gmail_filter(date_str, date_to_str or None)
+                if query is None:
+                    query = f"__DATE_PARSE_ERROR__:{date_str}"
                 # Always fetch 10 for date queries — ignore whatever limit the LLM passed.
                 # The LLM defaults to limit=1 from the general description but date searches
                 # need the full window to avoid missing emails.

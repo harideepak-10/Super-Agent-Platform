@@ -326,8 +326,9 @@ class ReadEmailTool(BaseTool):
     name = "read_email"
     description = (
         "Fetch emails from Gmail. "
-        "For date-based requests use the 'date' param — pass EXACTLY what the user typed (e.g. '14-07-26', '7/7', 'July 14'). "
-        "The tool converts any format automatically. "
+        "For date-based requests use the 'date' param — pass EXACTLY what the user typed. "
+        "Supports relative words ('yesterday', 'today', '2 days ago') and absolute formats "
+        "('14-07-26', '7/7', '7.7', 'July 14'). The tool converts any format automatically. "
         "For date ranges also pass 'date_to'. "
         "For non-date queries use 'filter'. "
         "Returns {\"emails\":[...], \"count\":N}."
@@ -368,7 +369,7 @@ class ReadEmailTool(BaseTool):
             "parameters": {"type": "object",
                 "properties": {
                     "limit":   {"type": "integer", "description": "Number of emails (default 1, max 10)"},
-                    "date":    {"type": "string",  "description": "Fetch emails from this date. Pass exactly what the user typed — any format: '14-07-26', '7/7', '7-7-26', 'July 14'. Converted automatically."},
+                    "date":    {"type": "string",  "description": "Fetch emails from this date. Pass exactly what the user typed — any format: 'yesterday', 'today', '2 days ago', '14-07-26', '7/7', '7.7', 'July 14'. Converted automatically."},
                     "date_to": {"type": "string",  "description": "End date for a range (inclusive). Same format as 'date'."},
                     "filter":  {"type": "string",  "description": "Gmail search filter for non-date queries. Default: '-in:spam -in:trash'."},
                 }},
