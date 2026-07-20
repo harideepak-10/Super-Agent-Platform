@@ -2368,7 +2368,7 @@ def _task_actually_failed(result: str, audit_log: list) -> tuple[bool, str]:
             return True, f"Task incomplete: {phrase}"
 
     # 2. Determine whether at least one tool call succeeded
-    tool_results = [e for e in audit_log if e.get("event") == "tool_result"]
+    tool_results = [e for e in audit_log if e.get("event_type") == "tool_result"]
     successful = [
         r for r in tool_results
         if "error" not in str(r.get("details", {}).get("result", "")).lower()
@@ -2382,7 +2382,7 @@ def _task_actually_failed(result: str, audit_log: list) -> tuple[bool, str]:
                 return True, f"Task incomplete: {phrase}"
 
     # 4. Check if ALL tool calls errored (no successful tool result)
-    tool_calls = [e for e in audit_log if e.get("event") == "tool_called"]
+    tool_calls = [e for e in audit_log if e.get("event_type") == "tool_called"]
     if tool_calls and tool_results and not successful:
         return True, "All tool calls returned errors"
 
