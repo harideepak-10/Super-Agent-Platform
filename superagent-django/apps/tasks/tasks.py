@@ -2344,10 +2344,10 @@ _HIGH_ZONE_TOOLS = {
 # =============================================================================
 
 # Strict phrases — always a failure regardless of tool success
+# Keep these SPECIFIC — generic phrases like "not connected" can appear in email content
 _FAILURE_PHRASES_STRICT = [
-    "not connected", "gmail is not connected", "drive is not connected",
+    "gmail is not connected", "drive is not connected",
     "please go to integrations", "token has expired", "authentication failed",
-    "rate limit", "temporarily busy",
 ]
 
 # Broad phrases — only checked when NO tool succeeded (avoids false positives from email content)
@@ -2355,6 +2355,7 @@ _FAILURE_PHRASES_BROAD = [
     "not connect", "no files found", "no emails found", "no events found",
     "no results", "0 results", "no email address", "missing email", "invalid email",
     "could not complete", "unable to complete", "an error occurred", "something went wrong",
+    "rate limit", "temporarily busy",
 ]
 
 

@@ -724,7 +724,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     10,
+        "version":     11,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -765,6 +765,9 @@ _AGENT_TEMPLATES = [
             "translate_document",
             # Save
             "upload_to_drive",
+            # Utility
+            "current_time",
+            "web_search",
         ],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
@@ -839,7 +842,6 @@ _AGENT_TEMPLATES = [
             "  compare_documents  — diff two file versions\n"
             "  translate_document — translate content to another language\n"
             "  upload_to_drive    — upload file to Google Drive (GREEN — auto, no approval needed)\n"
-            "  calculator         — compute totals, percentages, date differences\n"
             "  current_time       — today's date and time\n"
             "  web_search         — find supporting data or references"
         ),
