@@ -218,14 +218,16 @@ class ReadEmailsTool(BaseTool):
 
             if date_str:
                 query, date_used = _build_gmail_filter(date_str, date_to_str or None)
-                default_limit    = 10
+                # Always fetch 10 for date queries — ignore whatever limit the LLM passed.
+                # The LLM defaults to limit=1 from the general description but date searches
+                # need the full window to avoid missing emails.
+                requested = 10
+                limit     = 10
             else:
                 query         = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
                 date_used     = False
-                default_limit = _DEFAULT_LIMIT
-
-            requested = int(data.get("limit", data.get("max_results", default_limit)))
-            limit     = max(1, min(requested, 10))
+                requested = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
+                limit     = max(1, min(requested, 10))
             return requested, limit, query, date_used
 
         except Exception as exc:

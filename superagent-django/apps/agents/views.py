@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     33,
+        "version":     34,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -690,9 +690,12 @@ _AGENT_TEMPLATES = [
             "                → read_email(date='13-07-26', date_to='15-07-26', limit=10)\n\n"
             "  ⚠️ Always use limit=10 for date requests.\n"
             "  ⚠️ Never pass 'filter' when using 'date' — they are separate params.\n\n"
-            "CRITICAL — If read_email returns 0 emails:\n"
-            "  → If 'date' was used: report 'No emails found for that date.' DO NOT fall back to inbox.\n"
-            "  → If no date: call search_emails(query='in:inbox', max_results=10) as fallback.\n\n"
+            "CRITICAL — If read_email returns 0 emails and you passed a 'date' param:\n"
+            "  STOP IMMEDIATELY. Do NOT call search_emails. Do NOT call any other tool.\n"
+            "  Reply: 'No emails found for that date.' That is your entire response.\n"
+            "  Showing inbox emails when a date was requested is WRONG — it misleads the user.\n\n"
+            "If read_email returns 0 emails and NO date param was used:\n"
+            "  → call search_emails(query='in:inbox', max_results=10) as fallback.\n\n"
 
             "=== SEND EMAIL RULE ===\n"
             "NEVER call send_email unless the user explicitly says to send to someone.\n"
