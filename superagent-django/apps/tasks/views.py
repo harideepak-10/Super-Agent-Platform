@@ -224,6 +224,8 @@ def task_create(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    conversation_id = serializer.validated_data.get("conversation_id")
+
     task = Task.objects.create(
         workspace=workspace,
         agent=agent,
@@ -231,6 +233,7 @@ def task_create(request):
         prompt=prompt,
         priority=priority,
         status=Task.Status.QUEUED,
+        conversation_id=conversation_id,
     )
 
     _run_in_thread(run_agent_task, str(task.id))

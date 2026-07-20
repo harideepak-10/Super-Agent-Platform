@@ -27,6 +27,11 @@ class Task(models.Model):
         ROUTINE = "routine", "Routine"
         URGENT  = "urgent",  "Urgent"
 
+    # Conversation threading — tasks sharing the same conversation_id form a chat session.
+    # Frontend generates a UUID for a new chat and reuses it for follow-ups.
+    # Null = standalone task (no conversation context).
+    conversation_id = models.UUIDField(null=True, blank=True, db_index=True)
+
     prompt    = models.TextField()
     priority  = models.CharField(max_length=10, choices=Priority.choices, default=Priority.ROUTINE)
     status    = models.CharField(max_length=30, choices=Status.choices, default=Status.QUEUED)

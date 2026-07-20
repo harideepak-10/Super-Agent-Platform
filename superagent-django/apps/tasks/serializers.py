@@ -27,6 +27,7 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             "id", "workspace", "agent", "agent_name", "created_by", "created_by_email",
+            "conversation_id",
             "prompt", "priority", "status", "result", "error_message",
             "steps_taken", "total_steps_estimate", "total_tokens", "cost_eur",
             "progress_percent", "deliverables", "approval_id",
@@ -67,10 +68,11 @@ class TaskSerializer(serializers.ModelSerializer):
 
 
 class CreateTaskSerializer(serializers.Serializer):
-    prompt    = serializers.CharField(max_length=500)
-    agent_id  = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    agent     = serializers.CharField(required=False, allow_null=True, allow_blank=True)  # alias for agent_id
-    priority  = serializers.ChoiceField(choices=["routine", "urgent"], default="routine")
+    prompt          = serializers.CharField(max_length=500)
+    agent_id        = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    agent           = serializers.CharField(required=False, allow_null=True, allow_blank=True)  # alias for agent_id
+    priority        = serializers.ChoiceField(choices=["routine", "urgent"], default="routine")
+    conversation_id = serializers.UUIDField(required=False, allow_null=True)
 
 
 class TaskListSerializer(serializers.ModelSerializer):

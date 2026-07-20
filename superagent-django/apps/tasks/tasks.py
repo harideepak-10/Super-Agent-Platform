@@ -2814,6 +2814,60 @@ def send_scheduled_email(workspace_id: str, to: str, subject: str, body: str, cc
 
 
 # =============================================================================
+# CONVERSATION HISTORY BUILDER
+# =============================================================================
+
+def _build_conversation_history(task, react_agent) -> list[dict] | None:
+    """Return a pre-built messages list for multi-turn conversation tasks.
+
+    If the task has a conversation_id, fetches all previous completed tasks
+    in the same conversation (same agent, same workspace) and builds the full
+    message history so the LLM has context of prior turns.
+
+    Returns None if this is a standalone task (no conversation_id or first turn).
+    """
+    from .models import Task as _Task
+
+    if not task.conversation_id:
+        return None
+
+    previous = list(
+        _Task.objects.filter(
+            conversation_id=task.conversation_id,
+            agent=task.agent,
+            workspace=task.workspace,
+            status=_Task.Status.COMPLETED,
+        ).exclude(id=task.id).order_by("created_at")
+    )
+
+    if not previous:
+        return None  # first turn — no history yet
+
+    # Build messages: [system, user, assistant, user, assistant, ..., user(current)]
+    messages: list[dict] = []
+
+    system_prompt = react_agent._system_prompt()
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+
+    for prev in previous:
+        messages.append({"role": "user", "content": prev.prompt})
+        if prev.result:
+            messages.append({"role": "assistant", "content": prev.result})
+
+    # Add current task prompt as the final user message.
+    # base_agent skips adding it when initial_messages is provided,
+    # so we must include it explicitly here.
+    messages.append({"role": "user", "content": task.prompt})
+
+    _logger.info(
+        "_build_conversation_history: task=%s conversation=%s prior_turns=%d",
+        task.id, task.conversation_id, len(previous),
+    )
+    return messages
+
+
+# =============================================================================
 # CELERY TASK: run_agent_task
 # =============================================================================
 
@@ -2883,7 +2937,13 @@ def run_agent_task(self, task_id: str):
     try:
         import time as _time
         _run_t0 = _time.monotonic()
-        result = react_agent.run(task.prompt)
+
+        # ── Build conversation history if this task belongs to a chat session ─
+        initial_messages = _build_conversation_history(task, react_agent)
+        if initial_messages:
+            result = react_agent.run(task=task.prompt, initial_messages=initial_messages)
+        else:
+            result = react_agent.run(task.prompt)
 
         # Safety net: if no tool was called at all, retry once (skip if first run was slow)
         _tool_called = any(

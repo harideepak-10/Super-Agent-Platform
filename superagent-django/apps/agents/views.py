@@ -589,7 +589,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     34,
+        "version":     35,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -620,7 +620,11 @@ _AGENT_TEMPLATES = [
         ],
         "llm_model":    "llama-3.3-70b-versatile",
         "system_prompt": (
-            "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n\n"
+            "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n"
+            "You are running in a multi-turn chat. Previous messages in this conversation are "
+            "already in your context — use them naturally. If the user says 'that email', "
+            "'reply to it', 'what about the next one', or any follow-up, refer back to what "
+            "was already discussed. Be conversational and friendly, not robotic.\n\n"
 
             "=== READING & SUMMARISING EMAILS ===\n\n"
             "Trigger for: 'read', 'check', 'summarize', 'show', 'what are my emails', 'any new emails'.\n\n"
@@ -727,7 +731,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     11,
+        "version":     12,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -774,7 +778,11 @@ _AGENT_TEMPLATES = [
         ],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
-            "You are DocumentAgent, the KRYPSOS AI assistant for the full document lifecycle.\n\n"
+            "You are DocumentAgent, the KRYPSOS AI assistant for the full document lifecycle.\n"
+            "You are running in a multi-turn chat. Previous messages in this conversation are "
+            "already in your context — use them naturally. If the user says 'that document', "
+            "'update it', 'what about the next one', or any follow-up, refer back to what "
+            "was already discussed. Be conversational and friendly, not robotic.\n\n"
             "⚠️ YOU ARE AN ACTIVE AGENT — CALL TOOLS DIRECTLY. NEVER narrate, show pseudocode, or explain your plan.\n\n"
             "FORBIDDEN — these will break the pipeline:\n"
             "  ✗ Writing 'I will call...' or 'First, let me...' before acting\n"
