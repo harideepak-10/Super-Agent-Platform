@@ -168,6 +168,8 @@ TRANSLATE task (user says: "translate [Drive file] to [language]", even if they 
 2. For multiple files (formats=[...]), call upload_to_drive once per file_path
 3. NEVER call generate_content for summarize-only tasks — return the summary text directly
 4. For file creation, call generate_content ONCE — it creates the file automatically
+   ⚠️  EXCEPTION: If the user asked to TRANSLATE a document, translate_document already outputs the Word .docx.
+       DO NOT call generate_content after translate_document — it will overwrite the real translation with placeholder content.
 5. If Drive is not connected, skip upload_to_drive and share the local file_path instead
 6. Always pass file_path (not filename) to upload_to_drive
 7. Use EXACT file_path returned by tools — never modify or trim it

@@ -43,11 +43,16 @@ class GenerateContentTool(BaseTool):
 
     name: str = "generate_content"
     description: str = (
-        "Generate document content AND automatically create the PDF file in one step. "
+        "Generate document content AND automatically create one or more files in one step. "
         "Input JSON: {\"title\": \"...\", \"doc_type\": \"report|summary|proposal|letter|table\", "
-        "\"prompt\": \"...\", \"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
-        "Returns file_path of the created PDF. Pass file_path to upload_to_drive to save to Google Drive. "
-        "Do NOT call create_pdf separately — this tool handles everything."
+        "\"prompt\": \"...\", "
+        "\"output_format\": \"pdf|docx|pptx\" (single format, default pdf), "
+        "\"formats\": [\"pptx\", \"docx\"] (multiple formats — content generated ONCE, all files created), "
+        "\"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
+        "Use formats=[\"pptx\",\"docx\"] when user wants BOTH PowerPoint AND Word. "
+        "Returns file_path (single) or files[] (multiple). "
+        "Do NOT call create_pdf, create_docx, or create_presentation separately — this tool handles everything. "
+        "Do NOT call this tool after translate_document — the translation IS already a complete Word .docx."
     )
     zone: ToolZone = ToolZone.GREEN
 
@@ -87,6 +92,16 @@ class GenerateContentTool(BaseTool):
         source_data = data.get("source_data", "")
         sections    = data.get("sections", [])
         max_points  = data.get("max_points", 5)
+        author      = data.get("author", "KRYPSOS Agent")
+
+        # Resolve the list of formats to produce
+        _valid = {"pdf", "docx", "pptx"}
+        raw_formats = data.get("formats", [])
+        if raw_formats and isinstance(raw_formats, list):
+            formats = [f.lower() for f in raw_formats if f.lower() in _valid]
+        else:
+            single = data.get("output_format", "pdf").lower()
+            formats = [single if single in _valid else "pdf"]
 
         if not prompt and not source_data:
             return json.dumps({"error": "Either 'prompt' or 'source_data' is required."})
@@ -94,7 +109,6 @@ class GenerateContentTool(BaseTool):
         type_instruction = self._DOC_TYPE_INSTRUCTIONS.get(
             doc_type, self._DOC_TYPE_INSTRUCTIONS["report"]
         )
-
         section_list = sections or self._default_sections(doc_type)
 
         # Build system + user prompt for content generation
@@ -113,47 +127,112 @@ class GenerateContentTool(BaseTool):
         user_msg_parts.append(f"Sections to write: {', '.join(section_list)}")
         user_msg = "\n\n".join(user_msg_parts)
 
-        # Call Groq directly to generate real content
+        # Generate content ONCE — reuse for all formats
         written_sections = self._call_llm(system_msg, user_msg, section_list)
 
-        # Automatically build the PDF/DOCX so the agent doesn't need a second tool call
-        file_result = self._auto_create_file(title, doc_type, written_sections, data.get("author", "KRYPSOS Agent"))
+        # Create all requested files from the same content
+        created_files = []
+        for fmt in formats:
+            file_result = self._auto_create_file(title, doc_type, written_sections, author, fmt)
+            if file_result.get("status") == "created":
+                created_files.append(file_result)
 
         result = {
             "title":    title,
             "doc_type": doc_type,
             "sections": written_sections,
         }
-        result.update(file_result)
+
+        if len(created_files) == 1:
+            # Single format — flat response (backward compatible)
+            result.update(created_files[0])
+        elif len(created_files) > 1:
+            # Multiple formats — return files list
+            result["files"] = created_files
+            result["status"] = "created"
+            result["note"] = (
+                f"{len(created_files)} files created: "
+                + ", ".join(f["filename"] for f in created_files)
+                + ". Pass each file_path to upload_to_drive to save to Google Drive."
+            )
+        else:
+            result["error"] = "No files could be created."
+
         return json.dumps(result, ensure_ascii=False)
 
-    def _auto_create_file(self, title: str, doc_type: str, sections: list, author: str) -> dict:
-        """Immediately build the output file so no second tool call is needed."""
+    def _auto_create_file(self, title: str, doc_type: str, sections: list, author: str, output_format: str = "pdf") -> dict:
+        """Immediately build the output file (PDF, DOCX, or PPTX) so no second tool call is needed."""
+        import json as _json
         try:
-            from core.tools.document.create_pdf import CreatePdfTool
-            import json as _json
-            payload = _json.dumps({"title": title, "sections": sections, "author": author})
-            raw = CreatePdfTool().run(payload)
-            result = _json.loads(raw)
-            if result.get("status") == "created":
-                return {
-                    "status":    "created",
-                    "file_path": result["file_path"],
-                    "filename":  result["filename"],
-                    "size_kb":   result["size_kb"],
-                    "format":    "pdf",
-                    "note": (
-                        f"PDF created at {result['file_path']}. "
-                        "Call upload_to_drive with this file_path to save it to Google Drive."
-                    ),
-                }
+            if output_format == "pptx":
+                from core.tools.document.create_presentation import CreatePresentationTool
+                slides = self._sections_to_slides(sections)
+                payload = _json.dumps({"title": title, "author": author, "slides": slides})
+                raw = CreatePresentationTool().run(payload)
+                result = _json.loads(raw)
+                if result.get("status") == "created":
+                    return {
+                        "status":    "created",
+                        "file_path": result["file_path"],
+                        "filename":  result["filename"],
+                        "slides":    result.get("slides", len(slides)),
+                        "format":    "pptx",
+                        "note": (
+                            f"PowerPoint created at {result['file_path']}. "
+                            "Call upload_to_drive with this file_path to save it to Google Drive."
+                        ),
+                    }
+            else:
+                payload = _json.dumps({"title": title, "sections": sections, "author": author})
+                if output_format == "docx":
+                    from core.tools.document.create_docx import CreateDocxTool
+                    raw = CreateDocxTool().run(payload)
+                else:
+                    from core.tools.document.create_pdf import CreatePdfTool
+                    raw = CreatePdfTool().run(payload)
+                result = _json.loads(raw)
+                if result.get("status") == "created":
+                    fmt = result.get("format", output_format)
+                    return {
+                        "status":    "created",
+                        "file_path": result["file_path"],
+                        "filename":  result["filename"],
+                        "size_kb":   result["size_kb"],
+                        "format":    fmt,
+                        "note": (
+                            f"{fmt.upper()} created at {result['file_path']}. "
+                            "Call upload_to_drive with this file_path to save it to Google Drive."
+                        ),
+                    }
         except Exception as exc:
-            return {"pdf_error": str(exc)}
+            return {"file_error": str(exc)}
         return {}
+
+    @staticmethod
+    def _sections_to_slides(sections: list) -> list:
+        """Convert generate_content sections → create_presentation slides format."""
+        import re
+        slides = []
+        for sec in sections:
+            heading = sec.get("heading", "Slide")
+            content = sec.get("content", "")
+            # Split content into bullet points (by sentence or newline)
+            raw_bullets = [b.strip() for b in re.split(r"\n|(?<=[.!?])\s+", content) if b.strip()]
+            # Keep bullets short — max 120 chars each, max 6 per slide
+            bullets = [b[:120] for b in raw_bullets if len(b) > 5][:6]
+            slides.append({
+                "title":   heading,
+                "content": content[:200],   # brief slide body text
+                "bullets": bullets,
+            })
+        return slides
 
     def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
         """Call Groq to generate actual section content. Falls back to stubs on error."""
+        import logging
         import os
+        import re
+        _log = logging.getLogger(__name__)
         try:
             from groq import Groq
             client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
@@ -168,16 +247,17 @@ class GenerateContentTool(BaseTool):
             )
             raw = completion.choices[0].message.content or ""
             # Extract JSON array from response
-            import re
             match = re.search(r"\[.*\]", raw, re.DOTALL)
             if match:
                 sections = json.loads(match.group())
                 if isinstance(sections, list) and sections:
                     return sections
-        except Exception:
-            pass
+            _log.warning("generate_content._call_llm: LLM returned no valid JSON array. raw=%r", raw[:200])
+        except Exception as exc:
+            _log.error("generate_content._call_llm: LLM call failed: %s", exc)
 
         # Fallback: return stub sections so create_pdf can still run
+        _log.warning("generate_content._call_llm: falling back to stub content for sections=%s", section_list)
         return [{"heading": h, "content": f"Content for {h}."} for h in section_list]
 
     @staticmethod
@@ -196,11 +276,15 @@ class GenerateContentTool(BaseTool):
             "name": self.name, "description": self.description,
             "parameters": {"type": "object",
                 "properties": {
-                    "title":       {"type": "string", "description": "Document title"},
-                    "doc_type":    {"type": "string", "enum": ["report", "summary", "proposal", "letter", "table"]},
-                    "prompt":      {"type": "string", "description": "What to write"},
-                    "source_data": {"type": "string", "description": "Optional raw content to base the doc on"},
-                    "sections":    {"type": "array",  "items": {"type": "string"}, "description": "Optional list of section headings"},
+                    "title":         {"type": "string", "description": "Document title"},
+                    "doc_type":      {"type": "string", "enum": ["report", "summary", "proposal", "letter", "table"]},
+                    "prompt":        {"type": "string", "description": "What to write"},
+                    "output_format": {"type": "string", "enum": ["pdf", "docx", "pptx"],
+                                      "description": "Single output format: 'pdf' (default), 'docx' for Word, 'pptx' for PowerPoint."},
+                    "formats":       {"type": "array", "items": {"type": "string", "enum": ["pdf", "docx", "pptx"]},
+                                      "description": "Multiple output formats in one call e.g. [\"pptx\", \"docx\"]. Content is generated once and all files are created."},
+                    "source_data":   {"type": "string", "description": "Optional raw content to base the doc on"},
+                    "sections":      {"type": "array",  "items": {"type": "string"}, "description": "Optional list of section headings"},
                 },
                 "required": ["title", "doc_type", "prompt"],
             },

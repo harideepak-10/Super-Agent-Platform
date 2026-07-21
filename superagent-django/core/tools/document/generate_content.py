@@ -51,7 +51,8 @@ class GenerateContentTool(BaseTool):
         "\"source_data\": \"...(optional)\", \"sections\": [...](optional)}. "
         "Use formats=[\"pptx\",\"docx\"] when user wants BOTH PowerPoint AND Word. "
         "Returns file_path (single) or files[] (multiple). "
-        "Do NOT call create_pdf, create_docx, or create_presentation separately — this tool handles everything."
+        "Do NOT call create_pdf, create_docx, or create_presentation separately — this tool handles everything. "
+        "Do NOT call this tool after translate_document — the translation IS already a complete Word .docx."
     )
     zone: ToolZone = ToolZone.GREEN
 
