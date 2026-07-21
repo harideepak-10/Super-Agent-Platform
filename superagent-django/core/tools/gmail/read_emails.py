@@ -138,9 +138,11 @@ def _build_gmail_filter(date_str: str, date_to_str: str | None) -> tuple[str | N
     if parsed_to is None or parsed_to < parsed_from:
         parsed_to = parsed_from
 
-    after_epoch  = int(parsed_from.timestamp())
-    before_epoch = int((parsed_to + timedelta(days=1)).timestamp())
-    gmail_filter = f"after:{after_epoch} before:{before_epoch} -in:spam -in:trash"
+    # Use YYYY/MM/DD format — officially supported by Gmail.
+    # parsed_from is already midnight in IST so strftime gives the correct local date.
+    after  = parsed_from.strftime("%Y/%m/%d")
+    before = (parsed_to + timedelta(days=1)).strftime("%Y/%m/%d")
+    gmail_filter = f"after:{after} before:{before} -in:spam -in:trash"
     logger.info("read_emails._build_gmail_filter: %s", gmail_filter)
     return gmail_filter, True
 
