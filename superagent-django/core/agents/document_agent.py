@@ -115,6 +115,17 @@ SUMMARIZE + CREATE task (user says: "summarize [Drive file] AND create a PPT/Wor
   Step 5 → upload_to_drive for EACH file_path returned
   Step 6 → Return summary text AND all drive_url(s).
 
+TRANSLATE task (user says: "translate [Drive file] to [language]", even if they also say "create a word doc"):
+  *** translate_document already outputs a .docx — NO generate_content needed ***
+  Step 1 → read_from_drive (action="list")
+  Step 2 → read_from_drive (action="download", file_id=<REAL id from step 1>)
+  Step 3 → translate_document (file_path=<path from step 2>, target_lang=<language code>)
+           ⚠️  The returned file_path IS the complete translated Word .docx. It is finished.
+  Step 4 → upload_to_drive (file_path=<translated file_path from step 3>)
+  Step 5 → Return the drive_url. STOP.
+  ✗ DO NOT call generate_content — translate_document already creates the Word .docx
+  ✗ DO NOT call create_docx — the translated file IS the final Word document
+
 ════════════════════════════════════════════════════════
 
 === READ TOOLS (GREEN — run automatically) ===
@@ -142,6 +153,7 @@ SUMMARIZE + CREATE task (user says: "summarize [Drive file] AND create a PPT/Wor
   translate_document — translate content to another language
                        target_lang codes: ta=Tamil, hi=Hindi, fr=French, de=German,
                        es=Spanish, ar=Arabic, zh=Chinese, ja=Japanese, pt=Portuguese, ru=Russian
+                       ⚠️  Output IS a complete Word .docx — do NOT call generate_content or create_docx after this
 
 === SAVE TOOL (GREEN — runs automatically after every file creation) ===
 

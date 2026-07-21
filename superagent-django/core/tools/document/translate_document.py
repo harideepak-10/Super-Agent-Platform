@@ -56,7 +56,9 @@ class TranslateDocumentTool(BaseTool):
         "Translate a document (PDF/DOCX/TXT) to another language. GREEN — runs automatically. "
         "Input JSON: {\"file_path\": \"/tmp/report.pdf\", \"target_lang\": \"ta\"} "
         "— language codes: ta=Tamil, hi=Hindi, fr=French, de=German, es=Spanish, ar=Arabic. "
-        "Returns translated file_path."
+        "IMPORTANT: The returned file_path IS the complete, ready-to-use translated Word document (.docx). "
+        "Do NOT call generate_content or create_docx after this — the translation IS the final Word doc. "
+        "If the user wants it saved to Drive, call upload_to_drive with the returned file_path."
     )
     zone: ToolZone = ToolZone.GREEN
 
