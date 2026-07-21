@@ -86,6 +86,29 @@ class GenerateContentTool(BaseTool):
         except (json.JSONDecodeError, TypeError):
             return json.dumps({"error": "Invalid input. Expected JSON."})
 
+        # ── Translation guard ─────────────────────────────────────────────────
+        # If translate_document ran successfully in this session (within the
+        # last 5 minutes), refuse and hand back the translation file path.
+        import time as _time
+        _breadcrumb = "/tmp/.krypsos_last_translation.json"
+        try:
+            if os.path.exists(_breadcrumb):
+                with open(_breadcrumb) as _f:
+                    _tr = json.load(_f)
+                if _time.time() - _tr.get("ts", 0) < 300:  # 5-minute window
+                    _tr_path = _tr.get("file_path", "")
+                    if _tr_path and os.path.exists(_tr_path):
+                        return json.dumps({
+                            "error": "Translation already complete — do not call generate_content.",
+                            "action": "call upload_to_drive with the translated file instead",
+                            "file_path": _tr_path,
+                            "filename": os.path.basename(_tr_path),
+                            "note": "Pass this file_path to upload_to_drive to save the translation to Google Drive.",
+                        }, ensure_ascii=False)
+        except Exception:
+            pass  # breadcrumb read failed — proceed normally
+        # ─────────────────────────────────────────────────────────────────────
+
         title       = data.get("title", "Document")
         doc_type    = data.get("doc_type", "report").lower()
         prompt      = data.get("prompt", "")

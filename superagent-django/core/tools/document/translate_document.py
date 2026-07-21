@@ -165,6 +165,15 @@ class TranslateDocumentTool(BaseTool):
             out_path   = self._save_output(translated, file_path, target_lang, out_format)
             word_count = len(translated.split())
 
+            # Write breadcrumb so generate_content can detect and refuse to overwrite this
+            import time as _time
+            try:
+                with open("/tmp/.krypsos_last_translation.json", "w") as _f:
+                    import json as _json
+                    _json.dump({"file_path": out_path, "ts": _time.time()}, _f)
+            except Exception:
+                pass
+
             logger.info("TranslateDocumentTool: %s → %s words=%d", file_path, target_lang, word_count)
             return json.dumps({
                 "status":      "translated",
