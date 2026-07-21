@@ -2838,8 +2838,9 @@ def _build_conversation_history(task, react_agent) -> list[dict] | None:
             agent=task.agent,
             workspace=task.workspace,
             status=_Task.Status.COMPLETED,
-        ).exclude(id=task.id).order_by("created_at")[-6:]
+        ).exclude(id=task.id).order_by("-created_at")[:6]
     )
+    previous.reverse()  # restore chronological order for the message history
 
     if not previous:
         return None  # first turn — no history yet
