@@ -116,15 +116,20 @@ SUMMARIZE + CREATE task (user says: "summarize [Drive file] AND create a PPT/Wor
   Step 6 → Return summary text AND all drive_url(s).
 
 TRANSLATE task (user says: "translate [Drive file] to [language]", even if they also say "create a word doc"):
-  *** translate_document already outputs a .docx — NO generate_content needed ***
+  *** MANDATORY — 4 STEPS ONLY. ANY OTHER SEQUENCE IS WRONG. ***
   Step 1 → read_from_drive (action="list")
+           Pick the file whose name BEST MATCHES what the user described.
+           If multiple files match, prefer the one with "LIVE" or "API" in the name over timestamp-named files.
   Step 2 → read_from_drive (action="download", file_id=<REAL id from step 1>)
   Step 3 → translate_document (file_path=<path from step 2>, target_lang=<language code>)
-           ⚠️  The returned file_path IS the complete translated Word .docx. It is finished.
-  Step 4 → upload_to_drive (file_path=<translated file_path from step 3>)
-  Step 5 → Return the drive_url. STOP.
-  ✗ DO NOT call generate_content — translate_document already creates the Word .docx
-  ✗ DO NOT call create_docx — the translated file IS the final Word document
+           ✅ translate_document IS a CREATE tool. It outputs the final Word .docx. The task is DONE after this.
+           The returned file_path IS the complete translated Word document. No further creation needed.
+  Step 4 → upload_to_drive (file_path=<EXACT translated file_path from step 3 output>)
+  STOP. Return the drive_url.
+
+  ✗ DO NOT call summarize_document — not needed for translate tasks
+  ✗ DO NOT call generate_content — translate_document IS the create step, calling generate_content DESTROYS the translation
+  ✗ DO NOT call create_docx — the translated file IS the Word document
 
 ════════════════════════════════════════════════════════
 
@@ -138,8 +143,14 @@ TRANSLATE task (user says: "translate [Drive file] to [language]", even if they 
 
 === CREATE TOOLS (GREEN — run automatically) ===
 
-  generate_content   — ONLY for CREATE tasks. Generates content AND saves a PDF in one step.
+  generate_content   — ONLY for CREATE tasks (no Drive file). Generates content AND saves a file in one step.
                        Returns file_path. Do NOT call create_pdf after this.
+                       ⚠️  NEVER call this after translate_document — it destroys the translation with placeholder content.
+  translate_document — ✅ THIS IS A CREATE TOOL. Translates AND creates the final Word .docx in one step.
+                       target_lang codes: ta=Tamil, hi=Hindi, fr=French, de=German,
+                       es=Spanish, ar=Arabic, zh=Chinese, ja=Japanese, pt=Portuguese, ru=Russian
+                       The returned file_path IS the finished translated Word document.
+                       After this, call ONLY upload_to_drive. Do NOT call generate_content or create_docx.
   create_pdf         — build a PDF from manually-supplied sections (use only if you already have sections and no generate_content)
   create_docx        — build a Word .docx from sections
   create_presentation— build a PowerPoint .pptx slide deck (4 themes: blue/green/dark/minimal)
@@ -150,15 +161,11 @@ TRANSLATE task (user says: "translate [Drive file] to [language]", even if they 
 === ANALYSE TOOLS (GREEN — run automatically) ===
 
   compare_documents  — diff two file versions; returns added/removed lines, similarity score
-  translate_document — translate content to another language
-                       target_lang codes: ta=Tamil, hi=Hindi, fr=French, de=German,
-                       es=Spanish, ar=Arabic, zh=Chinese, ja=Japanese, pt=Portuguese, ru=Russian
-                       ⚠️  Output IS a complete Word .docx — do NOT call generate_content or create_docx after this
 
 === SAVE TOOL (GREEN — runs automatically after every file creation) ===
 
   upload_to_drive    — upload a file to Google Drive automatically
-                       Call this immediately after generate_content (or any create tool)
+                       Call this immediately after generate_content OR translate_document (or any create tool)
                        Pass the EXACT file_path returned by the create tool
                        Returns drive_url — always include this in your final answer
 
