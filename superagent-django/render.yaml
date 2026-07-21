@@ -4,12 +4,14 @@ services:
     name: krypsos-api
     runtime: python
     rootDir: superagent-django
-    buildCommand: pip install -r requirements/production.txt && python manage.py migrate --noinput && python manage.py collectstatic --noinput
+    buildCommand: find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null; true && pip install -r requirements/production.txt && python manage.py migrate --noinput && python manage.py collectstatic --noinput
     startCommand: daphne -b 0.0.0.0 -p $PORT superagent.asgi:application
     healthCheckPath: /api/v1/auth/health/
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: superagent.settings.production
+      - key: PYTHONPYCACHEPREFIX
+        value: /tmp/pyc
       - key: PYTHONUNBUFFERED
         value: "1"
       - key: SECRET_KEY
@@ -36,7 +38,7 @@ services:
     runtime: python
     rootDir: superagent-django
     buildCommand: find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null; true && pip install -r requirements/production.txt
-    startCommand: celery -A superagent worker --loglevel=info --concurrency 2
+    startCommand: bash start.sh
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: superagent.settings.production

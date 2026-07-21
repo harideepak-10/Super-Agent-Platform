@@ -34,9 +34,18 @@ _MONTH_MAP: dict[str, int] = {
 
 
 def _local_now() -> datetime:
-    """Return the current time in the configured local timezone (default: Asia/Kolkata)."""
-    tz = ZoneInfo(os.getenv("EMAIL_DATE_TZ", "Asia/Kolkata"))
-    return datetime.now(tz)
+    """Return the current time in the configured local timezone (default: Asia/Kolkata).
+
+    Falls back to a fixed UTC+5:30 offset if the tzdata package is not installed
+    (common on minimal Linux containers like Render before tzdata is in requirements).
+    """
+    from datetime import timezone as _timezone
+    tz_name = os.getenv("EMAIL_DATE_TZ", "Asia/Kolkata")
+    try:
+        return datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        logger.warning("read_emails._local_now: ZoneInfo(%r) failed — falling back to UTC+5:30", tz_name)
+        return datetime.now(_timezone(timedelta(hours=5, minutes=30)))
 
 
 def _parse_date(date_str: str) -> datetime | None:
