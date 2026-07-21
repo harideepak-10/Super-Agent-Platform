@@ -2,10 +2,6 @@
 Read emails tool — fetches emails from Gmail and returns structured data.
 
 Zone: GREEN — runs automatically, no human approval required.
-
-Returns {"emails": [...], "count": N} always so the agent has a consistent
-structure to work with. Each email includes id, thread_id, subject, sender,
-to, date, body_preview, full_body, has_attachments, attachments.
 """
 
 from __future__ import annotations
@@ -13,69 +9,169 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import re
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_LIMIT        = 1
-_DEFAULT_FILTER       = "-in:spam -in:trash"   # ALL emails by default (read + unread)
-_BODY_PREVIEW_CHARS   = 200
-_FULL_BODY_MAX_CHARS  = 600                     # keep 10-email calls under 6000 TPM Groq limit
+_DEFAULT_LIMIT       = 1
+_DEFAULT_FILTER      = "-in:spam -in:trash"
+_BODY_PREVIEW_CHARS  = 200
+_FULL_BODY_MAX_CHARS = 600
+
+_MONTH_MAP: dict[str, int] = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5,  "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10,
+    "november": 11, "december": 12,
+}
+
+
+def _local_now() -> datetime:
+    """Return the current time in the configured local timezone (default: Asia/Kolkata).
+
+    Falls back to a fixed UTC+5:30 offset if the tzdata package is not installed
+    (common on minimal Linux containers like Render before tzdata is in requirements).
+    """
+    from datetime import timezone as _timezone
+    tz_name = os.getenv("EMAIL_DATE_TZ", "Asia/Kolkata")
+    try:
+        return datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        logger.warning("read_emails._local_now: ZoneInfo(%r) failed — falling back to UTC+5:30", tz_name)
+        return datetime.now(_timezone(timedelta(hours=5, minutes=30)))
+
+
+def _parse_date(date_str: str) -> datetime | None:
+    """Parse any common date string into a timezone-aware datetime (midnight, local tz).
+
+    Handles:
+      Relative: "today", "now", "yesterday", "day before yesterday", "N days ago"
+      Month:    "July 14"  "14 July"  "Jul 14 2026"
+      Numeric:  D-M  DD-MM-YY  DD-MM-YYYY  (also / and . separators)
+    Always treats numeric formats as DD-MM (not MM-DD).
+    Returns None if the string cannot be parsed.
+    """
+    s = date_str.lower().strip()
+    # Strip noise words so "yesterday's emails" → "yesterday"
+    s = re.sub(r"'s\b|\bemails?\b|\bmails?\b", "", s).strip()
+
+    # Midnight in the user's local timezone — all results are built from this
+    local_now = _local_now()
+    midnight  = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # --- Relative words ---
+    if s in ("today", "now"):
+        return midnight
+    if s == "yesterday":
+        return midnight - timedelta(days=1)
+    if s in ("day before yesterday", "the day before yesterday"):
+        return midnight - timedelta(days=2)
+    mo = re.match(r'^(\d{1,3})\s+days?\s+ago$', s)
+    if mo:
+        return midnight - timedelta(days=int(mo.group(1)))
+
+    def _year(raw: str | None) -> int:
+        if not raw:
+            return local_now.year
+        n = int(raw)
+        return 2000 + n if n < 100 else n
+
+    def _make(y: int, month: int, d: int) -> datetime | None:
+        try:
+            return midnight.replace(year=y, month=month, day=d)
+        except ValueError:
+            return None
+
+    # --- "July 14", "14 July", "Jul 14 2026", "14 July 2026" ---
+    mo = re.match(r'^([a-z]+)\s+(\d{1,2})(?:\s+(\d{2,4}))?$', s)
+    if mo:
+        month = _MONTH_MAP.get(mo.group(1))
+        if month:
+            result = _make(_year(mo.group(3)), month, int(mo.group(2)))
+            if result:
+                return result
+
+    mo = re.match(r'^(\d{1,2})\s+([a-z]+)(?:\s+(\d{2,4}))?$', s)
+    if mo:
+        month = _MONTH_MAP.get(mo.group(2))
+        if month:
+            result = _make(_year(mo.group(3)), month, int(mo.group(1)))
+            if result:
+                return result
+
+    # --- Numeric: D-M, D/M, D.M, DD-MM-YY, DD/MM/YYYY, DD.MM.YYYY, etc. ---
+    mo = re.match(r'^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{2,4}))?$', s)
+    if mo:
+        d_val  = int(mo.group(1))
+        m_val  = int(mo.group(2))
+        y_val  = _year(mo.group(3))
+        result = _make(y_val, m_val, d_val)   # DD-MM first
+        if result:
+            return result
+        result = _make(y_val, d_val, m_val)   # MM-DD fallback
+        if result:
+            return result
+
+    logger.warning("read_emails._parse_date: could not parse %r", date_str)
+    return None
+
+
+def _build_gmail_filter(date_str: str, date_to_str: str | None) -> tuple[str | None, bool]:
+    """Convert date string(s) to a Gmail after:/before: filter using exact epoch timestamps.
+
+    Epoch-based filters are timezone-exact — no day-buffer needed.
+    Returns (filter_string, True) on success, (None, False) on parse failure.
+    """
+    parsed_from = _parse_date(date_str)
+    if not parsed_from:
+        logger.warning("read_emails._build_gmail_filter: failed to parse date=%r", date_str)
+        return None, False
+
+    parsed_to = _parse_date(date_to_str) if date_to_str else None
+    if parsed_to is None or parsed_to < parsed_from:
+        parsed_to = parsed_from
+
+    after_epoch  = int(parsed_from.timestamp())
+    before_epoch = int((parsed_to + timedelta(days=1)).timestamp())
+    gmail_filter = f"after:{after_epoch} before:{before_epoch} -in:spam -in:trash"
+    logger.info("read_emails._build_gmail_filter: %s", gmail_filter)
+    return gmail_filter, True
 
 
 class ReadEmailsTool(BaseTool):
-    """Fetch emails from Gmail and return them as a structured JSON dict.
+    """Fetch emails from Gmail and return structured JSON.
 
-    Input format (JSON string)::
+    Input (JSON string or dict)::
 
-        {"limit": 5, "filter": "-in:spam -in:trash"}
-
-    filter defaults to ALL emails (read + unread). Only use "is:unread" when
-    the user explicitly asks for unread emails.
+        {"limit": 1}
+        {"date": "7-7", "limit": 10}
+        {"date": "13-07-26", "date_to": "15-07-26", "limit": 10}
+        {"filter": "is:unread -in:spam -in:trash", "limit": 5}
 
     Returns::
 
         {
-            "emails": [
-                {
-                    "id":              "<gmail_id>",
-                    "thread_id":       "<thread_id>",
-                    "subject":         "Invoice #1042",
-                    "sender":          "John Smith <john@company.com>",
-                    "sender_name":     "John Smith",
-                    "sender_email":    "john@company.com",
-                    "to":              "you@krypsos.tech",
-                    "date":            "Mon, 14 Jul 2026 10:30:00 +0530",
-                    "body_preview":    "Hi, please review the attached...",
-                    "full_body":       "Hi, please review the attached invoice...",
-                    "has_attachments": true,
-                    "attachments": [
-                        {
-                            "filename":      "invoice.pdf",
-                            "attachment_id": "ANGjdJ...",
-                            "message_id":    "<gmail_id>",
-                            "mime_type":     "application/pdf",
-                            "size_bytes":    49152
-                        }
-                    ]
-                }
-            ],
-            "count": 1
+            "emails": [...],
+            "count": N,
+            "note": "..."   (present only when relevant)
         }
     """
 
     name: str = "read_emails"
     description: str = (
         "Fetch emails from Gmail. "
-        "IMPORTANT: default limit is 1. Only pass a higher limit if the user explicitly asked for more emails. "
-        "Input JSON: {\"limit\": 1, \"filter\": \"-in:spam -in:trash\"}. "
-        "Only use 'is:unread' filter when the user explicitly asks for unread emails. "
-        "Returns {\"emails\": [...], \"count\": N}. "
-        "Each email has: id, thread_id, subject, sender, sender_name, sender_email, "
-        "to, date, body_preview, full_body, has_attachments, attachments[]."
+        "For date requests pass 'date' with exactly what the user typed — any format works. "
+        "For date ranges also pass 'date_to'. "
+        "For non-date queries use 'filter'. "
+        "Default limit is 1 unless user specifies more. "
+        "Returns {\"emails\": [...], \"count\": N}."
     )
     zone: ToolZone = ToolZone.GREEN
 
@@ -87,23 +183,60 @@ class ReadEmailsTool(BaseTool):
     # BaseTool interface
     # ------------------------------------------------------------------
 
-    def run(self, input_str: str) -> str:
-        limit, query = self._parse_input(input_str)
+    def run(self, input_str: Any) -> str:
+        logger.info("read_emails.run: input=%r", input_str)
+        requested, limit, query, date_used = self._parse_input(input_str)
+        logger.info("read_emails.run: limit=%d  query=%r  date_used=%s", limit, query, date_used)
+
+        if isinstance(query, str) and query.startswith("__DATE_PARSE_ERROR__:"):
+            bad_date = query[len("__DATE_PARSE_ERROR__:"):]
+            logger.warning("read_emails.run: unrecognised date %r — returning error", bad_date)
+            return json.dumps({
+                "error": (
+                    f"Could not understand the date '{bad_date}'. "
+                    "Ask the user to give the date like 'yesterday', 'today', '2 days ago', "
+                    "'July 14', or '14-07-2026'."
+                ),
+                "emails": [],
+                "count": 0,
+            })
+
         try:
             service = self._get_service()
-            return self._fetch_emails(service, limit, query)
+            return self._fetch_emails(service, limit, query,
+                                      capped=(requested > 10), date_used=date_used)
         except Exception as exc:
-            error_msg = f"Gmail API error: {exc}"
-            logger.error(error_msg)
-            return json.dumps({"error": error_msg, "emails": [], "count": 0})
+            logger.error("read_emails.run: Gmail API error: %s", exc)
+            return json.dumps({"error": f"Gmail API error: {exc}", "emails": [], "count": 0})
 
     def to_schema(self) -> dict:
         return {"type": "function", "function": {
             "name": self.name,
             "description": self.description,
             "parameters": {"type": "object", "properties": {
-                "limit":  {"type": "integer", "description": "Number of emails to fetch (default 1)"},
-                "filter": {"type": "string",  "description": "Gmail search filter. Default: '-in:spam -in:trash'. Use 'is:unread -in:spam -in:trash' only for unread."},
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of emails to fetch (default 1, max 10)",
+                },
+                "date": {
+                    "type": "string",
+                    "description": (
+                        "Fetch emails from a specific date. Pass EXACTLY what the user typed — "
+                        "any format works: '14-07-26', '7-7', '7/7', '14/07/2026', 'July 14'."
+                    ),
+                },
+                "date_to": {
+                    "type": "string",
+                    "description": "End date for a range (inclusive). Same format as 'date'.",
+                },
+                "filter": {
+                    "type": "string",
+                    "description": (
+                        "Gmail search filter for non-date queries. "
+                        "Default: '-in:spam -in:trash'. "
+                        "Do NOT use this for date queries — use 'date' instead."
+                    ),
+                },
             }},
         }}
 
@@ -120,37 +253,63 @@ class ReadEmailsTool(BaseTool):
         return self._service
 
     @staticmethod
-    def _parse_input(input_str) -> tuple[int, str]:
+    def _parse_input(input_str: Any) -> tuple[int, int, str, bool]:
+        """Returns (requested_limit, capped_limit, gmail_query, date_was_used)."""
         try:
-            data = input_str if isinstance(input_str, dict) else json.loads(input_str)
-            limit = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
-            # Hard cap: never fetch more than 10; default is 1
-            limit = max(1, min(limit, 10))
-            query = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
-            return limit, query
-        except Exception:
-            return _DEFAULT_LIMIT, _DEFAULT_FILTER
+            data: dict = input_str if isinstance(input_str, dict) else json.loads(input_str)
 
-    def _fetch_emails(self, service: Any, limit: int, query: str) -> str:
-        result = (
+            date_str    = str(data.get("date",    "") or "").strip()
+            date_to_str = str(data.get("date_to", "") or "").strip()
+
+            if date_str:
+                query, date_used = _build_gmail_filter(date_str, date_to_str or None)
+                if query is None:
+                    query = f"__DATE_PARSE_ERROR__:{date_str}"
+                # Always fetch 10 for date queries — ignore whatever limit the LLM passed.
+                # The LLM defaults to limit=1 from the general description but date searches
+                # need the full window to avoid missing emails.
+                requested = 10
+                limit     = 10
+            else:
+                query         = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
+                date_used     = False
+                requested = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
+                limit     = max(1, min(requested, 10))
+            return requested, limit, query, date_used
+
+        except Exception as exc:
+            logger.error("read_emails._parse_input error: %s | input=%r", exc, input_str)
+            return _DEFAULT_LIMIT, _DEFAULT_LIMIT, _DEFAULT_FILTER, False
+
+    def _fetch_emails(
+        self,
+        service: Any,
+        limit: int,
+        query: str,
+        capped: bool = False,
+        date_used: bool = False,
+    ) -> str:
+        api_result = (
             service.users()
             .messages()
             .list(userId="me", q=query, maxResults=limit)
             .execute()
         )
-        messages = result.get("messages", [])
+        messages = api_result.get("messages", [])
+        logger.info("read_emails._fetch_emails: %d messages returned for query=%r", len(messages), query)
 
         if not messages:
-            return json.dumps({
-                "emails": [],
-                "count": 0,
-                "note": (
+            if date_used:
+                note = f"No emails found for that date (filter: {query})."
+            else:
+                note = (
                     f"No emails matched filter '{query}'. "
-                    "Try search_emails with a different query — do NOT tell the user the inbox is empty."
-                ),
-            })
+                    "Try search_emails with a different query — "
+                    "do NOT tell the user the inbox is empty."
+                )
+            return json.dumps({"emails": [], "count": 0, "note": note})
 
-        emails = []
+        emails: list[dict] = []
         for msg_ref in messages:
             try:
                 msg = (
@@ -161,44 +320,47 @@ class ReadEmailsTool(BaseTool):
                 )
                 emails.append(self._parse_message(msg))
             except Exception as exc:
-                logger.warning("Failed to fetch message %s: %s", msg_ref["id"], exc)
+                logger.warning("read_emails._fetch_emails: skipping message %s: %s", msg_ref["id"], exc)
 
-        return json.dumps({"emails": emails, "count": len(emails)}, ensure_ascii=False)
+        response: dict = {"emails": emails, "count": len(emails)}
+        if capped:
+            response["note"] = (
+                f"I can only read up to 10 emails at a time. "
+                f"Showing the latest {len(emails)} emails."
+            )
+        return json.dumps(response, ensure_ascii=False)
+
+    # ------------------------------------------------------------------
+    # Message parsing
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _parse_message(msg: dict[str, Any]) -> dict[str, Any]:
-        payload = msg.get("payload", {})
-        headers = {
-            h["name"].lower(): h["value"]
-            for h in payload.get("headers", [])
-        }
+        payload  = msg.get("payload", {})
+        headers  = {h["name"].lower(): h["value"] for h in payload.get("headers", [])}
 
-        raw_sender = headers.get("from", "(unknown sender)")
+        raw_sender   = headers.get("from", "(unknown sender)")
         sender_name, sender_email = ReadEmailsTool._parse_sender(raw_sender)
-        subject  = headers.get("subject", "(no subject)")
-        date     = headers.get("date", "")
-        to_field = headers.get("to", "")
 
-        full_body = ReadEmailsTool._extract_body(payload)
-        full_body = re.sub(r"\n{3,}", "\n\n", full_body).strip()
-        full_body = full_body[:_FULL_BODY_MAX_CHARS]
+        full_body    = ReadEmailsTool._extract_body(payload)
+        full_body    = re.sub(r"\n{3,}", "\n\n", full_body).strip()
+        full_body    = full_body[:_FULL_BODY_MAX_CHARS]
         body_preview = full_body[:_BODY_PREVIEW_CHARS].replace("\n", " ")
 
-        attachments   = ReadEmailsTool._extract_attachments(payload, msg.get("id", ""))
-        has_attachments = len(attachments) > 0
+        attachments     = ReadEmailsTool._extract_attachments(payload, msg.get("id", ""))
 
         return {
             "id":              msg.get("id", ""),
             "thread_id":       msg.get("threadId", ""),
-            "subject":         subject,
+            "subject":         headers.get("subject", "(no subject)"),
             "sender":          raw_sender,
             "sender_name":     sender_name,
             "sender_email":    sender_email,
-            "to":              to_field,
-            "date":            date,
+            "to":              headers.get("to", ""),
+            "date":            headers.get("date", ""),
             "body_preview":    body_preview,
             "full_body":       full_body,
-            "has_attachments": has_attachments,
+            "has_attachments": len(attachments) > 0,
             "attachments":     attachments,
         }
 
@@ -208,23 +370,14 @@ class ReadEmailsTool(BaseTool):
 
     @staticmethod
     def _extract_body(payload: dict[str, Any]) -> str:
-        """Recursively extract readable text from a Gmail message payload.
-
-        Preference order:
-          1. text/plain directly in payload
-          2. text/plain in any nested part
-          3. text/html stripped of tags (fallback)
-        """
         text_plain = ReadEmailsTool._find_part(payload, "text/plain")
         if text_plain:
             return ReadEmailsTool._decode_data(text_plain)
 
-        # Fallback to HTML — strip tags so summary is readable
         text_html = ReadEmailsTool._find_part(payload, "text/html")
         if text_html:
             return ReadEmailsTool._strip_html(ReadEmailsTool._decode_data(text_html))
 
-        # Last resort: decode body.data regardless of mime type
         data = payload.get("body", {}).get("data", "")
         if data:
             try:
@@ -232,17 +385,12 @@ class ReadEmailsTool(BaseTool):
                 return ReadEmailsTool._strip_html(raw)
             except Exception:
                 pass
-
         return ""
 
     @staticmethod
     def _find_part(payload: dict[str, Any], mime_type: str) -> dict[str, Any] | None:
-        """Find the first payload part matching mime_type (recursive)."""
-        if payload.get("mimeType", "") == mime_type:
-            body_data = payload.get("body", {}).get("data", "")
-            if body_data:
-                return payload
-
+        if payload.get("mimeType") == mime_type and payload.get("body", {}).get("data"):
+            return payload
         for part in payload.get("parts", []):
             found = ReadEmailsTool._find_part(part, mime_type)
             if found:
@@ -261,44 +409,34 @@ class ReadEmailsTool(BaseTool):
 
     @staticmethod
     def _strip_html(html: str) -> str:
-        """Strip HTML tags and decode common entities."""
-        # Remove <style> and <script> blocks entirely
-        text = re.sub(r"<(style|script)[^>]*>.*?</(style|script)>", "", html, flags=re.DOTALL | re.IGNORECASE)
-        # Remove all remaining tags
+        text = re.sub(r"<(style|script)[^>]*>.*?</(style|script)>", "", html,
+                      flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r"<[^>]+>", " ", text)
-        # Decode common HTML entities
         text = (text
-                .replace("&nbsp;", " ")
-                .replace("&amp;",  "&")
-                .replace("&lt;",   "<")
-                .replace("&gt;",   ">")
-                .replace("&quot;", '"')
-                .replace("&#39;",  "'")
+                .replace("&nbsp;",  " ")
+                .replace("&amp;",   "&")
+                .replace("&lt;",    "<")
+                .replace("&gt;",    ">")
+                .replace("&quot;",  '"')
+                .replace("&#39;",   "'")
                 .replace("&mdash;", "—")
                 .replace("&ndash;", "–"))
-        # Collapse whitespace
         text = re.sub(r"[ \t]+", " ", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
     # ------------------------------------------------------------------
-    # Sender parsing
+    # Sender / attachment parsing
     # ------------------------------------------------------------------
 
     @staticmethod
     def _parse_sender(raw: str) -> tuple[str, str]:
-        """Parse 'Name <email@domain.com>' into (name, email)."""
         match = re.match(r'^"?([^"<]+?)"?\s*<([^>]+)>', raw.strip())
         if match:
             return match.group(1).strip(), match.group(2).strip()
-        # Just an email address
         if "@" in raw:
             return raw.strip(), raw.strip()
         return raw.strip(), ""
-
-    # ------------------------------------------------------------------
-    # Attachment extraction
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _extract_attachments(payload: dict[str, Any], message_id: str) -> list[dict[str, Any]]:
@@ -309,7 +447,6 @@ class ReadEmailsTool(BaseTool):
                 filename      = part.get("filename", "")
                 body          = part.get("body", {})
                 attachment_id = body.get("attachmentId", "")
-
                 if filename and attachment_id:
                     attachments.append({
                         "filename":      filename,
@@ -318,10 +455,8 @@ class ReadEmailsTool(BaseTool):
                         "size_bytes":    body.get("size", 0),
                         "message_id":    message_id,
                     })
-
-                sub = part.get("parts", [])
-                if sub:
-                    _walk(sub)
+                if part.get("parts"):
+                    _walk(part["parts"])
 
         _walk(payload.get("parts", []))
-        return att
+        return attachments

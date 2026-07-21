@@ -18,18 +18,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
-
-# ---------------------------------------------------------------------------
-# Make superagent-ai importable (fallback — superagent-django/core/ is used
-# directly since Django runs from that directory, but keep this for safety)
-# ---------------------------------------------------------------------------
-_THIS    = os.path.abspath(__file__)
-_DJANGO  = os.path.dirname(os.path.dirname(os.path.dirname(_THIS)))
-_REPO    = os.path.dirname(_DJANGO)
-_AI_PATH = os.path.join(_REPO, "superagent-ai")
-if _AI_PATH not in sys.path:
-    sys.path.insert(0, _AI_PATH)
 
 import logging
 
