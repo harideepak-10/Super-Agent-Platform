@@ -2245,7 +2245,13 @@ class CurrentTimeTool(BaseTool):
 # TOOL REGISTRY
 # =============================================================================
 
+from core.tools.orchestrator.run_email_agent import RunEmailAgentTool
+from core.tools.orchestrator.run_document_agent import RunDocumentAgentTool
+
 _TOOL_REGISTRY: dict = {
+    # Orchestrator sub-agent tools
+    "run_email_agent":    RunEmailAgentTool,
+    "run_document_agent": RunDocumentAgentTool,
     # Email core
     "send_email":               SendEmailTool,
     "read_email":               ReadEmailTool,

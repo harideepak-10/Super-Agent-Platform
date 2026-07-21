@@ -160,6 +160,9 @@ _TOOL_DISPLAY = {
     "export_csv":               ("Export CSV",         "download",          "safe"),
     "upload_to_drive":          ("Drive Upload",       "upload-cloud",      "safe"),
     "generate_report":          ("Generate Report",    "file-text",         "safe"),
+    # ── Orchestrator ──────────────────────────────────────────────────────────
+    "run_email_agent":          ("Email Agent",        "mail",              "safe"),
+    "run_document_agent":       ("Document Agent",     "file-text",         "safe"),
     # ── Document — read ───────────────────────────────────────────────────────
     "read_from_drive":          ("Drive Read",         "folder-open",       "safe"),
     "summarize_document":       ("Summarise Doc",      "file-text",         "safe"),
@@ -936,6 +939,50 @@ _AGENT_TEMPLATES = [
         "max_steps":   20,
         "max_cost_usd": 1.0,
     },
+    {
+        "id":          10,
+        "version":     1,
+        "slug":        "orchestrator-agent",
+        "name":        "Orchestrator Agent",
+        "agent_type":  "orchestrator",
+        "description": "Single entry point — routes every request to the right specialist agent automatically.",
+        "icon":        "git-branch",
+        "icon_bg":     "#1E3A5F",
+        "border_color":"#3B82F6",
+        "badge":       "New",
+        "badge_color": "#3B82F6",
+        "capabilities": [
+            "Routes email tasks to the Email Agent automatically",
+            "Routes document and Drive tasks to the Document Agent automatically",
+            "Handles tasks that need both agents (e.g. summarise email + create Word doc)",
+            "No need to know which agent to use — send everything here",
+        ],
+        "tools": [
+            "run_email_agent",
+            "run_document_agent",
+            "current_time",
+        ],
+        "llm_model":   "llama-3.3-70b-versatile",
+        "system_prompt": (
+            "You are OrchestratorAgent, the KRYPSOS AI assistant that routes every request to the right specialist agent.\n\n"
+            "You have two sub-agents:\n"
+            "  run_email_agent    — handles ALL email and Gmail tasks\n"
+            "  run_document_agent — handles ALL document and Google Drive tasks\n\n"
+            "ROUTING RULES:\n"
+            "→ run_email_agent for: emails, inbox, Gmail, unread, send, reply, forward, draft, attachment in email\n"
+            "→ run_document_agent for: Drive, document, docx, PDF, Word, PPT, translate, create report, OCR, upload to Drive\n"
+            "→ BOTH agents sequentially for tasks spanning both domains\n\n"
+            "HOW TO CALL:\n"
+            "Pass the user's full request as the 'task' parameter. Include all details (file name, language, dates).\n\n"
+            "HARD RULES:\n"
+            "1. ALWAYS call a sub-agent — never answer directly from memory.\n"
+            "2. Pass the full task context, not just a keyword.\n"
+            "3. Relay the sub-agent's result directly to the user.\n"
+            "4. Do NOT perform email or document work yourself — always delegate."
+        ),
+        "max_steps":   5,
+        "max_cost_usd": 2.0,
+    },
 ]
 
 _TEMPLATE_MAP           = {t["slug"]:       t for t in _AGENT_TEMPLATES}
@@ -1218,8 +1265,9 @@ def agent_create_form(request):
                 {"value": "calendar",    "label": "Calendar",    "icon": "calendar"},
                 {"value": "research",    "label": "Research",    "icon": "search"},
                 {"value": "finance",     "label": "Finance",     "icon": "wallet"},
-                {"value": "document",    "label": "Document",    "icon": "file-text"},
-                {"value": "reporting",   "label": "Reporting",   "icon": "bar-chart"},
+                {"value": "document",      "label": "Document",      "icon": "file-text"},
+                {"value": "orchestrator",  "label": "Orchestrator",  "icon": "git-branch"},
+                {"value": "reporting",     "label": "Reporting",     "icon": "bar-chart"},
                 {"value": "compliance",  "label": "Compliance",  "icon": "shield"},
                 {"value": "qa",          "label": "QA",          "icon": "check-square"},
             ],
