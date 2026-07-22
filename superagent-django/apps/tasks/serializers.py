@@ -85,7 +85,7 @@ class TaskListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = [
-            "id", "agent", "agent_name", "prompt", "status",
+            "id", "agent", "agent_name", "conversation_id", "prompt", "status",
             "steps_taken", "total_steps_estimate", "total_tokens", "cost_eur",
             "priority", "progress_percent", "deliverables", "approval_id",
             "started_at", "completed_at", "created_at",

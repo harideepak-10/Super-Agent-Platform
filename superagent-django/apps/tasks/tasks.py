@@ -2354,6 +2354,27 @@ _FAILURE_PHRASES_BROAD = [
 ]
 
 
+def _tool_result_is_error(result_str: str) -> bool:
+    """Return True only when the tool result is a genuine error.
+
+    Checks for a top-level JSON {"error": ...} key.  Falls back to strict
+    phrase matching for non-JSON output.  This avoids false positives when
+    email bodies or document content contains the word "error".
+    """
+    raw = str(result_str)
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            return "error" in data
+        return False  # list / string / number = success
+    except (json.JSONDecodeError, ValueError, TypeError):
+        lower = raw.lower()
+        return any(phrase in lower for phrase in [
+            "authentication failed", "token has expired",
+            "permission denied", "invalid credentials",
+        ])
+
+
 def _task_actually_failed(result: str, audit_log: list) -> tuple[bool, str]:
     """Return (failed, reason) based on result text and tool errors."""
     lower = result.lower()
@@ -2364,11 +2385,12 @@ def _task_actually_failed(result: str, audit_log: list) -> tuple[bool, str]:
             return True, f"Task incomplete: {phrase}"
 
     # 2. Determine whether at least one tool call succeeded
+    #    Use JSON-aware check so "error" in email content doesn't count as failure.
     tool_results = [e for e in audit_log if e.get("event_type") == "tool_result"]
     successful = [
         r for r in tool_results
-        if "error" not in str(r.get("details", {}).get("result", "")).lower()
-        and "error" not in str(r.get("details", {}).get("output", "")).lower()
+        if not _tool_result_is_error(r.get("details", {}).get("result", ""))
+        and not _tool_result_is_error(r.get("details", {}).get("output", ""))
     ]
 
     # 3. Only check broad phrases when nothing succeeded

@@ -592,7 +592,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     37,
+        "version":     38,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -633,8 +633,9 @@ _AGENT_TEMPLATES = [
             "Trigger for: 'read', 'check', 'summarize', 'show', 'what are my emails', 'any new emails'.\n\n"
             "LIMIT — always 1 unless user gives a number:\n"
             "  'last' or singular 'email' with no number → limit=1\n"
-            "  'last N' / 'recent N' / 'N emails' → limit=N\n"
-            "  plural 'emails' with no number → limit=5\n\n"
+            "  'last N' / 'recent N' / 'N emails' → limit=N  ← USE EXACTLY N, never replace with 10\n"
+            "  plural 'emails' with no number → limit=5\n"
+            "  Maximum limit allowed: 50 (if user asks for more than 50, use 50 and tell them)\n\n"
             "  1. Call read_email(limit=<limit>, filter='-in:spam -in:trash')\n"
             "  2. For EACH email (never skip any):\n"
             "     - Summarize body if it has content\n"
@@ -679,13 +680,14 @@ _AGENT_TEMPLATES = [
             "DEFAULT filter (when user does NOT mention spam or trash): '-in:spam -in:trash'\n"
             "ONLY use 'is:unread' if the user explicitly says 'unread' or 'new emails'.\n\n"
             "  'read my last 5 emails'       → filter: '-in:spam -in:trash', limit: 5\n"
+            "  'read my last 22 emails'      → filter: '-in:spam -in:trash', limit: 22\n"
             "  'recent emails'               → filter: '-in:spam -in:trash', limit: 10\n"
             "  'unread emails'               → filter: 'is:unread -in:spam -in:trash', limit: 10\n"
             "  'emails from spam'            → filter: 'in:spam', limit: 10\n"
             "  'unread emails from spam'     → filter: 'in:spam is:unread', limit: 10\n"
             "  'check my spam'               → filter: 'in:spam', limit: 10\n"
-            "  NEVER fetch more than 10 unread emails at once — too many tokens.\n"
-            "  If user says 'all unread' or implies a large number, still cap at 10 and tell them.\n\n"
+            "  Cap for UNREAD-only queries: 10 — if user says 'all unread', use limit=10 and tell them.\n"
+            "  Cap for EXPLICIT NUMBER requests: use the exact number user gave (max 50).\n\n"
             "DATE REQUESTS — when user mentions any date, use the 'date' parameter on read_email.\n"
             "  DO NOT build Gmail filters manually. DO NOT call current_time first.\n"
             "  Just pass the date EXACTLY as the user typed it — the tool handles conversion.\n\n"
