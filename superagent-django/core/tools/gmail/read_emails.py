@@ -206,7 +206,7 @@ class ReadEmailsTool(BaseTool):
         try:
             service = self._get_service()
             return self._fetch_emails(service, limit, query,
-                                      capped=(requested > 10), date_used=date_used)
+                                      capped=(requested > 50), date_used=date_used)
         except Exception as exc:
             logger.error("read_emails.run: Gmail API error: %s", exc)
             return json.dumps({"error": f"Gmail API error: {exc}", "emails": [], "count": 0})
@@ -324,11 +324,15 @@ class ReadEmailsTool(BaseTool):
             except Exception as exc:
                 logger.warning("read_emails._fetch_emails: skipping message %s: %s", msg_ref["id"], exc)
 
-        response: dict = {"emails": emails, "count": len(emails)}
-        if capped:
+        response: dict = {"emails": emails, "count": len(emails), "requested": limit}
+        if len(emails) < limit:
             response["note"] = (
-                f"I can only read up to 10 emails at a time. "
-                f"Showing the latest {len(emails)} emails."
+                f"Only {len(emails)} email(s) found — fewer than the {limit} requested. "
+                "Inform the user how many were found and ask if they want to proceed with these or try a different filter."
+            )
+        elif capped:
+            response["note"] = (
+                f"Results capped at 50 emails maximum. Showing {len(emails)} emails."
             )
         return json.dumps(response, ensure_ascii=False)
 

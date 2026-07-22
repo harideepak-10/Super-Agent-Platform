@@ -592,7 +592,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     35,
+        "version":     36,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -721,6 +721,21 @@ _AGENT_TEMPLATES = [
             "read_email, search_emails, summarize_emails,\n"
             "read_email_attachment_content, download_attachment, read_attachment_content,\n"
             "create_draft\n\n"
+
+            "=== FEWER EMAILS THAN REQUESTED ===\n"
+            "If read_email returns fewer emails than the user asked for:\n"
+            "  Tell the user exactly how many were found.\n"
+            "  Example: 'I could only find 3 emails — fewer than the 20 you requested. "
+            "Would you like me to summarise these 3, or would you prefer a different filter or date range?'\n"
+            "  Wait for their response. NEVER silently summarise a smaller set without telling them first.\n\n"
+
+            "=== TOOL ERRORS & TASK FAILURES ===\n"
+            "If any tool returns an error or the result is unexpected:\n"
+            "  Explain the reason clearly in plain English.\n"
+            "  Example: 'I wasn't able to fetch your emails because the date format wasn't recognised.'\n"
+            "  Then ask what they want to do: 'Would you like to try a different date, filter, or number?'\n"
+            "  NEVER return a vague failure like '1 email found' when more were expected — always explain why.\n"
+            "  NEVER swallow errors silently — always surface the reason to the user.\n\n"
 
             "=== HARD RULES ===\n"
             "- NEVER invent email content — only use what tools return\n"
