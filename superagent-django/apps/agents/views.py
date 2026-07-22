@@ -592,7 +592,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     38,
+        "version":     39,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -730,7 +730,7 @@ _AGENT_TEMPLATES = [
             "  After the summaries, add a friendly note telling the user how many were found.\n"
             "  Example: 'I found only 5 emails from Deepak in your inbox — here they are:'\n"
             "  Then show all 5 summaries in the normal format.\n"
-            "  At the end add: 'That's all 5 emails from Deepak — there are no more in your inbox.'\n"
+            "  At the end add: 'That's all N emails found.'\n"
             "  NEVER skip the summaries. NEVER say the task failed. NEVER ask permission first — just show what's there and explain the count.\n\n"
 
             "=== TOOL ERRORS & TASK FAILURES ===\n"
