@@ -2692,7 +2692,7 @@ def _save_audit_steps(task, audit_log, step_offset=0):
 
         elif event_type in ("task_completed", "task_resumed"):
             stype = TaskStep.StepType.FINAL_ANSWER
-            content = str(details.get("result", details.get("task", "Completed")))[:2000]
+            content = str(details.get("result", details.get("task", "Completed")))
 
         elif event_type == "approval_needed":
             stype = TaskStep.StepType.TOOL_CALL
@@ -2710,7 +2710,7 @@ def _save_audit_steps(task, audit_log, step_offset=0):
             task=task,
             step_number=step_num,
             step_type=stype,
-            content=content[:2000],
+            content=content if stype == TaskStep.StepType.FINAL_ANSWER else content[:2000],
             tool_name=tname,
             tool_input=tinput,
             tool_output=toutput,
