@@ -52,8 +52,7 @@ class RunEmailAgentTool(BaseTool):
             return json.dumps({"error": "'task' is required."})
 
         try:
-            from apps.tasks.tasks import _build_tools, _TOOL_REGISTRY
-            from core.agents.document_agent import DocumentAgent  # noqa — ensure tools loaded
+            from apps.tasks.tasks import _TOOL_REGISTRY
             from core.llm.groq_provider import GroqProvider
 
             # Collect email tools only

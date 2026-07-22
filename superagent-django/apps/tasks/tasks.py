@@ -74,38 +74,7 @@ from core.base_agent import (
 # Each tool overrides to_schema() to return OpenAI function-calling format
 # =============================================================================
 
-class WebSearchTool(BaseTool):
-    name = "web_search"
-    description = "Search the web for current information. Input JSON: {\"query\": \"search query\"}."
-    zone = ToolZone.GREEN
-
-    def run(self, input_str: str) -> str:
-        try:
-            data = json.loads(input_str)
-            query = data.get("query", input_str)
-        except Exception:
-            query = input_str.strip()
-        try:
-            from duckduckgo_search import DDGS
-            results = DDGS().text(query, max_results=5)
-            if not results:
-                return "No results found for '{}'.".format(query)
-            lines = []
-            for r in results:
-                lines.append("**{}**\n{}\n{}".format(
-                    r.get("title", ""), r.get("body", ""), r.get("href", "")
-                ))
-            return "Search results for '{}':\n\n".format(query) + "\n\n".join(lines)
-        except Exception as exc:
-            return "Web search error: {}".format(exc)
-
-    def to_schema(self):
-        return {"type": "function", "function": {
-            "name": self.name, "description": self.description,
-            "parameters": {"type": "object",
-                "properties": {"query": {"type": "string"}},
-                "required": ["query"]},
-        }}
+from core.tools.web_search import WebSearchTool  # noqa: E402
 
 
 class ClassifyTextTool(BaseTool):
