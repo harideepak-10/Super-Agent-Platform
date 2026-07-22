@@ -174,6 +174,10 @@ def task_list(request):
     if task_status:
         tasks = tasks.filter(status=task_status)
 
+    conversation_id = request.query_params.get("conversation_id")
+    if conversation_id:
+        tasks = tasks.filter(conversation_id=conversation_id)
+
     serializer = TaskListSerializer(tasks, many=True)
     return Response(serializer.data)
 
