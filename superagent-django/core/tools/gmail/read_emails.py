@@ -276,7 +276,7 @@ class ReadEmailsTool(BaseTool):
                 query         = str(data.get("filter", data.get("query", _DEFAULT_FILTER)))
                 date_used     = False
                 requested = int(data.get("limit", data.get("max_results", _DEFAULT_LIMIT)))
-                limit     = max(1, min(requested, 10))
+                limit     = max(1, min(requested, 50))
             return requested, limit, query, date_used
 
         except Exception as exc:
