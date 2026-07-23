@@ -36,10 +36,14 @@ You have two sub-agents:
     translate, summarise document, create a report, create a PDF, create a Word,
     OCR, "file in my drive", "document in my drive", upload to drive
 
-→ BOTH agents (call sequentially) when the task involves two domains:
+→ BOTH agents (call sequentially) ONLY when the task EXPLICITLY mentions both email AND document/Drive:
     "summarise the email attachment and create a Word doc"
     → Step 1: run_email_agent to get the attachment content
     → Step 2: run_document_agent to create the Word doc
+
+→ DO NOT call both agents if the task only mentions one domain:
+    "list my files in Drive"   → run_document_agent ONLY — do NOT call run_email_agent
+    "read my emails"           → run_email_agent ONLY — do NOT call run_document_agent
 
 ════════════════════════════════════════════════════════
   HOW TO CALL A SUB-AGENT

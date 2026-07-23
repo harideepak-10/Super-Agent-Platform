@@ -417,14 +417,28 @@ class BaseAgent:
 
                 # Short-circuit: if tool returned a rate limit error, stop immediately
                 # without making another LLM call (which would also hit the rate limit).
+                # If a previous tool already returned a good result, use that instead.
                 try:
                     import json as _json
                     _res_data = _json.loads(result)
                     if isinstance(_res_data, dict) and "error" in _res_data:
                         _err = str(_res_data["error"])
                         if "rate limit" in _err.lower() or "temporarily busy" in _err.lower():
-                            self._log("task_completed", {"result": _err, "total_steps": self._step})
-                            return _err
+                            # Check if a previous tool already got a good result
+                            _prev_good = None
+                            for _m in reversed(messages):
+                                if _m.get("role") == "tool":
+                                    _prev_content = _m.get("content", "")
+                                    try:
+                                        _prev_data = _json.loads(_prev_content)
+                                        if isinstance(_prev_data, dict) and "result" in _prev_data and "error" not in _prev_data:
+                                            _prev_good = str(_prev_data["result"])
+                                            break
+                                    except Exception:
+                                        pass
+                            _final = _prev_good if _prev_good else _err
+                            self._log("task_completed", {"result": _final, "total_steps": self._step})
+                            return _final
                 except Exception:
                     pass
 
