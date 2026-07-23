@@ -28,8 +28,8 @@ _MAX_RETRIES: int = 2
 _RETRY_DELAY_SECONDS: float = 2.0
 _REQUEST_TIMEOUT_SECONDS: float = 45.0
 _MODEL: str = "llama-3.3-70b-versatile"
-_MAX_RATE_LIMIT_RETRIES: int = 5          # wait up to 5×62 s ≈ 5 min for token bucket to refill
-_RATE_LIMIT_WAIT_SECONDS: float = 62.0   # Groq bucket refills every 60 s; add 2 s buffer
+_MAX_RATE_LIMIT_RETRIES: int = 1          # 1 retry — fail fast so user gets error quickly
+_RATE_LIMIT_WAIT_SECONDS: float = 15.0   # short wait — if not clear in 15s, tell user to retry
 
 _RATE_LIMIT_MESSAGE = (
     "⚠️ The AI is temporarily busy due to high usage (Groq rate limit reached). "
