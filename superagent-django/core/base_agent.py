@@ -415,6 +415,19 @@ class BaseAgent:
                     {"tool_name": tool_name, "result": result, "step": self._step},
                 )
 
+                # Short-circuit: if tool returned a rate limit error, stop immediately
+                # without making another LLM call (which would also hit the rate limit).
+                try:
+                    import json as _json
+                    _res_data = _json.loads(result)
+                    if isinstance(_res_data, dict) and "error" in _res_data:
+                        _err = str(_res_data["error"])
+                        if "rate limit" in _err.lower() or "temporarily busy" in _err.lower():
+                            self._log("task_completed", {"result": _err, "total_steps": self._step})
+                            return _err
+                except Exception:
+                    pass
+
                 # Append assistant message and tool result to history
                 messages.append(
                     {"role": "assistant", "content": content or "", "tool_call": tool_call}
