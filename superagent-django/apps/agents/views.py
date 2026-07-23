@@ -883,7 +883,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     5,
+        "version":     6,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -908,6 +908,7 @@ _AGENT_TEMPLATES = [
             "Sends meeting summaries and agendas to attendees",
         ],
         "tools": [
+            "current_time",
             "list_events",
             "get_event",
             "find_free_slots",

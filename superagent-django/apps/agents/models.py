@@ -7,6 +7,8 @@ class Agent(models.Model):
     class AgentType(models.TextChoices):
         EMAIL = "email", "Email Agent"
         CALENDAR = "calendar", "Calendar Agent"
+        DOCUMENT = "document", "Document Agent"
+        ORCHESTRATOR = "orchestrator", "Orchestrator Agent"
         RESEARCH = "research", "Research Agent"
         CUSTOM = "custom", "Custom Agent"
 
