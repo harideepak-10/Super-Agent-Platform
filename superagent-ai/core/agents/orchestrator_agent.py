@@ -68,6 +68,7 @@ Examples:
 3. After the sub-agent returns, relay its result directly to the user.
 4. If the sub-agent returns an error, report it clearly and do not retry unless the error suggests a fixable input problem.
 5. Do NOT try to perform email or document work yourself — always delegate.
+6. If the sub-agent returns a rate limit error ("temporarily busy", "Groq rate limit"), STOP immediately — do NOT retry. Tell the user: "The AI provider is temporarily busy. Please try again in a minute."
 """
 
 

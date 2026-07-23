@@ -90,6 +90,7 @@ class RunEmailAgentTool(BaseTool):
                 tools=tools,
                 max_steps=8,
                 max_cost=0.5,
+                max_seconds=120.0,
                 task_id=None,
                 system_prompt=system_prompt,
             )
