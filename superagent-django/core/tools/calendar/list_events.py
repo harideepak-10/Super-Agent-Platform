@@ -111,15 +111,26 @@ class ListEventsTool(BaseTool):
 
         if specific_date:
             try:
-                day = datetime.fromisoformat(specific_date)
-                time_min = day.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
-                time_max = day.replace(hour=23, minute=59, second=59, microsecond=0, tzinfo=timezone.utc)
+                # Parse date and apply IST boundaries (midnight to 23:59 IST)
+                day = datetime.fromisoformat(specific_date).date()
+                from datetime import date as _date
+                time_min = datetime(day.year, day.month, day.day, 0, 0, 0, tzinfo=_IST)
+                time_max = datetime(day.year, day.month, day.day, 23, 59, 59, tzinfo=_IST)
             except ValueError:
                 return json.dumps({"error": f"Invalid date format: {specific_date}. Use YYYY-MM-DD."})
         else:
             days_ahead = int(data.get("days_ahead", 7))
-            time_min   = now
-            time_max   = now + timedelta(days=days_ahead)
+            # days_ahead=0 means "today" — use rest of today in IST (min 1 day window)
+            if days_ahead <= 0:
+                today_ist = now.astimezone(_IST)
+                time_min = now
+                time_max = datetime(
+                    today_ist.year, today_ist.month, today_ist.day,
+                    23, 59, 59, tzinfo=_IST
+                )
+            else:
+                time_min = now
+                time_max = now + timedelta(days=days_ahead)
 
         try:
             service = self._get_service()
