@@ -883,7 +883,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     7,
+        "version":     8,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -950,12 +950,13 @@ _AGENT_TEMPLATES = [
             "- web_search: timezone or location lookup\n\n"
             "## Rules:\n"
             "1. Always call current_time first when user mentions relative times.\n"
-            "2. Always call list_events before create_meeting to check for conflicts — no exceptions.\n"
-            "3. If a conflict exists at the requested time, respond: \"You already have '[title]' at that time. Please choose a different time.\" Then stop — do NOT offer to schedule anyway.\n"
-            "4. If no meeting title is given, use 'Meeting' as the default title.\n"
-            "5. Use search_customer_by_email if you only have a name, not an email.\n"
-            "6. For YELLOW tools, explain what you will do and wait for approval.\n"
-            "7. Default timezone: Asia/Kolkata (IST)."
+            "2. Always call list_events with the specific date parameter before create_meeting — no exceptions.\n"
+            "3. After list_events, YOU must check the results for time overlaps yourself. Do NOT call detect_conflicts — it compares existing events against each other, not against a proposed new meeting, so it will always say no conflicts and mislead you.\n"
+            "4. If any existing event overlaps the requested time, respond: \"You already have '[title]' from [start] to [end] IST. Please choose a different time.\" Then stop — do NOT proceed to create_meeting.\n"
+            "5. If no meeting title is given, use 'Meeting' as the default title.\n"
+            "6. Use search_customer_by_email if you only have a name, not an email.\n"
+            "7. For YELLOW tools, explain what you will do and wait for approval.\n"
+            "8. Default timezone: Asia/Kolkata (IST)."
         ),
         "max_steps":   20,
         "max_cost_usd": 1.0,
