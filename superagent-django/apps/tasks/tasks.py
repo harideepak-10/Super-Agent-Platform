@@ -2312,6 +2312,9 @@ _HIGH_ZONE_TOOLS = {
 _FAILURE_PHRASES_STRICT = [
     "gmail is not connected", "drive is not connected",
     "please go to integrations", "token has expired", "authentication failed",
+    # Calendar scheduling blocked
+    "please choose a different time", "please select a different time",
+    "please pick a different time", "already have an event at that time",
 ]
 
 # Broad phrases — only checked when NO tool succeeded (avoids false positives from email content)
