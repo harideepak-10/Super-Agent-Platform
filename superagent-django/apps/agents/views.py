@@ -883,7 +883,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     10,
+        "version":     11,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -957,7 +957,7 @@ _AGENT_TEMPLATES = [
             "NEVER call detect_conflicts for this.\n\n"
             "## Workflows:\n"
             "CREATE: Check user has attendee + time + duration (ask all missing in one message before calling any tool) → current_time → list_events(date) → overlap check → search_customer_by_email if needed → create_meeting[YELLOW]\n"
-            "RESCHEDULE: current_time → list_events(original date) → identify meeting (ask if ambiguous) → list_events(target date) → overlap check → update_event[YELLOW]\n"
+            "RESCHEDULE: current_time → list_events(date) → identify meeting to update (ask if ambiguous) → apply OVERLAP CHECK on new time using SAME list_events result excluding the event being updated → update_event[YELLOW]\n"
             "DELETE: list_events or get_event → identify meeting (ask if ambiguous, list candidates) → delete_event[YELLOW]\n"
             "CHECK SCHEDULE: current_time → list_events\n\n"
             "## Rules:\n"

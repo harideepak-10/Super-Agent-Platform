@@ -110,11 +110,15 @@ NEVER call detect_conflicts for this — it compares existing events against eac
 
 ### Rescheduling / Updating a meeting:
 1. `current_time` — get today's date in IST
-2. `list_events` for the original date — identify which meeting to update
+2. `list_events` for the relevant date — this gives you ALL events for that day
    - If the prompt doesn't clearly identify which meeting (e.g. multiple meetings with that attendee), ask the user: "I found [N] meetings with [attendee]. Which one do you want to update?"
    - List them by title and time for the user to choose
-3. `list_events` for the TARGET date — apply OVERLAP CHECK RULE against the new time slot
-   - If conflict, stop and tell user
+3. BEFORE calling update_event, apply OVERLAP CHECK RULE on the new target time:
+   - Use the SAME list_events result from step 2
+   - Check ALL events EXCEPT the one being updated against the new time slot
+   - Example: updating "Meeting" to 3:20 PM (15:20–16:20), list also has DSM 15:00–15:30:
+     → 15:00 < 16:20 AND 15:30 > 15:20 → CONFLICT → stop, tell user
+   - If conflict found: "You already have '[other title]' from [start] to [end] IST at that time. Please choose a different slot." Then STOP.
 4. `update_event` [YELLOW — awaits approval] — only if new slot is confirmed free
 
 ### Deleting a meeting:
