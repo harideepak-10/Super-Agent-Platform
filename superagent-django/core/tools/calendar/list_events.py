@@ -11,6 +11,21 @@ from datetime import datetime, timezone, timedelta
 from typing import Any
 from core.tools.base_tool import BaseTool, ToolZone
 
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _to_ist(dt_str: str) -> str:
+    """Convert a datetime string (UTC or any offset) to IST. All-day dates pass through."""
+    if not dt_str or "T" not in dt_str:
+        return dt_str  # all-day event — just a date string
+    try:
+        # Handle Z suffix
+        s = dt_str.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        return dt.astimezone(_IST).isoformat()
+    except Exception:
+        return dt_str
+
 logger = logging.getLogger(__name__)
 
 
@@ -122,8 +137,8 @@ class ListEventsTool(BaseTool):
             for e in events_raw:
                 start = e.get("start", {})
                 end   = e.get("end",   {})
-                start_str = start.get("dateTime", start.get("date", ""))
-                end_str   = end.get("dateTime",   end.get("date", ""))
+                start_str = _to_ist(start.get("dateTime", start.get("date", "")))
+                end_str   = _to_ist(end.get("dateTime",   end.get("date", "")))
 
                 attendees = [
                     a.get("email", "") for a in e.get("attendees", [])

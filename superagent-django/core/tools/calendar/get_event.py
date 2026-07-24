@@ -11,6 +11,17 @@ from datetime import datetime, timezone, timedelta
 from typing import Any
 from core.tools.base_tool import BaseTool, ToolZone
 
+_IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _to_ist(dt_str: str) -> str:
+    if not dt_str or "T" not in dt_str:
+        return dt_str
+    try:
+        return datetime.fromisoformat(dt_str.replace("Z", "+00:00")).astimezone(_IST).isoformat()
+    except Exception:
+        return dt_str
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,8 +103,8 @@ class GetEventTool(BaseTool):
         return {
             "event_id":    e.get("id", ""),
             "title":       e.get("summary", "(no title)"),
-            "start":       start.get("dateTime", start.get("date", "")),
-            "end":         end.get("dateTime",   end.get("date", "")),
+            "start":       _to_ist(start.get("dateTime", start.get("date", ""))),
+            "end":         _to_ist(end.get("dateTime",   end.get("date", ""))),
             "attendees":   [
                 {"email": a.get("email", ""), "status": a.get("responseStatus", "needsAction")}
                 for a in e.get("attendees", [])
