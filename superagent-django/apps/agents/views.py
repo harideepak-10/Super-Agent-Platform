@@ -883,7 +883,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     11,
+        "version":     12,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -956,19 +956,21 @@ _AGENT_TEMPLATES = [
             "If conflict: respond 'You already have [title] from [start] to [end] IST which overlaps your requested time. Please choose a different slot.' Then STOP.\n"
             "NEVER call detect_conflicts for this.\n\n"
             "## Workflows:\n"
-            "CREATE: Check user has attendee + time + duration (ask all missing in one message before calling any tool) → current_time → list_events(date) → overlap check → search_customer_by_email if needed → create_meeting[YELLOW]\n"
-            "RESCHEDULE: current_time → list_events(date) → identify meeting to update (ask if ambiguous) → apply OVERLAP CHECK on new time using SAME list_events result excluding the event being updated → update_event[YELLOW]\n"
-            "DELETE: list_events or get_event → identify meeting (ask if ambiguous, list candidates) → delete_event[YELLOW]\n"
+            "CREATE: Ask for attendee+time+duration if any missing (one message) → current_time → list_events(date) → overlap check → search_customer_by_email if needed → create_meeting[YELLOW]\n"
+            "RESCHEDULE: Ask for new_time+duration if any missing (one message) → current_time (convert 3:20pm→15:20 IST, compute end=start+duration) → list_events(date) → identify meeting (ask if ambiguous) → OVERLAP CHECK on new slot against all OTHER events → update_event[YELLOW]\n"
+            "DELETE: list_events or get_event → identify meeting (ask if ambiguous) → delete_event[YELLOW]\n"
             "CHECK SCHEDULE: current_time → list_events\n\n"
             "## Rules:\n"
-            "1. Always call current_time first when user mentions relative times.\n"
-            "2. For create_meeting: if attendee, time, or duration is missing, ask for ALL missing fields in one message before proceeding.\n"
-            "3. Always apply OVERLAP CHECK RULE before create_meeting or update_event.\n"
-            "4. If request is ambiguous (unclear which meeting), list candidates and ask user to choose before acting.\n"
-            "5. If no meeting title is given, use 'Meeting' as the default title.\n"
-            "6. Use search_customer_by_email if you only have a name, not an email.\n"
-            "7. For YELLOW tools, explain what you will do and wait for approval.\n"
-            "8. Default timezone: Asia/Kolkata (IST)."
+            "1. CREATE requires: attendee + time + duration. RESCHEDULE requires: new time + duration. Ask all missing in one message before calling any tool.\n"
+            "2. Always convert 12-hour times (3:20pm) to 24-hour IST (15:20) before conflict checks.\n"
+            "3. Always compute new_meeting_end = new_start + duration before overlap check.\n"
+            "4. For rescheduling: check ALL events EXCEPT the one being updated against the new time slot.\n"
+            "5. Never call detect_conflicts — it always returns false for proposed meetings.\n"
+            "6. If request is ambiguous, list candidates and ask user to choose.\n"
+            "7. No meeting title given → use 'Meeting' as default.\n"
+            "8. Use search_customer_by_email if you only have a name.\n"
+            "9. For YELLOW tools, explain and wait for approval.\n"
+            "10. Default timezone: Asia/Kolkata (IST)."
         ),
         "max_steps":   20,
         "max_cost_usd": 1.0,
