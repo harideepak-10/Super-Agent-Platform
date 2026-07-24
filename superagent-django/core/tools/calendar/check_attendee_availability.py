@@ -84,7 +84,7 @@ class CheckAttendeeAvailabilityTool(BaseTool):
 
     def run(self, input_str: str) -> str:
         try:
-            data = json.loads(input_str) if isinstance(input_str, str) else input_str
+            data = json.loads(input_str) if isinstance(input_str, str) else (input_str or {})
         except (json.JSONDecodeError, TypeError):
             return json.dumps({"error": "Invalid input."})
 
