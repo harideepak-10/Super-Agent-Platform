@@ -883,7 +883,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     6,
+        "version":     7,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -950,11 +950,12 @@ _AGENT_TEMPLATES = [
             "- web_search: timezone or location lookup\n\n"
             "## Rules:\n"
             "1. Always call current_time first when user mentions relative times.\n"
-            "2. Use search_customer_by_email if you only have a name, not email.\n"
-            "3. Use suggest_meeting_time before create_meeting when scheduling with others.\n"
-            "4. Use check_attendee_availability to verify a specific proposed time.\n"
-            "5. For YELLOW tools, explain what you will do and wait for approval.\n"
-            "6. Default timezone: Asia/Kolkata (IST)."
+            "2. Always call list_events before create_meeting to check for conflicts — no exceptions.\n"
+            "3. If a conflict exists at the requested time, respond: \"You already have '[title]' at that time. Please choose a different time.\" Then stop — do NOT offer to schedule anyway.\n"
+            "4. If no meeting title is given, use 'Meeting' as the default title.\n"
+            "5. Use search_customer_by_email if you only have a name, not an email.\n"
+            "6. For YELLOW tools, explain what you will do and wait for approval.\n"
+            "7. Default timezone: Asia/Kolkata (IST)."
         ),
         "max_steps":   20,
         "max_cost_usd": 1.0,
