@@ -109,6 +109,17 @@ class ListEventsTool(BaseTool):
 
         now = datetime.now(timezone.utc)
 
+        # Resolve natural language date strings to YYYY-MM-DD in IST
+        if specific_date:
+            today_ist = now.astimezone(_IST).date()
+            _nl = specific_date.strip().lower()
+            if _nl == "today":
+                specific_date = today_ist.isoformat()
+            elif _nl == "tomorrow":
+                specific_date = (today_ist + timedelta(days=1)).isoformat()
+            elif _nl == "yesterday":
+                specific_date = (today_ist - timedelta(days=1)).isoformat()
+
         if specific_date:
             try:
                 # Parse date and apply IST boundaries (midnight to 23:59 IST)
