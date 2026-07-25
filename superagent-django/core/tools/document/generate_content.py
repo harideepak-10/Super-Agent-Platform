@@ -250,7 +250,7 @@ class GenerateContentTool(BaseTool):
             })
         return slides
 
-def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
+    def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
         """Call Claude to generate actual section content. Falls back to stubs on error."""
         import logging
         import os
