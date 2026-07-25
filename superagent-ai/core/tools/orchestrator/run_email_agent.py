@@ -53,7 +53,7 @@ class RunEmailAgentTool(BaseTool):
 
         try:
             from apps.tasks.tasks import _TOOL_REGISTRY
-            from core.llm.anthropic_Provider import AnthropicProvider
+            from core.llm.anthropic_provider import AnthropicProvider
 
             # Collect email tools only
             _EMAIL_TOOLS = {
