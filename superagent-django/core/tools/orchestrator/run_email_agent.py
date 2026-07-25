@@ -10,6 +10,7 @@ import json
 import logging
 from typing import Any
 
+from core.base_agent import ApprovalRequired    
 from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,9 @@ class RunEmailAgentTool(BaseTool):
             logger.info("RunEmailAgentTool: delegating task=%r", task[:80])
             result = agent.run(task)
             return json.dumps({"status": "completed", "result": result}, ensure_ascii=False)
+
+        except ApprovalRequired:
+            raise  # let the top-level task runner handle this properly
 
         except Exception as exc:
             logger.exception("RunEmailAgentTool failed")

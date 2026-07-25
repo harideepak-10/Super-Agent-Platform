@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 
+from core.base_agent import ApprovalRequired
 from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
@@ -96,8 +97,11 @@ class RunDocumentAgentTool(BaseTool):
             result = agent.run(task)
             return json.dumps({"status": "completed", "result": result}, ensure_ascii=False)
 
+        except ApprovalRequired:
+            raise  # let the top-level task runner handle this properly
+
         except Exception as exc:
-            logger.exception("RunDocumentAgentTool failed")
+            logger.exception("RunEmailAgentTool failed")
             return json.dumps({"error": str(exc)})
 
     def to_schema(self) -> dict:
