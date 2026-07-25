@@ -2,6 +2,6 @@
 
 from .base import LLMProvider
 from .mock_provider import MockLLMProvider
-from .groq_provider import GroqProvider
+from .anthropic_provider import AnthropicProvider
 
-__all__ = ["LLMProvider", "MockLLMProvider", "GroqProvider"]
+__all__ = ["LLMProvider", "MockLLMProvider", "AnthropicProvider"]

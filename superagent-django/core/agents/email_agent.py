@@ -205,7 +205,7 @@ class EmailAgent(BaseAgent):
 
     Example (production)::
 
-        agent = EmailAgent(llm_provider=GroqProvider())
+        agent = EmailAgent(llm_provider=AnthropicProvider())
         result = agent.run("Summarize unread emails and extract action items.")
 
     Example (tests)::

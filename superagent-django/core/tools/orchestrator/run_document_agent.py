@@ -52,7 +52,7 @@ class RunDocumentAgentTool(BaseTool):
 
         try:
             from apps.tasks.tasks import _TOOL_REGISTRY
-            from core.llm.groq_provider import GroqProvider
+            from core.llm.anthropic_Provider import AnthropicProvider
 
             _DOCUMENT_TOOLS = {
                 "read_from_drive", "summarize_document", "extract_tables",
@@ -76,7 +76,7 @@ class RunDocumentAgentTool(BaseTool):
                     from core.tools.base_tool import ToolZone as _TZ
                     t.zone = _TZ.GREEN
 
-            llm = GroqProvider(model="llama-3.3-70b-versatile")
+            llm = AnthropicProvider(model="claude-haiku-4-5-20251001")
 
             from apps.tasks.tasks import DjangoAgent
             from core.agents.document_agent import _SYSTEM_PROMPT as _DOC_PROMPT

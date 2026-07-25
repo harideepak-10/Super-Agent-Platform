@@ -2911,9 +2911,9 @@ def run_agent_task(self, task_id: str):
         else [WebSearchTool(), ClassifyTextTool(), GenerateReportTool()]
     )
 
-    from core.llm.groq_provider import GroqProvider
-    llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.3-70b-versatile"
-    llm = GroqProvider(model=llm_model)
+    from core.llm.anthropic_provider import AnthropicProvider
+    llm_model = (agent_model.llm_model if agent_model else None) or "claude-haiku-4-5-20251001"
+    llm = AnthropicProvider(model=llm_model)
 
     react_agent = DjangoAgent(
         name=(agent_model.name if agent_model else "Agent"),
@@ -2955,7 +2955,7 @@ def run_agent_task(self, task_id: str):
                 result = (
                     "⚠️ The AI model failed to execute any action for this task. "
                     "Please run the task again — if it keeps happening, "
-                    "the model may be overloaded (Groq)."
+                    "the model may be overloaded (Anthropic)."
                 )
 
         result = _inject_summary_result(result, react_agent.audit_log)
@@ -3026,8 +3026,8 @@ def run_agent_task(self, task_id: str):
         return {"status": "failed", "error": str(exc)}
 
     except Exception as exc:
-        from core.llm.groq_provider import GroqRateLimitError
-        if isinstance(exc, GroqRateLimitError):
+        from core.llm.anthropic_provider import AnthropicRateLimitError
+        if isinstance(exc, AnthropicRateLimitError):
             _save_audit_steps(task, getattr(react_agent, "audit_log", []))
             task.status = Task.Status.FAILED
             task.error_message = str(exc)[:500]
@@ -3097,9 +3097,9 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         else [WebSearchTool(), ClassifyTextTool(), GenerateReportTool()]
     )
 
-    from core.llm.groq_provider import GroqProvider
-    llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.3-70b-versatile"
-    llm = GroqProvider(model=llm_model)
+    from core.llm.anthropic_provider import AnthropicProvider
+    llm_model = (agent_model.llm_model if agent_model else None) or "claude-haiku-4-5-20251001"
+    llm = AnthropicProvider(model=llm_model)
 
     react_agent = DjangoAgent(
         name=(agent_model.name if agent_model else "Agent"),
@@ -3201,8 +3201,8 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         return {"status": "waiting_approval", "approval_id": str(new_approval.id)}
 
     except Exception as exc:
-        from core.llm.groq_provider import GroqRateLimitError
-        if isinstance(exc, GroqRateLimitError):
+        from core.llm.anthropic_provider import AnthropicRateLimitError
+        if isinstance(exc, AnthropicRateLimitError):
             _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
             task.status = Task.Status.COMPLETED
             task.result = str(exc)

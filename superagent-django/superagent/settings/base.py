@@ -273,10 +273,10 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="noreply@superagent.ai")
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:3000")
 
 # ---------------------------------------------------------------------------
-# AI / Groq
+# AI / Anthropic
 # ---------------------------------------------------------------------------
-GROQ_API_KEY = env("GROQ_API_KEY", default="")
-GROQ_MODEL = env("GROQ_MODEL", default="llama-3.3-70b-versatile")
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-haiku-4-5-20251001")
 
 # ---------------------------------------------------------------------------
 # Google OAuth

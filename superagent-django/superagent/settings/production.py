@@ -10,7 +10,7 @@ Set these manually in Render → Environment:
   DJANGO_SETTINGS_MODULE = superagent.settings.production
   ALLOWED_HOSTS          e.g. your-app.onrender.com
   REDIS_URL              from upstash.com (free)
-  GROQ_API_KEY
+  ANTHROPIC_API_KEY
   CORS_ALLOWED_ORIGINS   once your mobile app is live
 """
 

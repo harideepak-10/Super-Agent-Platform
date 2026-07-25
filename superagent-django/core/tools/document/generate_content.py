@@ -250,26 +250,23 @@ class GenerateContentTool(BaseTool):
             })
         return slides
 
-    def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
-        """Call Groq to generate actual section content. Falls back to stubs on error."""
+def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
+        """Call Claude to generate actual section content. Falls back to stubs on error."""
         import logging
         import os
         import re
         _log = logging.getLogger(__name__)
         try:
-            from groq import Groq
-            client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
-            completion = client.chat.completions.create(
-                model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
-                messages=[
-                    {"role": "system", "content": system_msg},
-                    {"role": "user",   "content": user_msg},
-                ],
+            from anthropic import Anthropic
+            client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+            completion = client.messages.create(
+                model=os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
+                system=system_msg,
+                messages=[{"role": "user", "content": user_msg}],
                 temperature=0.7,
                 max_tokens=4096,
             )
-            raw = completion.choices[0].message.content or ""
-            # Extract JSON array from response
+            raw = "".join(b.text for b in completion.content if b.type == "text")
             match = re.search(r"\[.*\]", raw, re.DOTALL)
             if match:
                 sections = json.loads(match.group())
@@ -279,7 +276,6 @@ class GenerateContentTool(BaseTool):
         except Exception as exc:
             _log.error("generate_content._call_llm: LLM call failed: %s", exc)
 
-        # Fallback: return stub sections so create_pdf can still run
         _log.warning("generate_content._call_llm: falling back to stub content for sections=%s", section_list)
         return [{"heading": h, "content": f"Content for {h}."} for h in section_list]
 

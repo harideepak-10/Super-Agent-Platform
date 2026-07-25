@@ -37,15 +37,15 @@ router = APIRouter(prefix="/agent", tags=["Agent"])
 
 
 def _build_email_agent():
-    """Build a production EmailAgent with GroqProvider.
+    """Build a production EmailAgent with AnthropicProvider.
 
     Raises:
-        HTTPException 503: If GROQ_API_KEY is missing.
+        HTTPException 503: If ANTHROPIC_API_KEY is missing.
     """
     try:
         from agents.email_agent import EmailAgent
-        from core.llm.groq_provider import GroqProvider
-        return EmailAgent(llm_provider=GroqProvider())
+        from core.llm.anthropic_provider import AnthropicProvider
+        return EmailAgent(llm_provider=AnthropicProvider())
     except EnvironmentError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

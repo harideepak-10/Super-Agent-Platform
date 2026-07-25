@@ -214,7 +214,7 @@ class DocumentAgent(BaseAgent):
     Example (production)::
 
         agent = DocumentAgent(
-            llm_provider=GroqProvider(),
+            llm_provider=AnthropicProvider(),
             workspace_id="<uuid>",
             drive_service=build("drive", "v3", credentials=creds),
         )

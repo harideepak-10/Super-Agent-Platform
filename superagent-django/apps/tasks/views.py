@@ -117,30 +117,22 @@ def _list_drive_files_for_workspace(workspace) -> list | None:
 
 
 def _ask_clarification(prompt: str) -> str:
-    """Call Groq to generate a relevant clarifying question for a vague prompt."""
+    """Call Claude to generate a relevant clarifying question for a vague prompt."""
     try:
-        from groq import Groq
+        from anthropic import Anthropic
         import os
-        client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
-        resp = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a helpful assistant. The user gave a very short or vague task. "
-                        "Ask ONE short, friendly clarifying question to understand what they need. "
-                        "Do not explain yourself. Just ask the question. Max 2 sentences."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f'The user said: "{prompt}"',
-                },
-            ],
+        client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            system=(
+                "You are a helpful assistant. The user gave a very short or vague task. "
+                "Ask ONE short, friendly clarifying question to understand what they need. "
+                "Do not explain yourself. Just ask the question. Max 2 sentences."
+            ),
+            messages=[{"role": "user", "content": f'The user said: "{prompt}"'}],
             max_tokens=80,
         )
-        return resp.choices[0].message.content.strip()
+        return "".join(b.text for b in resp.content if b.type == "text").strip()
     except Exception:
         return "Could you give me a bit more detail about what you'd like me to do?"
 
