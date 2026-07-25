@@ -97,8 +97,10 @@ class RunDocumentAgentTool(BaseTool):
             result = agent.run(task)
             return json.dumps({"status": "completed", "result": result}, ensure_ascii=False)
 
-        except ApprovalRequired:
-            raise  # let the top-level task runner handle this properly
+        except ApprovalRequired as exc:
+            if isinstance(exc.snapshot, dict):
+                exc.snapshot["_nested_kind"] = "document"
+            raise
 
         except Exception as exc:
             logger.exception("RunEmailAgentTool failed")

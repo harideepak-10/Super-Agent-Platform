@@ -2287,8 +2287,8 @@ _TOOL_REGISTRY: dict = {
     "classify_text":            ClassifyTextTool,
     "generate_report":          GenerateReportTool,
     "file_read":                FileReadTool,
-    "file_write":               FileWriteTool,
-    "export_csv":               ExportCsvTool,
+    "file_write":                FileWriteTool,
+    "export_csv":                ExportCsvTool,
     "cal_read":                 CalReadTool,
     "cal_write":                CalWriteTool,
     "delete_file":              DeleteFileTool,
@@ -3001,7 +3001,7 @@ def run_agent_task(self, task_id: str):
             tool_name=exc.tool_name,
             tool_input=tool_input_data,
             tool_zone="yellow",
-            resume_snapshot=react_agent.pending_approval or {},
+            resume_snapshot=(getattr(exc, "snapshot", None) or react_agent.pending_approval or {}),
         )
         cost = react_agent.get_cost_summary()
         task.status = Task.Status.WAITING_APPROVAL
@@ -3082,6 +3082,8 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         task.save(update_fields=["status", "error_message"])
         return {"error": "No snapshot"}
 
+    _nested_kind = snapshot.get("_nested_kind")
+
     task.status = Task.Status.RUNNING
     task.celery_task_id = self.request.id or ""
     task.save(update_fields=["status", "celery_task_id"])
@@ -3091,29 +3093,66 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     _clear_cached_emails(workspace_id)
     step_offset = TaskStep.objects.filter(task=task).count()
 
-    tools = (
-        _build_tools(agent_model, workspace_id=workspace_id)
-        if agent_model
-        else [WebSearchTool(), ClassifyTextTool(), GenerateReportTool()]
-    )
+    if _nested_kind in ("email", "document"):
+        from apps.agents.views import _TEMPLATE_AGENT_TYPE_MAP
+        if _nested_kind == "email":
+            _NESTED_TOOLS = {
+                "send_email", "read_email", "search_emails",
+                "read_email_attachment_content", "summarize_emails",
+                "download_attachment", "create_draft", "create_gmail_draft",
+                "mark_as_read", "label_email", "move_to_folder", "delete_email",
+                "reply_to_email", "forward_email", "schedule_email",
+                "extract_invoice_data", "detect_follow_up_needed",
+                "read_attachment_content", "extract_data_from_attachment",
+                "list_customer_profiles", "search_customer_by_email",
+                "web_search", "current_time",
+            }
+        else:
+            _NESTED_TOOLS = {
+                "read_from_drive", "summarize_document", "extract_tables",
+                "ocr_document", "generate_content", "create_pdf", "create_docx",
+                "create_presentation", "fill_template", "merge_pdfs",
+                "compare_documents", "translate_document", "upload_to_drive",
+                "web_search", "current_time",
+            }
+
+        tools = []
+        for _name in _NESTED_TOOLS:
+            _cls = _TOOL_REGISTRY.get(_name)
+            if _cls:
+                try:
+                    tools.append(_cls(workspace_id=workspace_id))
+                except TypeError:
+                    tools.append(_cls())
+        _tmpl = _TEMPLATE_AGENT_TYPE_MAP.get(_nested_kind, {})
+        _system_prompt = _tmpl.get("system_prompt", "")
+        _agent_name = "Email Agent" if _nested_kind == "email" else "Document Agent"
+    else:
+        tools = (
+            _build_tools(agent_model, workspace_id=workspace_id)
+            if agent_model
+            else [WebSearchTool(), ClassifyTextTool(), GenerateReportTool()]
+        )
+        _system_prompt = (agent_model.system_prompt if agent_model else "") or ""
+        _agent_name = agent_model.name if agent_model else "Agent"
 
     from core.llm.anthropic_provider import AnthropicProvider
     llm_model = (agent_model.llm_model if agent_model else None) or "claude-haiku-4-5-20251001"
     llm = AnthropicProvider(model=llm_model)
 
     react_agent = DjangoAgent(
-        name=(agent_model.name if agent_model else "Agent"),
+        name=_agent_name,
         llm_provider=llm,
         tools=tools,
         max_steps=int((agent_model.max_steps if agent_model else None) or 20),
         max_cost=float((agent_model.max_cost_usd if agent_model else None) or 1.0),
         task_id=task_id,
-        system_prompt=(agent_model.system_prompt if agent_model else "") or "",
+        system_prompt=_system_prompt,
     )
 
     # Execute the approved tool NOW and inject the real result into messages.
     # (Do NOT send a fake "approved" message — the LLM would call the tool again.)
-    _tools_for_resume = _build_tools(agent_model, workspace_id=task.workspace_id)
+    _tools_for_resume = tools  # use the same tool set we just built above (handles nested case too)
     _tool_map = {t.name: t for t in _tools_for_resume}
     _approved_tool = _tool_map.get(approval.tool_name)
 
@@ -3189,7 +3228,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
             tool_name=exc.tool_name,
             tool_input=tool_input_data,
             tool_zone="yellow",
-            resume_snapshot=react_agent.pending_approval or {},
+            resume_snapshot=(getattr(exc, "snapshot", None) or react_agent.pending_approval or {}),
         )
         cost = react_agent.get_cost_summary()
         task.status = Task.Status.WAITING_APPROVAL

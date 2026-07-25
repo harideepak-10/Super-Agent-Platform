@@ -45,12 +45,13 @@ class ApprovalRequired(Exception):
         message:    Human-readable explanation.
     """
 
-    def __init__(self, tool_name: str, tool_input: str, message: str = "") -> None:
+    def __init__(self, tool_name: str, tool_input: str, message: str = "", snapshot: dict | None = None) -> None:
         self.tool_name = tool_name
         self.tool_input = tool_input
         self.message = message or (
             f"Tool '{tool_name}' requires human approval before execution."
         )
+        self.snapshot = snapshot  # full pending_approval state from whichever agent raised this
         super().__init__(self.message)
 
 
@@ -394,7 +395,7 @@ class BaseAgent:
                         "task": task,
                         "audit_log_snapshot": list(self.audit_log),
                     }
-                    raise ApprovalRequired(tool_name, tool_input)
+                    raise ApprovalRequired(tool_name, tool_input, snapshot=self.pending_approval)
 
                 # zone == GREEN: run the tool immediately
                 self._log(
