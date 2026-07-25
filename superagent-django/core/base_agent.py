@@ -403,6 +403,8 @@ class BaseAgent:
                 )
                 try:
                     result = tool.run(tool_input)
+                except (ApprovalRequired, RedZoneBlocked):
+                    raise  # a nested sub-agent hit its own approval/red-zone gate — don't swallow it
                 except Exception as exc:  # noqa: BLE001
                     result = f"Tool error: {exc}"
                     self._log(
