@@ -52,7 +52,7 @@ class RunDocumentAgentTool(BaseTool):
 
         try:
             from apps.tasks.tasks import _TOOL_REGISTRY
-            from core.llm.anthropic_Provider import AnthropicProvider
+            from core.llm.anthropic_provider import AnthropicProvider
 
             _DOCUMENT_TOOLS = {
                 "read_from_drive", "summarize_document", "extract_tables",
