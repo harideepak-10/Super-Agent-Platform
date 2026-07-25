@@ -2,12 +2,12 @@
 import os, py_compile, tempfile
 
 files = [
-    r'C:\Users\HP\PycharmProjects\PythonProject1\Super Agent Platform\superagent-django\core\llm\groq_provider.py',
-    r'C:\Users\HP\PycharmProjects\PythonProject1\Super Agent Platform\superagent-ai\core\llm\groq_provider.py',
+    r'C:\Users\HP\PycharmProjects\PythonProject1\Super Agent Platform\superagent-django\core\llm\anthropic_provider.py',
+    r'C:\Users\HP\PycharmProjects\PythonProject1\Super Agent Platform\superagent-ai\core\llm\anthropic_provider.py',
 ]
 
 old = (
-    '"⚠️ The AI is temporarily busy due to high usage (Groq rate limit reached). "\n'
+    '"⚠️ The AI is temporarily busy due to high usage (Anthropic rate limit reached). "\n'
     '    "Please wait about 1 minute and try again."'
 )
 new = (

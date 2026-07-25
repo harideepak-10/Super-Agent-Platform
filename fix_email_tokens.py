@@ -12,7 +12,7 @@ for path in files:
     content = raw.replace(b'\r\n', b'\n').replace(b'\r', b'\n').decode('utf-8')
 
     old = '_FULL_BODY_MAX_CHARS  = 2000                    # enough for summaries, safe on tokens'
-    new = '_FULL_BODY_MAX_CHARS  = 600                     # keep 10-email calls under 6000 TPM Groq limit'
+    new = '_FULL_BODY_MAX_CHARS  = 600                     # keep 10-email calls under 6000 TPM Anthropic limit'
 
     if old in content:
         content = content.replace(old, new)
@@ -41,5 +41,5 @@ for path in files:
 
 print("\nDone. Now run in Git Bash:")
 print('  git add superagent-django/core/tools/gmail/read_emails.py superagent-ai/core/tools/gmail/read_emails.py')
-print('  git commit -m "fix: reduce email body to 600 chars to stay under Groq 6000 TPM"')
+print('  git commit -m "fix: reduce email body to 600 chars to stay under Anthropic 6000 TPM"')
 print('  git push')
