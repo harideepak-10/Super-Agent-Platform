@@ -18,7 +18,7 @@ def reverse_update(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("agents", "0004_workspace_groq_api_key"),  # adjust if your latest migration file has a different name
+        ("agents", "0004_agent_template_version"),  # adjust if your latest migration file has a different name
     ]
 
     operations = [
