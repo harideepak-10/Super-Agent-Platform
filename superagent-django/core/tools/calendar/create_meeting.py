@@ -15,6 +15,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any
 from core.tools.base_tool import BaseTool, ToolZone
 
@@ -99,6 +100,51 @@ class CreateMeetingTool(BaseTool):
         )
         return build("calendar", "v3", credentials=creds)
 
+    def _check_conflicts(self, service, start_dt: datetime, end_dt: datetime, tz_name: str) -> list[dict]:
+        """Return any existing events that overlap [start_dt, end_dt]."""
+        if start_dt.tzinfo is None:
+            try:
+                aware_start = start_dt.replace(tzinfo=ZoneInfo(tz_name))
+                aware_end = end_dt.replace(tzinfo=ZoneInfo(tz_name))
+            except Exception:
+                aware_start = start_dt.replace(tzinfo=timezone.utc)
+                aware_end = end_dt.replace(tzinfo=timezone.utc)
+        else:
+            aware_start, aware_end = start_dt, end_dt
+
+        try:
+            result = service.events().list(
+                calendarId="primary",
+                timeMin=aware_start.isoformat(),
+                timeMax=aware_end.isoformat(),
+                singleEvents=True,
+                orderBy="startTime",
+                maxResults=50,
+            ).execute()
+        except Exception:
+            return []  # if the check itself fails, don't block booking — just skip the check
+
+        conflicts = []
+        for e in result.get("items", []):
+            ex_start_str = e.get("start", {}).get("dateTime", "")
+            ex_end_str   = e.get("end", {}).get("dateTime", "")
+            if not ex_start_str or not ex_end_str:
+                continue  # skip all-day events
+            try:
+                ex_start = datetime.fromisoformat(ex_start_str.replace("Z", "+00:00"))
+                ex_end   = datetime.fromisoformat(ex_end_str.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            overlap_start = max(aware_start, ex_start)
+            overlap_end   = min(aware_end, ex_end)
+            if overlap_start < overlap_end:
+                conflicts.append({
+                    "title": e.get("summary", "(no title)"),
+                    "start": ex_start_str,
+                    "end":   ex_end_str,
+                })
+        return conflicts
+
     def run(self, input_str: str) -> str:
         try:
             data = json.loads(input_str) if isinstance(input_str, str) else (input_str or {})
@@ -162,6 +208,19 @@ class CreateMeetingTool(BaseTool):
 
         try:
             service = self._get_service()
+
+            conflicts = self._check_conflicts(service, start_dt, end_dt, tz_name)
+            if conflicts:
+                conflict_desc = "; ".join(
+                    f"'{c['title']}' ({c['start']} to {c['end']})" for c in conflicts
+                )
+                return json.dumps({
+                    "error": (
+                        f"You already have an event at that time — {conflict_desc}. "
+                        "Please choose a different time."
+                    ),
+                    "conflicts": conflicts,
+                })
 
             # Try with Google Meet link first; fall back without it if Meet isn't enabled
             meet_link = ""

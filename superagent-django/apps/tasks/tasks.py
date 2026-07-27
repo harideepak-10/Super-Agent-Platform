@@ -2937,10 +2937,14 @@ def run_agent_task(self, task_id: str):
             result = react_agent.run(task.prompt)
 
         # Safety net: if no tool was called at all, retry once (skip if first run was slow)
+        # BUT skip retrying if the AI's response looks like a legitimate clarifying
+        # question (e.g. "How long should the meeting be?") — that's correct behavior,
+        # not a failure.
         _tool_called = any(
             e.get("event_type") == "tool_called" for e in react_agent.audit_log
         )
-        if not _tool_called and tools and (_time.monotonic() - _run_t0) < 90:
+        _looks_like_question = bool(result) and result.strip().endswith("?")
+        if not _tool_called and not _looks_like_question and tools and (_time.monotonic() - _run_t0) < 90:
             _logger.warning("run_agent_task: no tool called on first run — retrying task=%s", task_id)
             react_agent._step = 0
             react_agent.audit_log = []
@@ -2951,7 +2955,7 @@ def run_agent_task(self, task_id: str):
             _tool_called = any(
                 e.get("event_type") == "tool_called" for e in react_agent.audit_log
             )
-            if not _tool_called:
+            if not _tool_called and not (result and result.strip().endswith("?")):
                 result = (
                     "⚠️ The AI model failed to execute any action for this task. "
                     "Please run the task again — if it keeps happening, "
