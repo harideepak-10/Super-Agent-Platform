@@ -2968,6 +2968,13 @@ def run_agent_task(self, task_id: str):
         cost = react_agent.get_cost_summary()
         # Detect if task actually failed despite agent finishing
         _failed, _reason = _task_actually_failed(result or "", react_agent.audit_log)
+        if not _failed and not _tool_called:
+            # The agent never called a tool — it only replied with text (e.g. asking
+            # for missing info like date/duration). That's not a real completion,
+            # so don't show it as "completed". Keep the agent's actual question as
+            # the visible result, but mark the task as needing your input.
+            _failed = True
+            _reason = "Task needs more information from you before it can proceed."
         if _failed:
             task.status = Task.Status.FAILED
             task.error_message = _reason[:500]
