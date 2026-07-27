@@ -2302,6 +2302,21 @@ _HIGH_ZONE_TOOLS = {
     "create_recurring_event", "block_focus_time", "send_meeting_summary",
 }
 
+# Phrases that signal the AI described an action and asked for confirmation
+# in chat text, instead of just calling the tool (which auto-triggers approval).
+_CONFIRMATION_PHRASES = [
+    "proceed with", "should i proceed", "shall i proceed", "would you like me to",
+    "do you want me to", "want me to go ahead", "once you approve",
+    "shall i go ahead", "should i go ahead", "let me know if you'd like me to",
+    "would you like me to go ahead",
+]
+
+
+def _looks_like_confirmation_request(text: str) -> bool:
+    """True if the AI's text sounds like it's asking permission instead of acting."""
+    lower = (text or "").lower()
+    return any(p in lower for p in _CONFIRMATION_PHRASES)
+
 
 # =============================================================================
 # TASK OUTCOME DETECTION
@@ -2975,6 +2990,22 @@ def run_agent_task(self, task_id: str):
             # the visible result, but mark the task as needing your input.
             _failed = True
             _reason = "Task needs more information from you before it can proceed."
+        if not _failed:
+            _wrote_something = any(
+                e.get("event_type") == "tool_called"
+                and e.get("details", {}).get("tool_name") in _HIGH_ZONE_TOOLS
+                for e in react_agent.audit_log
+            )
+            if not _wrote_something and _looks_like_confirmation_request(result or ""):
+                # The agent described the action and asked "should I proceed?" in
+                # chat text instead of calling the write tool — which is the actual
+                # approval mechanism. Nothing was actually done, so don't mark this
+                # as completed.
+                _failed = True
+                _reason = (
+                    "Task needs your confirmation before it can proceed — the assistant "
+                    "described an action but never triggered it. Please ask again to have it act."
+                )
         if _failed:
             task.status = Task.Status.FAILED
             task.error_message = _reason[:500]
