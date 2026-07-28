@@ -54,7 +54,7 @@ class RunEmailAgentTool(BaseTool):
 
         try:
             from apps.tasks.tasks import _TOOL_REGISTRY
-            from core.llm.anthropic_provider import AnthropicProvider
+            from core.llm.groq_provider import GroqProvider
 
             # Collect email tools only
             _EMAIL_TOOLS = {
@@ -77,7 +77,7 @@ class RunEmailAgentTool(BaseTool):
                     except TypeError:
                         tools.append(cls())
 
-            llm = AnthropicProvider(model="claude-haiku-4-5-20251001")
+            llm = GroqProvider(model="llama-3.3-70b-versatile")
 
             from apps.tasks.tasks import DjangoAgent
             from apps.agents.views import _TEMPLATE_AGENT_TYPE_MAP

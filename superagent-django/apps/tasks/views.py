@@ -119,11 +119,11 @@ def _list_drive_files_for_workspace(workspace) -> list | None:
 def _ask_clarification(prompt: str) -> str:
     """Call Claude to generate a relevant clarifying question for a vague prompt."""
     try:
-        from anthropic import Anthropic
+        from groq import Groq
         import os
-        client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="llama-3.3-70b-versatile",
             system=(
                 "You are a helpful assistant. The user gave a very short or vague task. "
                 "Ask ONE short, friendly clarifying question to understand what they need. "

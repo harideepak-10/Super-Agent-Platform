@@ -257,10 +257,10 @@ class GenerateContentTool(BaseTool):
         import re
         _log = logging.getLogger(__name__)
         try:
-            from anthropic import Anthropic
-            client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+            from groq import Groq
+            client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
             completion = client.messages.create(
-                model=os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
+                model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
                 system=system_msg,
                 messages=[{"role": "user", "content": user_msg}],
                 temperature=0.7,

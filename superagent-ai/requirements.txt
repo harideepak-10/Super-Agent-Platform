@@ -1,5 +1,5 @@
 # Core agent dependencies
-anthropic
+groq
 python-dotenv
 
 # Gmail API

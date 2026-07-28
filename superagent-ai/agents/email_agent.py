@@ -82,7 +82,7 @@ class EmailAgent(BaseAgent):
 
     Example (production)::
 
-        agent = EmailAgent(llm_provider=AnthropicProvider())
+        agent = EmailAgent(llm_provider=GroqProvider())
         result = agent.run("Check my inbox and summarise unread emails.")
 
     Example (tests)::
