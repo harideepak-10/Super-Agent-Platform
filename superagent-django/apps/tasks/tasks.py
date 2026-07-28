@@ -3267,6 +3267,28 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         result = _inject_summary_result(result, react_agent.audit_log)
         _save_audit_steps(task, react_agent.audit_log, step_offset=step_offset)
         cost = react_agent.get_cost_summary()
+
+        # Also check whether the just-approved tool itself returned an error —
+        # even if the AI's own reply text falsely claims success afterward.
+        _resume_tool_failed = _tool_result_is_error(_tool_result)
+        _failed, _reason = _task_actually_failed(result or "", react_agent.audit_log)
+        if _resume_tool_failed and not _failed:
+            _failed = True
+            _reason = "The approved action failed: {}".format(str(_tool_result)[:300])
+
+        if _failed:
+            task.status = Task.Status.FAILED
+            task.error_message = _reason[:500]
+            task.result = result
+            task.completed_at = timezone.now()
+            task.steps_taken = (task.steps_taken or 0) + cost["total_steps"]
+            task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_eur"]
+            task.total_tokens = (task.total_tokens or 0) + llm.total_tokens
+            task.save()
+            from apps.notifications.utils import notify_task_failed
+            notify_task_failed(task)
+            return {"status": "failed", "task_id": task_id}
+
         task.status = Task.Status.COMPLETED
         task.result = result
         task.completed_at = timezone.now()
