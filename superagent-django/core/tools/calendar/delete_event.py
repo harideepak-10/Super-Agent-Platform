@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Real Google Calendar event IDs only ever use lowercase letters a-v and
 # digits 0-9 (base32hex), 5-1024 chars. Anything else is a guessed/fabricated
 # placeholder, not a real ID.
-_VALID_EVENT_ID_RE = re.compile(r"^[a-v0-9]{5,1024}$")
+_VALID_EVENT_ID_RE = re.compile(r"^[a-v0-9]{5,1024}(_\d{8}T\d{6}Z)?$")
 
 
 class DeleteEventTool(BaseTool):
