@@ -2930,6 +2930,16 @@ def run_agent_task(self, task_id: str):
     llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.3-70b-versatile"
     llm = GroqProvider(model=llm_model)
 
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _ZoneInfo
+    _now_ist = _dt.now(_ZoneInfo("Asia/Kolkata"))
+    _today_context = (
+        f"\n\n[SYSTEM CONTEXT] Today's real date is {_now_ist.strftime('%Y-%m-%d')} "
+        f"({_now_ist.strftime('%A')}), current time is {_now_ist.strftime('%H:%M')} IST. "
+        "Always treat this as 'today' for any date calculation — never reuse a date "
+        "mentioned earlier in this conversation, since today changes every day."
+    )
+
     react_agent = DjangoAgent(
         name=(agent_model.name if agent_model else "Agent"),
         llm_provider=llm,
@@ -2937,7 +2947,7 @@ def run_agent_task(self, task_id: str):
         max_steps=min(int((agent_model.max_steps if agent_model else None) or 8), 10),
         max_cost=float((agent_model.max_cost_usd if agent_model else None) or 1.0),
         task_id=task_id,
-        system_prompt=(agent_model.system_prompt if agent_model else "") or "",
+        system_prompt=((agent_model.system_prompt if agent_model else "") or "") + _today_context,
     )
 
     try:
@@ -3181,6 +3191,17 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     from core.llm.groq_provider import GroqProvider
     llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.3-70b-versatile"
     llm = GroqProvider(model=llm_model)
+
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _ZoneInfo
+    _now_ist = _dt.now(_ZoneInfo("Asia/Kolkata"))
+    _today_context = (
+        f"\n\n[SYSTEM CONTEXT] Today's real date is {_now_ist.strftime('%Y-%m-%d')} "
+        f"({_now_ist.strftime('%A')}), current time is {_now_ist.strftime('%H:%M')} IST. "
+        "Always treat this as 'today' for any date calculation — never reuse a date "
+        "mentioned earlier in this conversation, since today changes every day."
+    )
+    _system_prompt = _system_prompt + _today_context
 
     react_agent = DjangoAgent(
         name=_agent_name,
