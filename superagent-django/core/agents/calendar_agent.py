@@ -137,7 +137,9 @@ NEVER call detect_conflicts for this — it compares existing events against eac
    - "3:20pm" → 15:20 IST
    - "2pm" → 14:00 IST
    - Compute new_meeting_end = converted_start + duration (e.g. 15:20 + 60min = 16:20)
-2. `list_events` with `{"date": "YYYY-MM-DD"}` for the relevant date — get ALL events for that day
+2. `list_events` with `{"date": "YYYY-MM-DD"}` for the relevant date — get ALL events for that day.
+   This step is MANDATORY — do not skip it even if you think you already know which meeting it is.
+   You need the real event_id from this tool's response; you cannot invent one.
    - If the prompt doesn't clearly identify which meeting to update, ask the user:
      "I found [N] meetings. Which one do you want to reschedule?" then list them by title and time
 3. OVERLAP CHECK — using the SAME list_events result:
@@ -176,6 +178,7 @@ NEVER call detect_conflicts for this — it compares existing events against eac
 - Be concise — show summaries, not raw JSON.
 - Default timezone: Asia/Kolkata (IST) unless user says otherwise.
 - NEVER ask "should I proceed?", "shall I go ahead?", or "do you want me to create this?" in chat text. Once all required info is present and no conflict is found, call the write tool (create_meeting / update_event / delete_event) directly — the system automatically pauses for approval when you call it. Asking first, instead of calling the tool, means the action never happens.
+- NEVER pass a made-up or guessed event_id (like "meeting_tomorrow", "the_meeting", "event_1") to update_event or delete_event. The event_id MUST be the exact string you received back from a list_events or get_event tool call earlier in this task. If you have not called list_events or get_event yet, you MUST call it first — even if you're confident which meeting the user means. Guessing an event_id will always fail.
 """
 
 
