@@ -78,6 +78,25 @@ class DeleteEventTool(BaseTool):
         )
         return build("calendar", "v3", credentials=creds)
 
+    def validate(self, input_str: str) -> str | None:
+        """Pre-approval check: reject fabricated/guessed event IDs before a
+        human is ever asked to approve this delete."""
+        try:
+            data = json.loads(input_str) if isinstance(input_str, str) else (input_str or {})
+        except (json.JSONDecodeError, TypeError):
+            return "Invalid input."
+        event_id = data.get("event_id", "")
+        if not event_id:
+            return "'event_id' is required. Use get_event or list_events to find it."
+        if not _VALID_EVENT_ID_RE.match(event_id):
+            return (
+                f"'{event_id}' is not a real Google Calendar event ID — it looks like a "
+                "guessed or made-up value. Call list_events or get_event first to get the "
+                "REAL event_id from the tool's response, then call delete_event again with "
+                "that exact value."
+            )
+        return None
+
     def run(self, input_str: str) -> str:
         try:
             data = json.loads(input_str) if isinstance(input_str, str) else (input_str or {})
