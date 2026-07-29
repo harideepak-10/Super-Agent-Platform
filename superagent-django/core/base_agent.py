@@ -375,6 +375,34 @@ class BaseAgent:
                     raise RedZoneBlocked(tool_name)
 
                 if zone == ToolZone.YELLOW:
+                    # Cheap, side-effect-free pre-check BEFORE bothering a human.
+                    # Catches things like a fabricated/guessed event_id so the
+                    # agent can self-correct instead of wasting an approval
+                    # round-trip on a call that is guaranteed to fail.
+                    _validation_error = None
+                    try:
+                        _validation_error = tool.validate(tool_input)
+                    except Exception:
+                        _validation_error = None  # never let a buggy validator block execution
+                    if _validation_error:
+                        self._log(
+                            "error",
+                            {
+                                "event": "yellow_zone_precheck_failed",
+                                "tool_name": tool_name,
+                                "tool_input": tool_input,
+                                "error": _validation_error,
+                                "step": self._step,
+                            },
+                        )
+                        messages.append(
+                            {"role": "assistant", "content": content or "", "tool_call": tool_call}
+                        )
+                        messages.append(
+                            {"role": "tool", "name": tool_name, "content": json.dumps({"error": _validation_error})}
+                        )
+                        continue
+
                     self._log(
                         "approval_needed",
                         {
