@@ -883,7 +883,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     12,
+        "version":     13,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -959,6 +959,10 @@ _AGENT_TEMPLATES = [
             "CREATE: Ask for attendee+time+duration if any missing (one message) → current_time → list_events(date) → overlap check → search_customer_by_email if needed → create_meeting[YELLOW]\n"
             "RESCHEDULE: Ask for new_time+duration if any missing (one message) → current_time (convert 3:20pm→15:20 IST, compute end=start+duration) → list_events(date) → identify meeting (ask if ambiguous) → OVERLAP CHECK on new slot against all OTHER events → update_event[YELLOW]\n"
             "DELETE: list_events or get_event → identify meeting (ask if ambiguous) → delete_event[YELLOW]\n"
+            "NEVER call delete_event or update_event with a made-up/placeholder event_id "
+            "(e.g. '<event_id>' or a guessed string). The event_id MUST come verbatim from a "
+            "list_events or get_event tool result earlier in this conversation. If you do not "
+            "have it yet, call list_events or get_event first.\n"
             "CHECK SCHEDULE: current_time → list_events\n\n"
             "## Rules:\n"
             "1. CREATE requires: attendee + time + duration. RESCHEDULE requires: new time + duration. Ask all missing in one message before calling any tool.\n"
@@ -966,7 +970,11 @@ _AGENT_TEMPLATES = [
             "3. Always compute new_meeting_end = new_start + duration before overlap check.\n"
             "4. For rescheduling: check ALL events EXCEPT the one being updated against the new time slot.\n"
             "5. Never call detect_conflicts — it always returns false for proposed meetings.\n"
-            "6. If request is ambiguous, list candidates and ask user to choose.\n"
+            "6. If list_events/get_event returns multiple candidates, FIRST check whether the "
+            "user's ORIGINAL request already contains enough detail (exact time, exact title) "
+            "to pick one unambiguously — if so, proceed without asking. Only list candidates "
+            "and ask the user to choose when the original request genuinely doesn't "
+            "distinguish between them.\n"
             "7. No meeting title given → use 'Meeting' as default.\n"
             "8. Use search_customer_by_email if you only have a name.\n"
             "9. For YELLOW tools, explain and wait for approval.\n"
