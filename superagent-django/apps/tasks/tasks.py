@@ -2211,6 +2211,204 @@ class CurrentTimeTool(BaseTool):
 
 
 # =============================================================================
+# FINANCE AGENT TOOL WRAPPERS
+# =============================================================================
+
+class CategorizeExpensesTool(BaseTool):
+    """Delegate to core CategorizeExpensesTool (GREEN)."""
+    name = "categorize_expenses"
+    description = (
+        "Categorize and summarize a list of expenses into spending categories "
+        "(food, transport, housing, shopping, entertainment, health, subscriptions, "
+        "utilities, other). Input JSON: {\"expenses\": [{\"description\": \"...\", "
+        "\"amount\": 450, \"date\": \"...(optional)\"}], \"currency\": \"INR (optional)\"}. "
+        "Does NOT persist expenses across separate tasks — only summarizes what's passed in."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str: str) -> str:
+        from core.tools.finance.categorize_expenses import CategorizeExpensesTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "expenses": {"type": "array", "items": {"type": "object"}},
+                "currency": {"type": "string"},
+            }, "required": ["expenses"]},
+        }}
+
+
+class CalculateBudgetTool(BaseTool):
+    """Delegate to core CalculateBudgetTool (GREEN)."""
+    name = "calculate_budget"
+    description = (
+        "Calculate a budget summary, a savings projection, or a simple slab-based tax "
+        "estimate. Input JSON with \"mode\": \"budget\" | \"savings_projection\" | \"tax_estimate\". "
+        "For budget: {\"mode\":\"budget\",\"income\":80000,\"expenses\":{\"rent\":25000,...}}. "
+        "For savings_projection: {\"mode\":\"savings_projection\",\"monthly_saving\":10000,"
+        "\"months\":12,\"annual_interest_rate_pct\":6}. "
+        "For tax_estimate: {\"mode\":\"tax_estimate\",\"annual_income\":1200000,\"slabs\":[...]} "
+        "— this is a simple arithmetic estimate on user-supplied slabs, NOT real tax advice; "
+        "always tell the user to confirm with a tax professional."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str: str) -> str:
+        from core.tools.finance.calculate_budget import CalculateBudgetTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "mode": {"type": "string", "enum": ["budget", "savings_projection", "tax_estimate"]},
+                "income": {"type": "number"},
+                "expenses": {"type": "object"},
+                "monthly_saving": {"type": "number"},
+                "months": {"type": "integer"},
+                "annual_interest_rate_pct": {"type": "number"},
+                "annual_income": {"type": "number"},
+                "slabs": {"type": "array", "items": {"type": "object"}},
+            }, "required": ["mode"]},
+        }}
+
+
+class ConvertCurrencyTool(BaseTool):
+    """Delegate to core ConvertCurrencyTool (GREEN)."""
+    name = "convert_currency"
+    description = (
+        "Convert an amount from one currency to another using live exchange rates. "
+        "Input JSON: {\"amount\": 100, \"from\": \"USD\", \"to\": \"INR\"}. "
+        "Use standard 3-letter currency codes (USD, EUR, INR, GBP, JPY, etc)."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str: str) -> str:
+        from core.tools.finance.convert_currency import ConvertCurrencyTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "amount": {"type": "number"},
+                "from": {"type": "string"},
+                "to": {"type": "string"},
+            }, "required": ["amount", "from", "to"]},
+        }}
+
+
+class GenerateInvoiceTool(BaseTool):
+    """Delegate to core GenerateInvoiceTool (GREEN)."""
+    name = "generate_invoice"
+    description = (
+        "Generate a real PDF or Word invoice file from line items and automatically "
+        "save it. Input JSON: {\"invoice_number\":\"...\", \"from_name\":\"...\", "
+        "\"to_name\":\"...\", \"to_email\":\"...(optional)\", \"date\":\"...\", "
+        "\"due_date\":\"...(optional)\", \"currency\":\"INR\", "
+        "\"items\":[{\"description\":\"...\",\"quantity\":1,\"unit_price\":1000}], "
+        "\"tax_pct\":18(optional), \"notes\":\"...(optional)\", "
+        "\"output_format\":\"pdf|docx\"}. "
+        "Returns file_path — pass it to upload_to_drive or attach when sending the email."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str: str) -> str:
+        from core.tools.finance.generate_invoice import GenerateInvoiceTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "invoice_number": {"type": "string"},
+                "from_name": {"type": "string"},
+                "to_name": {"type": "string"},
+                "to_email": {"type": "string"},
+                "date": {"type": "string"},
+                "due_date": {"type": "string"},
+                "currency": {"type": "string"},
+                "items": {"type": "array", "items": {"type": "object"}},
+                "tax_pct": {"type": "number"},
+                "notes": {"type": "string"},
+                "output_format": {"type": "string", "enum": ["pdf", "docx"]},
+            }, "required": ["invoice_number", "to_name", "items"]},
+        }}
+
+
+class SummarizeFinancialDocumentTool(BaseTool):
+    """Delegate to core SummarizeFinancialDocumentTool (GREEN)."""
+    name = "summarize_financial_document"
+    description = (
+        "Summarize a financial document (bank statement, invoice, financial report — "
+        "PDF or DOCX) with a focus on income, expenses, balances, and notable line items. "
+        "Input JSON: {\"file_path\": \"/tmp/statement.pdf\", \"max_points\": 10}."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        pass
+
+    def run(self, input_str: str) -> str:
+        from core.tools.finance.summarize_financial_document import SummarizeFinancialDocumentTool as CoreTool
+        return CoreTool().run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "file_path": {"type": "string"},
+                "max_points": {"type": "integer"},
+            }, "required": ["file_path"]},
+        }}
+
+
+class FindInvoiceEmailsTool(BaseTool):
+    """Search Gmail for invoice/receipt emails and extract key data (GREEN, read-only)."""
+    name = "find_invoice_emails"
+    description = (
+        "Search Gmail for invoice, receipt, or billing emails and extract the amount, "
+        "vendor, and due date from each match. Input JSON: {\"query\": \"...(optional)\", "
+        "\"max_results\": 10}. If 'query' is omitted, searches for common invoice/receipt/bill "
+        "keywords automatically."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str: str) -> str:
+        from core.tools.finance.find_invoice_emails import FindInvoiceEmailsTool as CoreTool
+        return CoreTool(
+            gmail_service=_gmail_service_for_workspace(self._workspace_id),
+            workspace_id=self._workspace_id,
+        ).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object", "properties": {
+                "query": {"type": "string"},
+                "max_results": {"type": "integer"},
+            }},
+        }}
+
+
+# =============================================================================
 # TOOL REGISTRY
 # =============================================================================
 
@@ -2292,6 +2490,13 @@ _TOOL_REGISTRY: dict = {
     "cal_read":                 CalReadTool,
     "cal_write":                CalWriteTool,
     "delete_file":              DeleteFileTool,
+    # Finance tools
+    "categorize_expenses":            CategorizeExpensesTool,
+    "calculate_budget":               CalculateBudgetTool,
+    "convert_currency":               ConvertCurrencyTool,
+    "generate_invoice":               GenerateInvoiceTool,
+    "summarize_financial_document":   SummarizeFinancialDocumentTool,
+    "find_invoice_emails":            FindInvoiceEmailsTool,
 }
 
 _HIGH_ZONE_TOOLS = {
@@ -2595,6 +2800,13 @@ _TOOL_LABELS = {
     "cal_read":                 ("Reading calendar",           "Fetching upcoming events"),
     "cal_write":                ("Creating calendar event",    "Adding event to calendar"),
     "delete_file":              ("Deleting file",              "Removing file permanently"),
+    # Finance
+    "categorize_expenses":          ("Categorizing expenses",      "Sorting spending into categories"),
+    "calculate_budget":             ("Calculating budget",         "Running budget/savings/tax numbers"),
+    "convert_currency":             ("Converting currency",        "Fetching live exchange rate"),
+    "generate_invoice":             ("Generating invoice",         "Building invoice document"),
+    "summarize_financial_document": ("Summarizing financial doc",  "Reading statement/report"),
+    "find_invoice_emails":          ("Finding invoice emails",     "Searching Gmail for bills/receipts"),
 }
 
 
@@ -2926,9 +3138,15 @@ def run_agent_task(self, task_id: str):
         else [WebSearchTool(), ClassifyTextTool(), GenerateReportTool()]
     )
 
-    from core.llm.groq_provider import GroqProvider
     llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.3-70b-versatile"
-    llm = GroqProvider(model=llm_model)
+    if llm_model.startswith("claude-"):
+        # This agent is pinned to Claude (Anthropic) — more reliable for
+        # multi-step tool workflows than the default Groq/Llama model.
+        from core.llm.anthropic_provider import AnthropicProvider
+        llm = AnthropicProvider(model=llm_model)
+    else:
+        from core.llm.groq_provider import GroqProvider
+        llm = GroqProvider(model=llm_model)
 
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo as _ZoneInfo
@@ -3079,7 +3297,8 @@ def run_agent_task(self, task_id: str):
 
     except Exception as exc:
         from core.llm.groq_provider import GroqRateLimitError
-        if isinstance(exc, GroqRateLimitError):
+        from core.llm.anthropic_provider import AnthropicRateLimitError
+        if isinstance(exc, (GroqRateLimitError, AnthropicRateLimitError)):
             _save_audit_steps(task, getattr(react_agent, "audit_log", []))
             task.status = Task.Status.FAILED
             task.error_message = str(exc)[:500]
@@ -3188,9 +3407,15 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         _system_prompt = (agent_model.system_prompt if agent_model else "") or ""
         _agent_name = agent_model.name if agent_model else "Agent"
 
-    from core.llm.groq_provider import GroqProvider
     llm_model = (agent_model.llm_model if agent_model else None) or "llama-3.3-70b-versatile"
-    llm = GroqProvider(model=llm_model)
+    if llm_model.startswith("claude-"):
+        # This agent is pinned to Claude (Anthropic) — more reliable for
+        # multi-step tool workflows than the default Groq/Llama model.
+        from core.llm.anthropic_provider import AnthropicProvider
+        llm = AnthropicProvider(model=llm_model)
+    else:
+        from core.llm.groq_provider import GroqProvider
+        llm = GroqProvider(model=llm_model)
 
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo as _ZoneInfo
@@ -3326,7 +3551,8 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
 
     except Exception as exc:
         from core.llm.groq_provider import GroqRateLimitError
-        if isinstance(exc, GroqRateLimitError):
+        from core.llm.anthropic_provider import AnthropicRateLimitError
+        if isinstance(exc, (GroqRateLimitError, AnthropicRateLimitError)):
             _save_audit_steps(task, getattr(react_agent, "audit_log", []), step_offset=step_offset)
             task.status = Task.Status.COMPLETED
             task.result = str(exc)
