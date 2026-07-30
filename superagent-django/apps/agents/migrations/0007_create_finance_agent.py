@@ -39,14 +39,18 @@ _FINANCE_TOOLS = [
     "current_time", "web_search", "read_from_drive", "upload_to_drive",
 ]
 
-_WORKSPACE_ID = "be5f6e13-c7a9-4fbc-a7b4-2751f29954b2"
 
 
 def create_finance_agent(apps, schema_editor):
     Agent = apps.get_model("agents", "Agent")
+    # Reuse the workspace from an existing agent instead of guessing one —
+    # guarantees a valid workspace_id, whatever it actually is on this database.
+    existing = Agent.objects.exclude(workspace_id__isnull=True).first()
+    if not existing:
+        return  # no workspace to attach to yet — nothing safe to create
     Agent.objects.get_or_create(
         name="Finance Agent",
-        workspace_id=_WORKSPACE_ID,
+        workspace_id=existing.workspace_id,
         defaults={
             "agent_type": "finance",
             "tools": _FINANCE_TOOLS,
@@ -60,7 +64,7 @@ def create_finance_agent(apps, schema_editor):
 
 def remove_finance_agent(apps, schema_editor):
     Agent = apps.get_model("agents", "Agent")
-    Agent.objects.filter(name="Finance Agent", workspace_id=_WORKSPACE_ID).delete()
+    Agent.objects.filter(name="Finance Agent").delete()
 
 
 class Migration(migrations.Migration):

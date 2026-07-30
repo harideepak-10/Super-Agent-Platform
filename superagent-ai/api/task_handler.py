@@ -70,8 +70,8 @@ class TaskResult:
 def _build_llm():
     """Build LLM provider from environment."""
     try:
-        from core.llm.anthropic_Provider import AnthropicProvider
-        return AnthropicProvider()
+        from core.llm.groq_Provider import GroqProvider
+        return GroqProvider()
     except Exception as exc:
         raise EnvironmentError(f"Cannot build LLM provider: {exc}") from exc
 
