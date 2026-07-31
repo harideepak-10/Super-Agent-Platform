@@ -152,7 +152,7 @@ _TOOL_DISPLAY = {
     "classify_text":            ("Classify Text",      "tag",               "safe"),
     "web_search":               ("Web Search",         "search",            "safe"),
     "file_read":                ("File Read",          "file",              "safe"),
-    "file_write":               ("File Write",         "file-plus",         "medium"),
+    "file_write":                ("File Write",         "file-plus",         "medium"),
     "browse_web":               ("Browse Web",         "globe",             "safe"),
     "cal_read":                 ("Calendar Read",      "calendar",          "safe"),
     "cal_write":                ("Calendar Write",     "calendar",          "medium"),
@@ -174,10 +174,17 @@ _TOOL_DISPLAY = {
     "create_docx":              ("Create Word Doc",    "file-text",         "safe"),
     "create_presentation":      ("Create PPTX",        "monitor",           "safe"),
     "fill_template":            ("Fill Template",      "edit-3",            "safe"),
-    "merge_pdfs":               ("Merge PDFs",         "layers",            "safe"),
+    "merge_pdfs":                ("Merge PDFs",         "layers",            "safe"),
     # ── Document — analyse ────────────────────────────────────────────────────
     "compare_documents":        ("Compare Docs",       "git-diff",          "safe"),
     "translate_document":       ("Translate Doc",      "globe",             "safe"),
+    # ── Finance ───────────────────────────────────────────────────────────────
+    "categorize_expenses":          ("Categorize Expenses",       "pie-chart",     "safe"),
+    "calculate_budget":             ("Calculate Budget",          "calculator",    "safe"),
+    "convert_currency":             ("Convert Currency",          "dollar-sign",   "safe"),
+    "generate_invoice":             ("Generate Invoice",          "file-text",     "safe"),
+    "summarize_financial_document": ("Summarise Financial Doc",   "file-text",     "safe"),
+    "find_invoice_emails":          ("Find Invoice Emails",       "mail",          "safe"),
 }
 _TOOL_DEFAULT = ("Tool",        "zap",    "safe")
 
@@ -991,6 +998,76 @@ _AGENT_TEMPLATES = [
         "max_cost_usd": 1.0,
     },
     {
+        "id":          4,
+        "version":     1,
+        "slug":        "finance-agent",
+        "name":        "Finance Agent",
+        "agent_type":  "finance",
+        "description": "Expense categorisation, budgeting, invoicing, currency conversion, and financial document summarisation.",
+        "icon":        "wallet",
+        "icon_bg":     "#166534",
+        "border_color":"#22C55E",
+        "badge":       "New",
+        "badge_color": "#3B82F6",
+        "capabilities": [
+            "Categorises and summarises expenses into spending categories",
+            "Calculates budget summaries, savings projections, and simple tax estimates",
+            "Generates real PDF or Word invoices from line items",
+            "Summarises financial documents (bank statements, invoices, reports)",
+            "Converts between currencies using live exchange rates",
+            "Finds invoice/receipt emails in Gmail and extracts the key data",
+        ],
+        "tools": [
+            "categorize_expenses",
+            "calculate_budget",
+            "convert_currency",
+            "generate_invoice",
+            "summarize_financial_document",
+            "find_invoice_emails",
+            "read_from_drive",
+            "upload_to_drive",
+            "current_time",
+            "web_search",
+        ],
+        "llm_model":   "llama-3.3-70b-versatile",
+        "system_prompt": (
+            "You are FinanceAgent, the KRYPSOS AI assistant for personal and business finance tasks.\n\n"
+            "## Your Capabilities\n\n"
+            "- categorize_expenses — categorise and summarise a list of expenses the user gives you. "
+            "This does NOT remember expenses between separate requests — only what's given in the current task.\n"
+            "- calculate_budget — budget summaries, savings projections, and simple tax estimates. "
+            "Tax estimates are plain arithmetic on slabs the USER provides — you have no built-in "
+            "knowledge of any country's actual tax law. Always tell the user to confirm with a tax "
+            "professional before filing anything based on this number.\n"
+            "- generate_invoice — build a real PDF or Word invoice file from line items.\n"
+            "- summarize_financial_document — summarise an uploaded/Drive financial PDF or DOCX "
+            "(bank statement, invoice, report) with a focus on income, expenses, and balances.\n"
+            "- convert_currency — live currency conversion between two currency codes.\n"
+            "- find_invoice_emails — search Gmail for invoice/receipt/bill emails and extract "
+            "amount, vendor, and due date from each one.\n"
+            "- read_from_drive / upload_to_drive — read a financial document from Drive to "
+            "summarise it, or save a generated invoice back to Drive.\n"
+            "- current_time — call this first whenever the user says a relative date/time.\n"
+            "- web_search — for anything you don't have a tool for.\n\n"
+            "## Rules\n"
+            "- Never invent numbers. If the user hasn't given you an amount, ask for it — don't guess.\n"
+            "- For expense categorisation, if the user's message already IS the list of expenses "
+            "(in a message, table, or attached text), pass that directly — don't ask them to "
+            "reformat it into JSON themselves.\n"
+            "- For invoices: if the user hasn't given a currency, ask, or infer from context if obvious.\n"
+            "- For tax estimates: ALWAYS include the disclaimer that this is a simple estimate, not "
+            "tax advice, and the user should confirm with a professional before filing.\n"
+            "- If the user wants a financial document summarised and it's not already available locally, "
+            "use read_from_drive to fetch it first.\n"
+            "- If the user wants an invoice sent by email, generate it with generate_invoice first, "
+            "then tell them to ask the Email Agent to send it — you don't have a send_email tool.\n"
+            "- Be concise — show clear summaries and totals, not raw JSON, unless asked for raw data.\n"
+            "- Default currency: INR unless the user says otherwise or context implies another."
+        ),
+        "max_steps":   20,
+        "max_cost_usd": 1.0,
+    },
+    {
         "id":          10,
         "version":     1,
         "slug":        "orchestrator-agent",
@@ -1158,10 +1235,10 @@ def agent_template_activate(request, template_id):
 
     Template IDs:
       1 — Email Agent
-      2 — Research Agent
-      3 — Document Agent
-      4 — Calendar Agent
-      5 — Reporting Agent
+      2 — Document Agent
+      3 — Calendar Agent
+      4 — Finance Agent
+      10 — Orchestrator Agent
     """
     workspace = _get_workspace(request)
     if not workspace:
@@ -1376,6 +1453,12 @@ def agent_create_form(request):
                 {"name": "create_draft",   "label": "Create Draft",  "icon": "edit-3",       "risk": "safe"},
                 {"name": "export_csv",     "label": "Export CSV",    "icon": "download",     "risk": "safe"},
                 {"name": "generate_report","label": "Gen Report",    "icon": "file-text",    "risk": "safe"},
+                {"name": "categorize_expenses",          "label": "Categorize Expenses",     "icon": "pie-chart",   "risk": "safe"},
+                {"name": "calculate_budget",              "label": "Calculate Budget",        "icon": "calculator",  "risk": "safe"},
+                {"name": "convert_currency",              "label": "Convert Currency",        "icon": "dollar-sign", "risk": "safe"},
+                {"name": "generate_invoice",              "label": "Generate Invoice",        "icon": "file-text",   "risk": "safe"},
+                {"name": "summarize_financial_document",  "label": "Summarise Financial Doc", "icon": "file-text",   "risk": "safe"},
+                {"name": "find_invoice_emails",           "label": "Find Invoice Emails",     "icon": "mail",        "risk": "safe"},
             ],
             "risk_note": "Tools marked high will always require your approval before running.",
         },
