@@ -2378,13 +2378,15 @@ class SummarizeFinancialDocumentTool(BaseTool):
 
 
 class FindInvoiceEmailsTool(BaseTool):
-    """Search Gmail for invoice/receipt emails and extract key data (GREEN, read-only)."""
+    """Search Gmail for invoice/receipt emails, read body + attachments, extract data (GREEN, read-only)."""
     name = "find_invoice_emails"
     description = (
         "Search Gmail for invoice, receipt, or billing emails and extract the amount, "
-        "vendor, and due date from each match. Input JSON: {\"query\": \"...(optional)\", "
+        "vendor, and due date from each match — reads BOTH the email body AND any "
+        "attached PDF/DOCX file, since most real invoices have the numbers inside the "
+        "attachment, not the email text. Input JSON: {\"query\": \"...(optional)\", "
         "\"max_results\": 10}. If 'query' is omitted, searches for common invoice/receipt/bill "
-        "keywords automatically."
+        "keywords automatically. Returns file_path for each attachment found."
     )
     zone = ToolZone.GREEN
 
