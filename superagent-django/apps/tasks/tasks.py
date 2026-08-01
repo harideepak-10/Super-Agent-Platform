@@ -2517,7 +2517,10 @@ _CONFIRMATION_PHRASES = [
     "proceed with", "should i proceed", "shall i proceed", "would you like me to",
     "do you want me to", "want me to go ahead", "once you approve",
     "shall i go ahead", "should i go ahead", "let me know if you'd like me to",
-    "would you like me to go ahead",
+    "would you like me to go ahead", "let me know which function", "let me know which tool",
+    "which function would you like", "which tool would you like",
+    "please let me know which function", "please let me know which tool",
+    "please specify which function", "please specify which tool",
 ]
 
 
