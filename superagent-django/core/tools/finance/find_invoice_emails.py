@@ -29,10 +29,15 @@ import json
 from core.tools.base_tool import BaseTool, ToolZone
 
 
-# Subject-scoped — only matches emails that are actually ABOUT an invoice,
-# not any email that happens to mention the word "payment" somewhere.
+# Subject-scoped — only matches emails that are actually ABOUT an invoice.
+# NOTE: deliberately does NOT include a bare "bill" — that word alone catches
+# idioms like "cut your LLM bill" (a cost pun, not a real invoice) far more
+# often than it catches genuine bills. "invoice" and "receipt" are precise;
+# "bill" needs a companion phrase to mean anything reliable.
 _DEFAULT_QUERY = (
-    "subject:(invoice OR receipt OR bill OR \"invoice attached\") -in:spam -in:trash"
+    'subject:(invoice OR receipt OR "invoice attached" OR "your bill" OR '
+    '"bill payment" OR "amount due" OR "payment due") -in:spam -in:trash '
+    '-unsubscribe -newsletter'
 )
 
 _CONTENT_PREVIEW_CHARS = 1200
