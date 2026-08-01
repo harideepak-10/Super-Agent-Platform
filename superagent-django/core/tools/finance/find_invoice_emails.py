@@ -1,12 +1,20 @@
 """
-FindInvoiceEmailsTool — search Gmail for invoice/receipt/billing emails and
-extract the key data (amount, vendor, due date) from each match.
+FindInvoiceEmailsTool — search Gmail for genuine invoice/receipt/billing emails
+and extract the key data (amount, vendor, due date) from each match.
 
 Zone: GREEN — read-only, runs automatically.
 
+The default search is deliberately narrow — it only matches emails whose
+SUBJECT line is actually about an invoice/receipt/bill, not any email that
+merely mentions those words somewhere in a newsletter or unrelated message.
+This is a real Gmail search filter (deterministic), not something the AI has
+to get right on its own.
+
 Reads BOTH the email body text AND any PDF/DOCX/image attachments, since in
 practice most real invoice emails have the actual numbers inside the
-attached file, not the email body itself.
+attached file, not the email body itself. Also returns a short readable
+content preview for each attachment, so the caller can summarize every
+invoice found without needing a separate tool call per file.
 
 Takes an already-built Gmail API service (constructed by the caller — same
 convention as the other core/tools/gmail tools), so this file has no direct
@@ -21,14 +29,19 @@ import json
 from core.tools.base_tool import BaseTool, ToolZone
 
 
+# Subject-scoped — only matches emails that are actually ABOUT an invoice,
+# not any email that happens to mention the word "payment" somewhere.
 _DEFAULT_QUERY = (
-    "(invoice OR receipt OR bill OR payment OR statement) -in:spam -in:trash"
+    "subject:(invoice OR receipt OR bill OR \"invoice attached\") -in:spam -in:trash"
 )
+
+_CONTENT_PREVIEW_CHARS = 1200
 
 
 class FindInvoiceEmailsTool(BaseTool):
-    """Find invoice/receipt/billing emails and extract key financial data from each,
-    reading both the email body and any attached PDF/DOCX/image files.
+    """Find genuine invoice/receipt/billing emails and extract key financial data
+    from each — reading both the email body and any attached PDF/DOCX/image files,
+    and returning a readable content preview for every attachment found.
 
     Input format (JSON string)::
 
@@ -41,7 +54,9 @@ class FindInvoiceEmailsTool(BaseTool):
             "invoices": [
                 {
                     "subject": "...", "from": "...", "date": "...",
-                    "attachments": [{"filename": "...", "file_path": "..."}],
+                    "attachments": [
+                        {"filename": "...", "file_path": "...", "content_preview": "..."}
+                    ],
                     "extracted": {"amount": "...", "vendor": "...", "due_date": "...", ...}
                 },
                 ...
@@ -51,13 +66,14 @@ class FindInvoiceEmailsTool(BaseTool):
 
     name: str = "find_invoice_emails"
     description: str = (
-        "Search Gmail for invoice, receipt, or billing emails and extract the amount, "
-        "vendor, and due date from each match — reads BOTH the email body AND any "
-        "attached PDF/DOCX file, since most real invoices have the numbers inside the "
-        "attachment, not the email text. Input JSON: {\"query\": \"...(optional)\", "
-        "\"max_results\": 10}. If 'query' is omitted, searches for common invoice/receipt/bill "
-        "keywords automatically. Returns file_path for each attachment found — pass that to "
-        "summarize_financial_document or generate_invoice if needed."
+        "Search Gmail for GENUINE invoice, receipt, or billing emails (matches only the "
+        "email SUBJECT, so newsletters/unrelated emails that merely mention 'payment' are "
+        "excluded) and extract the amount, vendor, and due date from each — reads BOTH the "
+        "email body AND any attached PDF/DOCX file, since most real invoices have the numbers "
+        "inside the attachment. Each attachment includes a content_preview with the actual "
+        "readable text — use that to summarize every invoice found; you do NOT need to call "
+        "summarize_financial_document separately unless you need more than the preview. "
+        "Input JSON: {\"query\": \"...(optional)\", \"max_results\": 10}."
     )
     zone: ToolZone = ToolZone.GREEN
 
@@ -91,7 +107,10 @@ class FindInvoiceEmailsTool(BaseTool):
             return json.dumps({"error": f"Gmail search failed: {exc}", "invoices": [], "count": 0})
 
         if not msg_refs:
-            return json.dumps({"invoices": [], "count": 0, "note": "No invoice/receipt emails found."})
+            return json.dumps({
+                "invoices": [], "count": 0,
+                "note": "No invoice/receipt emails found (searched email subjects only).",
+            })
 
         from core.tools.gmail.extract_invoice_data import ExtractInvoiceDataTool
 
@@ -115,9 +134,6 @@ class FindInvoiceEmailsTool(BaseTool):
             body_text = self._extract_body_text(payload)
             attachments = self._extract_attachments(payload, ref["id"])
 
-            # Combine body text + every attachment's extracted text so the
-            # extractor has the best chance of finding real numbers, whichever
-            # place they actually live in.
             combined_text_parts = [body_text] if body_text else []
             for att in attachments:
                 if att.get("content"):
@@ -137,7 +153,11 @@ class FindInvoiceEmailsTool(BaseTool):
                 "from": sender,
                 "date": date,
                 "attachments": [
-                    {"filename": a["filename"], "file_path": a["file_path"]}
+                    {
+                        "filename": a["filename"],
+                        "file_path": a["file_path"],
+                        "content_preview": (a.get("content") or "")[:_CONTENT_PREVIEW_CHARS],
+                    }
                     for a in attachments if a.get("file_path")
                 ],
                 "extracted": extracted,
@@ -205,14 +225,27 @@ class FindInvoiceEmailsTool(BaseTool):
 
     @staticmethod
     def _extract_body_text(payload: dict) -> str:
-        """Pull plain-text body content out of a Gmail message payload."""
+        """Pull plain-text body content out of a Gmail message payload.
+
+        Only ever returns real plain-text — if only an HTML part exists,
+        the HTML tags are stripped so raw markup never leaks into summaries
+        or the invoice-data extractor.
+        """
         import base64
+        import re as _re
 
         def _decode(data: str) -> str:
             try:
                 return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="ignore")
             except Exception:
                 return ""
+
+        def _strip_html(html: str) -> str:
+            # Remove script/style blocks entirely, then strip all remaining tags.
+            html = _re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=_re.DOTALL | _re.IGNORECASE)
+            text = _re.sub(r"<[^>]+>", " ", html)
+            text = _re.sub(r"\s+", " ", text).strip()
+            return text
 
         body = payload.get("body", {})
         if body.get("data"):
@@ -223,7 +256,7 @@ class FindInvoiceEmailsTool(BaseTool):
                 return _decode(part["body"]["data"])
         for part in payload.get("parts", []) or []:
             if part.get("mimeType") == "text/html" and part.get("body", {}).get("data"):
-                return _decode(part["body"]["data"])
+                return _strip_html(_decode(part["body"]["data"]))
         return ""
 
     def to_schema(self) -> dict:
