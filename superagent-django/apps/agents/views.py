@@ -163,6 +163,8 @@ _TOOL_DISPLAY = {
     # ── Orchestrator ──────────────────────────────────────────────────────────
     "run_email_agent":          ("Email Agent",        "mail",              "safe"),
     "run_document_agent":       ("Document Agent",     "file-text",         "safe"),
+    "run_calendar_agent":       ("Calendar Agent",     "calendar",          "safe"),
+    "run_finance_agent":        ("Finance Agent",      "wallet",            "safe"),
     # ── Document — read ───────────────────────────────────────────────────────
     "read_from_drive":          ("Drive Read",         "folder-open",       "safe"),
     "summarize_document":       ("Summarise Doc",      "file-text",         "safe"),
@@ -1102,7 +1104,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          10,
-        "version":     1,
+        "version":     2,
         "slug":        "orchestrator-agent",
         "name":        "Orchestrator Agent",
         "agent_type":  "orchestrator",
@@ -1115,33 +1117,45 @@ _AGENT_TEMPLATES = [
         "capabilities": [
             "Routes email tasks to the Email Agent automatically",
             "Routes document and Drive tasks to the Document Agent automatically",
-            "Handles tasks that need both agents (e.g. summarise email + create Word doc)",
+            "Routes calendar/scheduling tasks to the Calendar Agent automatically",
+            "Routes finance/invoicing/budget tasks to the Finance Agent automatically",
+            "Handles tasks that span multiple agents (e.g. summarise email + create Word doc)",
             "No need to know which agent to use — send everything here",
         ],
         "tools": [
             "run_email_agent",
             "run_document_agent",
+            "run_calendar_agent",
+            "run_finance_agent",
             "current_time",
         ],
         "llm_model":   "llama-3.3-70b-versatile",
         "system_prompt": (
             "You are OrchestratorAgent, the KRYPSOS AI assistant that routes every request to the right specialist agent.\n\n"
-            "You have two sub-agents:\n"
+            "You have four sub-agents:\n"
             "  run_email_agent    — handles ALL email and Gmail tasks\n"
-            "  run_document_agent — handles ALL document and Google Drive tasks\n\n"
+            "  run_document_agent — handles ALL document and Google Drive tasks\n"
+            "  run_calendar_agent — handles ALL Google Calendar / scheduling tasks\n"
+            "  run_finance_agent  — handles ALL expense, invoice, budget, currency, and financial document tasks\n\n"
             "ROUTING RULES:\n"
             "→ run_email_agent for: emails, inbox, Gmail, unread, send, reply, forward, draft, attachment in email\n"
             "→ run_document_agent for: Drive, document, docx, PDF, Word, PPT, translate, create report, OCR, upload to Drive\n"
-            "→ BOTH agents sequentially for tasks spanning both domains\n\n"
+            "→ run_calendar_agent for: meeting, calendar, schedule, reschedule, cancel event, availability, reminder, RSVP\n"
+            "→ run_finance_agent for: expense, invoice, budget, tax, currency conversion, financial statement, receipt\n"
+            "→ MULTIPLE agents sequentially for tasks spanning more than one domain "
+            "(e.g. 'find my last invoice email and generate a Word summary' → run_finance_agent then run_document_agent; "
+            "'summarise this email and schedule a follow-up meeting' → run_email_agent then run_calendar_agent)\n\n"
             "HOW TO CALL:\n"
-            "Pass the user's full request as the 'task' parameter. Include all details (file name, language, dates).\n\n"
+            "Pass the user's full request as the 'task' parameter. Include all details (file name, language, dates, amounts).\n\n"
             "HARD RULES:\n"
             "1. ALWAYS call a sub-agent — never answer directly from memory.\n"
             "2. Pass the full task context, not just a keyword.\n"
             "3. Relay the sub-agent's result directly to the user.\n"
-            "4. Do NOT perform email or document work yourself — always delegate."
+            "4. Do NOT perform email, document, calendar, or finance work yourself — always delegate.\n"
+            "5. If a request is ambiguous about which agent it belongs to, pick the most likely one rather "
+            "than asking — the sub-agent itself will ask for missing details if it needs to."
         ),
-        "max_steps":   5,
+        "max_steps":   8,
         "max_cost_usd": 2.0,
     },
 ]

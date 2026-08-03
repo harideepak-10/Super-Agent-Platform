@@ -2418,11 +2418,15 @@ class FindInvoiceEmailsTool(BaseTool):
 
 from core.tools.orchestrator.run_email_agent import RunEmailAgentTool
 from core.tools.orchestrator.run_document_agent import RunDocumentAgentTool
+from core.tools.orchestrator.run_calendar_agent import RunCalendarAgentTool
+from core.tools.orchestrator.run_finance_agent import RunFinanceAgentTool
 
 _TOOL_REGISTRY: dict = {
     # Orchestrator sub-agent tools
     "run_email_agent":    RunEmailAgentTool,
     "run_document_agent": RunDocumentAgentTool,
+    "run_calendar_agent": RunCalendarAgentTool,
+    "run_finance_agent":  RunFinanceAgentTool,
     # Email core
     "send_email":               SendEmailTool,
     "read_email":               ReadEmailTool,
@@ -3371,40 +3375,20 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     _clear_cached_emails(workspace_id)
     step_offset = TaskStep.objects.filter(task=task).count()
 
-    if _nested_kind in ("email", "document"):
+    if _nested_kind in ("email", "document", "calendar", "finance"):
         from apps.agents.views import _TEMPLATE_AGENT_TYPE_MAP
-        if _nested_kind == "email":
-            _NESTED_TOOLS = {
-                "send_email", "read_email", "search_emails",
-                "read_email_attachment_content", "summarize_emails",
-                "download_attachment", "create_draft", "create_gmail_draft",
-                "mark_as_read", "label_email", "move_to_folder", "delete_email",
-                "reply_to_email", "forward_email", "schedule_email",
-                "extract_invoice_data", "detect_follow_up_needed",
-                "read_attachment_content", "extract_data_from_attachment",
-                "list_customer_profiles", "search_customer_by_email",
-                "web_search", "current_time",
-            }
-        else:
-            _NESTED_TOOLS = {
-                "read_from_drive", "summarize_document", "extract_tables",
-                "ocr_document", "generate_content", "create_pdf", "create_docx",
-                "create_presentation", "fill_template", "merge_pdfs",
-                "compare_documents", "translate_document", "upload_to_drive",
-                "web_search", "current_time",
-            }
+        _tmpl = _TEMPLATE_AGENT_TYPE_MAP.get(_nested_kind, {})
 
         tools = []
-        for _name in _NESTED_TOOLS:
+        for _name in _tmpl.get("tools", []):
             _cls = _TOOL_REGISTRY.get(_name)
             if _cls:
                 try:
                     tools.append(_cls(workspace_id=workspace_id))
                 except TypeError:
                     tools.append(_cls())
-        _tmpl = _TEMPLATE_AGENT_TYPE_MAP.get(_nested_kind, {})
         _system_prompt = _tmpl.get("system_prompt", "")
-        _agent_name = "Email Agent" if _nested_kind == "email" else "Document Agent"
+        _agent_name = _tmpl.get("name", _nested_kind.title() + " Agent")
     else:
         tools = (
             _build_tools(agent_model, workspace_id=workspace_id)

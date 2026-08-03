@@ -2,6 +2,11 @@
 RunDocumentAgentTool — delegates a task to the Document Agent inline.
 
 Zone: GREEN — runs automatically.
+
+Tools, model, and system prompt are pulled live from the "document" template
+in apps/agents/views.py — NOT a separately hardcoded list — so this can
+never drift out of sync with what the real, standalone Document Agent is
+configured to do.
 """
 from __future__ import annotations
 
@@ -52,18 +57,13 @@ class RunDocumentAgentTool(BaseTool):
             return json.dumps({"error": "'task' is required."})
 
         try:
-            from apps.tasks.tasks import _TOOL_REGISTRY
-            from core.llm.groq_provider import GroqProvider
+            from apps.tasks.tasks import _TOOL_REGISTRY, DjangoAgent
+            from apps.agents.views import _TEMPLATE_AGENT_TYPE_MAP
 
-            _DOCUMENT_TOOLS = {
-                "read_from_drive", "summarize_document", "extract_tables",
-                "ocr_document", "generate_content", "create_pdf", "create_docx",
-                "create_presentation", "fill_template", "merge_pdfs",
-                "compare_documents", "translate_document", "upload_to_drive",
-                "export_csv", "web_search", "current_time",
-            }
+            doc_tmpl = _TEMPLATE_AGENT_TYPE_MAP.get("document", {})
+
             tools = []
-            for tool_name in _DOCUMENT_TOOLS:
+            for tool_name in doc_tmpl.get("tools", []):
                 cls = _TOOL_REGISTRY.get(tool_name)
                 if cls:
                     try:
@@ -71,26 +71,25 @@ class RunDocumentAgentTool(BaseTool):
                     except TypeError:
                         tools.append(cls())
 
-            # upload_to_drive must run as GREEN for the document agent
-            for t in tools:
-                if t.name == "upload_to_drive":
-                    from core.tools.base_tool import ToolZone as _TZ
-                    t.zone = _TZ.GREEN
+            llm_model = doc_tmpl.get("llm_model") or "llama-3.3-70b-versatile"
+            if llm_model.startswith("claude-"):
+                from core.llm.anthropic_provider import AnthropicProvider
+                llm = AnthropicProvider(model=llm_model)
+            else:
+                from core.llm.groq_provider import GroqProvider
+                llm = GroqProvider(model=llm_model)
 
-            llm = GroqProvider(model="llama-3.3-70b-versatile")
-
-            from apps.tasks.tasks import DjangoAgent
-            from core.agents.document_agent import _SYSTEM_PROMPT as _DOC_PROMPT
+            system_prompt = doc_tmpl.get("system_prompt", "")
 
             agent = DjangoAgent(
                 name="Document Agent",
                 llm_provider=llm,
                 tools=tools,
-                max_steps=10,
-                max_cost=0.5,
+                max_steps=doc_tmpl.get("max_steps", 10),
+                max_cost=min(float(doc_tmpl.get("max_cost_usd", 1.0)), 0.5),
                 max_seconds=120.0,
                 task_id=None,
-                system_prompt=_DOC_PROMPT,
+                system_prompt=system_prompt,
             )
 
             logger.info("RunDocumentAgentTool: delegating task=%r", task[:80])
@@ -103,7 +102,7 @@ class RunDocumentAgentTool(BaseTool):
             raise
 
         except Exception as exc:
-            logger.exception("RunEmailAgentTool failed")
+            logger.exception("RunDocumentAgentTool failed")
             return json.dumps({"error": str(exc)})
 
     def to_schema(self) -> dict:
