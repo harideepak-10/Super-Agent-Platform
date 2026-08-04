@@ -2584,10 +2584,24 @@ def _task_actually_failed(result: str, audit_log: list) -> tuple[bool, str]:
     """Return (failed, reason) based on result text and tool errors."""
     lower = result.lower()
 
-    # 1. Always check strict phrases
+    # 1. Always check strict phrases in the AI's own final answer text
     for phrase in _FAILURE_PHRASES_STRICT:
         if phrase in lower:
             return True, f"Task incomplete: {phrase}"
+
+    # 1b. ALSO check strict phrases inside every individual tool_result —
+    # even if an earlier tool call succeeded, a LATER one failing with a
+    # critical error (rate limit, not connected, etc.) means the overall
+    # request was not actually completed, even if the AI's final answer
+    # only reports the part that did work and quietly drops the failure.
+    for entry in audit_log:
+        if entry.get("event_type") != "tool_result":
+            continue
+        details = entry.get("details", {})
+        raw = f"{details.get('result', '')} {details.get('output', '')}".lower()
+        for phrase in _FAILURE_PHRASES_STRICT:
+            if phrase in raw:
+                return True, f"Task incomplete: {phrase}"
 
     # 2. Determine whether at least one tool call succeeded
     #    Use JSON-aware check so "error" in email content doesn't count as failure.
