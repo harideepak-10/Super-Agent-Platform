@@ -100,6 +100,62 @@ class CreateMeetingTool(BaseTool):
         )
         return build("calendar", "v3", credentials=creds)
 
+    def _parse_natural_start_time(self, text: str, tz_name: str) -> "datetime | None":
+        """Best-effort fallback for common natural-language phrases like
+        'today 8pm', 'tomorrow 3:30pm', 'today at 20:00' — used only when the
+        AI passed a non-ISO string instead of pre-converting it itself.
+        Returns None if the text doesn't match a recognisable pattern.
+        """
+        import re as _re
+
+        text_lower = text.strip().lower()
+
+        try:
+            now = datetime.now(ZoneInfo(tz_name))
+        except Exception:
+            now = datetime.now(timezone.utc)
+
+        if "today" in text_lower:
+            day_offset = 0
+        elif "tomorrow" in text_lower:
+            day_offset = 1
+        elif "yesterday" in text_lower:
+            day_offset = -1
+        else:
+            return None
+
+        time_part = (
+            text_lower.replace("today", "")
+            .replace("tomorrow", "")
+            .replace("yesterday", "")
+            .replace(" at ", " ")
+            .strip()
+        )
+        match = _re.search(r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", time_part)
+        if not match:
+            return None
+
+        hour = int(match.group(1))
+        minute = int(match.group(2)) if match.group(2) else 0
+        meridiem = match.group(3)
+
+        if meridiem == "pm" and hour != 12:
+            hour += 12
+        elif meridiem == "am" and hour == 12:
+            hour = 0
+
+        if hour > 23 or minute > 59:
+            return None
+
+        target_date = now.date() + timedelta(days=day_offset)
+        try:
+            return datetime(
+                target_date.year, target_date.month, target_date.day,
+                hour, minute, tzinfo=ZoneInfo(tz_name),
+            )
+        except Exception:
+            return datetime(target_date.year, target_date.month, target_date.day, hour, minute)
+
     def _check_conflicts(self, service, start_dt: datetime, end_dt: datetime, tz_name: str) -> list[dict]:
         """Return any existing events that overlap [start_dt, end_dt]."""
         if start_dt.tzinfo is None:
@@ -171,7 +227,16 @@ class CreateMeetingTool(BaseTool):
                 start_dt = datetime.fromisoformat(start_str)
                 # No tzinfo — pass timezone string to Google as-is
         except ValueError:
-            return json.dumps({"error": f"Cannot parse start_time: '{start_str}'. Use ISO 8601 like 2026-07-08T11:00:00"})
+            fallback_dt = self._parse_natural_start_time(start_str, tz_name)
+            if fallback_dt is not None:
+                start_dt = fallback_dt
+            else:
+                return json.dumps({
+                    "error": (
+                        f"Cannot parse start_time: '{start_str}'. Use ISO 8601 like "
+                        "2026-07-08T11:00:00, or a simple phrase like 'today 8pm' / 'tomorrow 3:30pm'."
+                    )
+                })
 
         end_dt = start_dt + timedelta(minutes=duration_mins)
 

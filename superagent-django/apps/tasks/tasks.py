@@ -2546,6 +2546,9 @@ _FAILURE_PHRASES_STRICT = [
     # Calendar scheduling blocked
     "please choose a different time", "please select a different time",
     "please pick a different time", "already have an event at that time",
+    # Rate limit — a later step can fail this way even after an earlier step
+    # succeeded, so this must be checked regardless of prior successes.
+    "rate limit", "temporarily busy",
 ]
 
 # Broad phrases — only checked when NO tool succeeded (avoids false positives from email content)
@@ -2553,7 +2556,6 @@ _FAILURE_PHRASES_BROAD = [
     "not connect", "no files found", "no emails found", "no events found",
     "no results", "0 results", "no email address", "missing email", "invalid email",
     "could not complete", "unable to complete", "an error occurred", "something went wrong",
-    "rate limit", "temporarily busy",
 ]
 
 
