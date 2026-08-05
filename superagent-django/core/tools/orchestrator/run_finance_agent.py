@@ -81,7 +81,16 @@ class RunFinanceAgentTool(BaseTool):
                 from core.llm.groq_provider import GroqProvider
                 llm = GroqProvider(model=llm_model)
 
-            system_prompt = fin_tmpl.get("system_prompt", "")
+            from datetime import datetime as _dt
+            from zoneinfo import ZoneInfo as _ZoneInfo
+            _now_ist = _dt.now(_ZoneInfo("Asia/Kolkata"))
+            _today_context = (
+                f"\n\n[SYSTEM CONTEXT] Today's real date is {_now_ist.strftime('%Y-%m-%d')} "
+                f"({_now_ist.strftime('%A')}), current time is {_now_ist.strftime('%H:%M')} IST. "
+                "Always treat this as 'today' for any date calculation — never guess or reuse a "
+                "stale date, since today changes every day."
+            )
+            system_prompt = (fin_tmpl.get("system_prompt", "") or "") + _today_context
 
             agent = DjangoAgent(
                 name="Finance Agent",
