@@ -7,12 +7,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any
 from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
 
 _VALID_RESPONSES = {"accepted", "declined", "tentative"}
+
+# Real Google Calendar event IDs only ever use lowercase letters a-v and
+# digits 0-9 (base32hex), 5-1024 chars, optionally with a recurring-instance
+# timestamp suffix. Anything else is a guessed/fabricated placeholder.
+_VALID_EVENT_ID_RE = re.compile(r"^[a-v0-9]{5,1024}(_\d{8}T\d{6}Z)?$")
 
 
 class RespondToInviteTool(BaseTool):
@@ -85,6 +91,14 @@ class RespondToInviteTool(BaseTool):
 
         if not event_id:
             return json.dumps({"error": "'event_id' is required."})
+        if not _VALID_EVENT_ID_RE.match(event_id):
+            return json.dumps({
+                "error": (
+                    f"'{event_id}' is not a real Google Calendar event ID — it looks like a "
+                    "guessed or made-up value. Call list_events or get_event first to get the "
+                    "REAL event_id, then call respond_to_invite again with that exact value."
+                )
+            })
         if response not in _VALID_RESPONSES:
             return json.dumps({"error": f"'response' must be one of: {sorted(_VALID_RESPONSES)}"})
 

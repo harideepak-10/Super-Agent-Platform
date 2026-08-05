@@ -7,11 +7,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Any
 from core.tools.base_tool import BaseTool, ToolZone
 
 _IST = timezone(timedelta(hours=5, minutes=30))
+
+# Real Google Calendar event IDs only ever use lowercase letters a-v and
+# digits 0-9 (base32hex), 5-1024 chars, optionally with a recurring-instance
+# timestamp suffix. Anything else is a guessed/fabricated placeholder.
+_VALID_EVENT_ID_RE = re.compile(r"^[a-v0-9]{5,1024}(_\d{8}T\d{6}Z)?$")
 
 
 def _to_ist(dt_str: str) -> str:
@@ -130,6 +136,16 @@ class GetEventTool(BaseTool):
 
         if not event_id and not title:
             return json.dumps({"error": "Either 'event_id' or 'title' is required."})
+
+        if event_id and not _VALID_EVENT_ID_RE.match(event_id):
+            return json.dumps({
+                "error": (
+                    f"'{event_id}' is not a real Google Calendar event ID — it looks like a "
+                    "guessed or made-up value. Call list_events first to get the REAL event_id "
+                    "from the tool's response, then call get_event again with that exact value. "
+                    "If you don't actually have an event to look up, don't call get_event at all."
+                )
+            })
 
         try:
             service = self._get_service()

@@ -7,11 +7,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Any
 from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
+
+# Real Google Calendar event IDs only ever use lowercase letters a-v and
+# digits 0-9 (base32hex), 5-1024 chars, optionally with a recurring-instance
+# timestamp suffix. Anything else is a guessed/fabricated placeholder.
+_VALID_EVENT_ID_RE = re.compile(r"^[a-v0-9]{5,1024}(_\d{8}T\d{6}Z)?$")
 
 
 class SetReminderTool(BaseTool):
@@ -112,6 +118,17 @@ class SetReminderTool(BaseTool):
         remind_at_str = data.get("remind_at", "")
         description   = data.get("description", "")
         tz_name       = data.get("timezone", "Asia/Kolkata")
+
+        if event_id and not _VALID_EVENT_ID_RE.match(event_id):
+            return json.dumps({
+                "error": (
+                    f"'{event_id}' is not a real Google Calendar event ID — it looks like a "
+                    "guessed or made-up value. Call list_events or get_event first to get the "
+                    "REAL event_id, then call set_reminder again with that exact value. "
+                    "If you're creating a standalone reminder (not tied to an event), omit "
+                    "event_id entirely and use 'title' + 'remind_at' instead."
+                )
+            })
 
         try:
             service = self._get_service()

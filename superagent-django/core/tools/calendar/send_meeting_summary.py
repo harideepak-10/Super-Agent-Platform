@@ -8,6 +8,7 @@ import base64
 import json
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -15,6 +16,11 @@ from typing import Any
 from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
+
+# Real Google Calendar event IDs only ever use lowercase letters a-v and
+# digits 0-9 (base32hex), 5-1024 chars, optionally with a recurring-instance
+# timestamp suffix. Anything else is a guessed/fabricated placeholder.
+_VALID_EVENT_ID_RE = re.compile(r"^[a-v0-9]{5,1024}(_\d{8}T\d{6}Z)?$")
 
 
 class SendMeetingSummaryTool(BaseTool):
@@ -149,6 +155,14 @@ class SendMeetingSummaryTool(BaseTool):
 
         if not event_id:
             return json.dumps({"error": "'event_id' is required. Use get_event or list_events to find it."})
+        if not _VALID_EVENT_ID_RE.match(event_id):
+            return json.dumps({
+                "error": (
+                    f"'{event_id}' is not a real Google Calendar event ID — it looks like a "
+                    "guessed or made-up value. Call list_events or get_event first to get the "
+                    "REAL event_id, then call send_meeting_summary again with that exact value."
+                )
+            })
         if not summary_text:
             return json.dumps({"error": "'summary' is required — provide the meeting notes or agenda."})
 
