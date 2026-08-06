@@ -3479,15 +3479,22 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         "name": approval.tool_name,
         "content": _tool_result,  # real result — LLM sees it as done
     })
-    # Explicitly tell the LLM the tool finished — prevents small models from
-    # looping into irrelevant web searches after an approved action.
+    # Tell the LLM the approved tool finished, but let it judge whether the
+    # ORIGINAL task is actually complete — a multi-part request (e.g. via
+    # Orchestrator delegating to several sub-agents) may still have remaining
+    # steps after this one approved action, and those must not be skipped.
     messages.append({
         "role": "user",
         "content": (
             "The '{}' tool has been approved and executed. "
             "Result: {}. "
-            "Please give the user a brief one-sentence confirmation. "
-            "Do NOT call any more tools."
+            "Think back to the ORIGINAL task you were given at the start of this conversation. "
+            "If that action was the only thing left to do, give the user a brief confirmation "
+            "and stop — do not call any more tools in that case. "
+            "But if the original task had OTHER parts that have not been completed yet "
+            "(for example, it asked for several things and only some are done), continue now "
+            "and complete the remaining part(s) — do not stop early just because this one "
+            "action succeeded, and do not re-do anything that is already finished."
         ).format(approval.tool_name, _tool_result),
     })
 
