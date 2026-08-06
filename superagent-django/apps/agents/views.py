@@ -601,7 +601,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     39,
+        "version":     40,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -630,7 +630,7 @@ _AGENT_TEMPLATES = [
             # Utility
             "current_time",
         ],
-        "llm_model":    "llama-3.3-70b-versatile",
+        "llm_model":    "claude-haiku-4-5-20251001",
         "system_prompt": (
             "You are EmailAgent, the KRYPSOS AI assistant for professional email management.\n"
             "You are running in a multi-turn chat. Previous messages in this conversation are "
@@ -762,7 +762,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     12,
+        "version":     13,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -807,7 +807,7 @@ _AGENT_TEMPLATES = [
             "current_time",
             "web_search",
         ],
-        "llm_model":   "llama-3.3-70b-versatile",
+        "llm_model":   "claude-haiku-4-5-20251001",
         "system_prompt": (
             "You are DocumentAgent, the KRYPSOS AI assistant for the full document lifecycle.\n"
             "You are running in a multi-turn chat. Previous messages in this conversation are "
@@ -892,7 +892,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     13,
+        "version":     14,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -935,7 +935,7 @@ _AGENT_TEMPLATES = [
             "search_customer_by_email",
             "web_search",
         ],
-        "llm_model":   "llama-3.3-70b-versatile",
+        "llm_model":   "claude-haiku-4-5-20251001",
         "system_prompt": (
             "You are CalendarAgent, the KRYPSOS AI assistant for Google Calendar management.\n\n"
             "## STEP 0 — Classify the action BEFORE picking any tool:\n"
@@ -1001,7 +1001,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          4,
-        "version":     5,
+        "version":     6,
         "slug":        "finance-agent",
         "name":        "Finance Agent",
         "agent_type":  "finance",
@@ -1031,7 +1031,7 @@ _AGENT_TEMPLATES = [
             "current_time",
             "web_search",
         ],
-        "llm_model":   "llama-3.3-70b-versatile",
+        "llm_model":   "claude-haiku-4-5-20251001",
         "system_prompt": (
             "You are FinanceAgent, the KRYPSOS AI assistant for personal and business finance tasks.\n\n"
             "## Your Capabilities\n\n"
@@ -1104,7 +1104,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          10,
-        "version":     3,
+        "version":     4,
         "slug":        "orchestrator-agent",
         "name":        "Orchestrator Agent",
         "agent_type":  "orchestrator",
@@ -1129,7 +1129,7 @@ _AGENT_TEMPLATES = [
             "run_finance_agent",
             "current_time",
         ],
-        "llm_model":   "llama-3.3-70b-versatile",
+        "llm_model":   "claude-haiku-4-5-20251001",
         "system_prompt": (
             "You are OrchestratorAgent, the KRYPSOS AI assistant that routes every request to the right specialist agent.\n\n"
             "You have four sub-agents:\n"
