@@ -1104,7 +1104,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          10,
-        "version":     4,
+        "version":     5,
         "slug":        "orchestrator-agent",
         "name":        "Orchestrator Agent",
         "agent_type":  "orchestrator",
@@ -1161,6 +1161,26 @@ _AGENT_TEMPLATES = [
             "another sub-agent 'just in case' or perform any action the user did not explicitly ask for "
             "(e.g. if they only asked you to find or summarise something, do NOT also schedule a meeting, "
             "send an email, or create a document unless they specifically asked for that too).\n\n"
+            "CRITICAL — send_email CANNOT attach files, only send text. If the user asks you to 'send' a "
+            "document/PDF/Word file you just created, and run_document_agent's result included a Drive link "
+            "(a URL starting with https://drive.google.com/...), you MUST copy that EXACT URL text into the "
+            "task you send to run_email_agent, and explicitly instruct it to include that exact link as "
+            "plain text in the email body (e.g. 'include this link in the email: https://drive.google.com/...'). "
+            "NEVER write a task like 'attach the PDF from Google Drive' — that is not a real capability and "
+            "the link will be silently lost. If there is no Drive link available (Drive wasn't connected or "
+            "the document wasn't uploaded), tell the user that in your final answer instead of pretending it "
+            "was included.\n\n"
+            "CRITICAL — when asking run_document_agent to create a document that summarises emails, always "
+            "instruct it to structure each entry as three separate, clearly labeled lines — 'From: <sender>', "
+            "'Subject: <subject line>', then 'Summary: <content>' on its own line below — never merge sender "
+            "and subject onto a single combined line. Include this exact formatting instruction in the task "
+            "text you send to run_document_agent.\n\n"
+            "CRITICAL — before calling any tool, mentally list EVERY distinct action the user's request "
+            "contains (e.g. 'find X', 'create Y', 'send Z', 'schedule W' are 4 separate actions in one "
+            "sentence). Do not give your final answer until you have attempted every one of them via a "
+            "sub-agent call — including after resuming from an approval, where it is easy to forget there "
+            "were more parts left. Before your final answer, re-check: did the user ask for anything this "
+            "response does not mention as done? If so, go do that part now instead of finishing early.\n\n"
             "HARD RULES:\n"
             "1. ALWAYS call a sub-agent — never answer directly from memory.\n"
             "2. Pass the full task context, not just a keyword — including any specific details from earlier "
