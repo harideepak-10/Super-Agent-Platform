@@ -28,6 +28,55 @@ from .tools.base_tool import BaseTool, ToolZone
 
 
 # ---------------------------------------------------------------------------
+# Confirmation-phrase detection
+# ---------------------------------------------------------------------------
+# Shared with apps/tasks/tasks.py (imported from here) so the phrase list
+# lives in exactly one place. Calling a YELLOW zone tool ALREADY pauses the
+# task for human approval — the model never needs to ask permission in chat
+# text first. When it does, no tool call happens, so nothing actually
+# executes and no approval request is ever created.
+CONFIRMATION_PHRASES = [
+    "proceed with", "should i proceed", "shall i proceed", "would you like me to",
+    "do you want me to", "want me to go ahead", "once you approve",
+    "shall i go ahead", "should i go ahead", "let me know if you'd like me to",
+    "would you like me to go ahead", "let me know which function", "let me know which tool",
+    "which function would you like", "which tool would you like",
+    "please let me know which function", "please let me know which tool",
+    "please specify which function", "please specify which tool",
+    "approval needed", "let me know if you want me to",
+    # Additional phrasings seen from Claude/Anthropic models, which ask for
+    # permission in different words than the original Llama-derived list above.
+    "do you approve", "do you confirm", "can i proceed", "can i go ahead",
+    "shall i create", "shall i update", "shall i delete", "shall i send",
+    "should i create this", "should i update this", "should i delete this",
+    "should i send this", "want me to create this", "want me to send this",
+    "want me to proceed", "ok to proceed", "okay to proceed", "confirm to proceed",
+    "please confirm", "awaiting your approval", "waiting for your approval",
+    "let me know if this looks good", "let me know if that works",
+    "reply yes to confirm", "reply 'yes'", "say yes to confirm",
+]
+
+# Regex fallback for confirmation-seeking patterns that don't fit a fixed
+# phrase list, e.g. a trailing "(Yes/No)" / "(Y/N)" prompt, or a message
+# that ends by directly asking the user to approve/confirm something.
+import re as _re
+_CONFIRMATION_PATTERNS = [
+    _re.compile(r"\(\s*yes\s*/\s*no\s*\)", _re.IGNORECASE),
+    _re.compile(r"\(\s*y\s*/\s*n\s*\)", _re.IGNORECASE),
+    _re.compile(r"\bapprove\??\s*$", _re.IGNORECASE),
+    _re.compile(r"\bdo you approve\b", _re.IGNORECASE),
+]
+
+
+def looks_like_confirmation_request(text: str) -> bool:
+    """True if the AI's text sounds like it's asking permission instead of acting."""
+    lower = (text or "").lower()
+    if any(p in lower for p in CONFIRMATION_PHRASES):
+        return True
+    return any(p.search(text or "") for p in _CONFIRMATION_PATTERNS)
+
+
+# ---------------------------------------------------------------------------
 # Custom exceptions
 # ---------------------------------------------------------------------------
 
@@ -184,6 +233,7 @@ class BaseAgent:
         self._step: int = 0
         self._cost_so_far: float = 0.0
         self._hallucination_reprompts: int = 0
+        self._confirmation_reprompts: int = 0
 
         # Populated just before ApprovalRequired is raised so the API
         # layer can save full state and resume after human approval.
@@ -281,6 +331,50 @@ class BaseAgent:
                     tools_used_so_far = any(
                         m.get("role") == "tool" for m in messages
                     )
+
+                    # Guard: the model described a YELLOW-zone action and asked for
+                    # permission in chat text instead of calling the tool. This can
+                    # happen at ANY step, not just the first one — calling the tool
+                    # itself is what triggers the approval pause, so asking first
+                    # means nothing ever gets created/updated/deleted/sent.
+                    # Re-prompt once with an explicit instruction to call the tool.
+                    asked_for_confirmation_instead_of_acting = (
+                        tool_schemas
+                        and tools_used_so_far
+                        and self._confirmation_reprompts < 1
+                        and looks_like_confirmation_request(content)
+                    )
+                    if asked_for_confirmation_instead_of_acting:
+                        self._confirmation_reprompts += 1
+                        self._log(
+                            "confirmation_guard",
+                            {
+                                "step": self._step,
+                                "reprompt": self._confirmation_reprompts,
+                                "content_preview": content[:120],
+                                "note": "Model asked for approval in chat text instead of calling the tool — re-prompting",
+                            },
+                        )
+                        tool_names = ", ".join(
+                            s["function"]["name"]
+                            for s in tool_schemas
+                            if "function" in s
+                        )
+                        messages.append({"role": "assistant", "content": content or ""})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "You just described an action and asked for approval in chat text, "
+                                "but you did NOT call a tool. Nothing happened — no meeting was created, "
+                                "no event was changed, no email was sent, and no approval request exists yet.\n\n"
+                                "You do NOT need to ask permission in chat. Calling the write tool itself "
+                                "automatically pauses the task and asks the human to approve it.\n\n"
+                                f"Call the correct tool right now (one of: {tool_names}) using the exact "
+                                "same details you just described. Your response must be a tool call, not text."
+                            ),
+                        })
+                        continue
+
                     if tool_schemas and not tools_used_so_far and self._hallucination_reprompts < 3 and force_first_tool:
                         self._hallucination_reprompts += 1
                         self._log(
@@ -611,6 +705,7 @@ class BaseAgent:
         self._step = 0
         self._cost_so_far = 0.0
         self._hallucination_reprompts = 0
+        self._confirmation_reprompts = 0
         self.audit_log = []
         self.pending_approval = None
         self._memory.clear()

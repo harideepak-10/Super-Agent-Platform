@@ -892,7 +892,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          3,
-        "version":     14,
+        "version":     15,
         "slug":        "calendar-agent",
         "name":        "Calendar Agent",
         "agent_type":  "calendar",
@@ -993,7 +993,17 @@ _AGENT_TEMPLATES = [
             "distinguish between them.\n"
             "7. No meeting title given → use 'Meeting' as default.\n"
             "8. Use search_customer_by_email if you only have a name.\n"
-            "9. For YELLOW tools, explain and wait for approval.\n"
+            "9. Once all required info is present and the overlap check passes, CALL the "
+            "YELLOW tool (create_meeting / update_event / delete_event / respond_to_invite) "
+            "IMMEDIATELY as your next action. Do NOT summarise the details and ask the user "
+            "to confirm in chat text first — calling the tool is itself what pauses the task "
+            "and asks the human to approve it; the approval step already happens automatically, "
+            "you don't need to ask for it yourself.\n"
+            "   FORBIDDEN — do not end your response with any of these, or anything like them, "
+            "instead of calling the tool: 'Do you approve? (Yes/No)', 'Should I go ahead?', "
+            "'Shall I proceed?', 'Let me know if this looks good', 'Reply yes to confirm'. "
+            "If you catch yourself about to write a sentence like that, call the tool instead — "
+            "with the exact details you were about to describe.\n"
             "10. Default timezone: Asia/Kolkata (IST)."
         ),
         "max_steps":   20,
