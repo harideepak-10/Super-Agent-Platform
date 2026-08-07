@@ -77,6 +77,56 @@ def looks_like_confirmation_request(text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Dropped-subtask detection (Orchestrator multi-part requests)
+# ---------------------------------------------------------------------------
+# A single user request like "find my invoice, email it, and set up a call"
+# contains several independent sub-tasks. The Orchestrator delegates each to
+# a run_<domain>_agent tool. Nothing forces it to actually call every one —
+# it can complete 2 of 3 delegations, declare success, and quietly drop the
+# third. This maps each delegation tool to trigger words that mean the
+# original request wanted that domain touched at all.
+SUBAGENT_COVERAGE_KEYWORDS: dict[str, list[str]] = {
+    "run_calendar_agent": [
+        "meeting", "calendar", "schedule", "reschedule", "cancel the event",
+        "cancel the meeting", "book a call", "set up a call", "invite",
+        "rsvp", "availability", "reminder", "free slot",
+    ],
+    "run_email_agent": [
+        "email", "inbox", "gmail", "send a message", "reply to", "forward the",
+    ],
+    "run_document_agent": [
+        "document", "docx", "word doc", "word document", " pdf", "report",
+        "presentation", "slide deck", "translate", "ocr", "spreadsheet",
+        "export csv",
+    ],
+    "run_finance_agent": [
+        "invoice", "expense", "budget", "receipt", "tax", "financial statement",
+        "payment", "billing",
+    ],
+}
+
+
+def find_missed_subtasks(
+    task: str, available_tool_names: set[str], invoked_tool_names: set[str]
+) -> list[str]:
+    """Return delegation tool names the task's wording implies but never called.
+
+    Only flags a tool if it was actually offered to the agent (present in
+    ``available_tool_names``) — this is a no-op for any agent that doesn't
+    have run_*_agent delegation tools at all, e.g. leaf agents like the
+    standalone Calendar or Email agent.
+    """
+    task_lower = (task or "").lower()
+    missed = []
+    for tool_name, keywords in SUBAGENT_COVERAGE_KEYWORDS.items():
+        if tool_name not in available_tool_names or tool_name in invoked_tool_names:
+            continue
+        if any(kw in task_lower for kw in keywords):
+            missed.append(tool_name)
+    return missed
+
+
+# ---------------------------------------------------------------------------
 # Custom exceptions
 # ---------------------------------------------------------------------------
 
@@ -234,6 +284,7 @@ class BaseAgent:
         self._cost_so_far: float = 0.0
         self._hallucination_reprompts: int = 0
         self._confirmation_reprompts: int = 0
+        self._coverage_reprompts: int = 0
 
         # Populated just before ApprovalRequired is raised so the API
         # layer can save full state and resume after human approval.
@@ -371,6 +422,50 @@ class BaseAgent:
                                 "automatically pauses the task and asks the human to approve it.\n\n"
                                 f"Call the correct tool right now (one of: {tool_names}) using the exact "
                                 "same details you just described. Your response must be a tool call, not text."
+                            ),
+                        })
+                        continue
+
+                    # Guard: the original task implies a domain (e.g. "...and set
+                    # up a call") that a delegation tool exists for, but that tool
+                    # was never called this run. Catches the Orchestrator quietly
+                    # completing 2 of 3 sub-tasks and declaring success. Only fires
+                    # once no tool call is being made (i.e. the model thinks it's
+                    # done) and only nudges — it doesn't block a legitimate case
+                    # where the model decided that part wasn't actually needed.
+                    available_tool_names = {
+                        s["function"]["name"] for s in tool_schemas if "function" in s
+                    }
+                    missed_subtasks = (
+                        find_missed_subtasks(task, available_tool_names, self._invoked_tool_names())
+                        if self._coverage_reprompts < 1
+                        else []
+                    )
+                    if missed_subtasks:
+                        self._coverage_reprompts += 1
+                        self._log(
+                            "coverage_guard",
+                            {
+                                "step": self._step,
+                                "missed_subtasks": missed_subtasks,
+                                "content_preview": content[:120],
+                                "note": "Task wording implies a domain that was never delegated to — re-prompting",
+                            },
+                        )
+                        messages.append({"role": "assistant", "content": content or ""})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "Before you finish: re-read the ORIGINAL request below and check whether "
+                                "every part of it was actually done.\n\n"
+                                f"Original request: {task!r}\n\n"
+                                f"You have not yet called: {', '.join(missed_subtasks)}. "
+                                "If the original request needs that (e.g. it mentions a meeting/calendar "
+                                "action, an email, a document, or an invoice/finance action that this tool "
+                                "handles and it hasn't been done), call it now with the relevant details "
+                                "from earlier in this conversation. If that part was already handled some "
+                                "other way, or the request genuinely didn't need it, ignore this and give "
+                                "your final answer as normal."
                             ),
                         })
                         continue
@@ -706,6 +801,7 @@ class BaseAgent:
         self._cost_so_far = 0.0
         self._hallucination_reprompts = 0
         self._confirmation_reprompts = 0
+        self._coverage_reprompts = 0
         self.audit_log = []
         self.pending_approval = None
         self._memory.clear()
