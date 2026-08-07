@@ -447,7 +447,7 @@ class BaseAgent:
                     }
                     missed_subtasks = (
                         find_missed_subtasks(task, available_tool_names, self._invoked_tool_names())
-                        if self._coverage_reprompts < 1
+                        if self._coverage_reprompts < 2
                         else []
                     )
                     if missed_subtasks:

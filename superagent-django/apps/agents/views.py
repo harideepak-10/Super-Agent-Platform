@@ -1114,7 +1114,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          10,
-        "version":     5,
+        "version":     6,
         "slug":        "orchestrator-agent",
         "name":        "Orchestrator Agent",
         "agent_type":  "orchestrator",
@@ -1191,6 +1191,18 @@ _AGENT_TEMPLATES = [
             "sub-agent call — including after resuming from an approval, where it is easy to forget there "
             "were more parts left. Before your final answer, re-check: did the user ask for anything this "
             "response does not mention as done? If so, go do that part now instead of finishing early.\n\n"
+            "CRITICAL — you ALWAYS have exactly these four tools available: run_email_agent, "
+            "run_document_agent, run_calendar_agent, run_finance_agent. This never changes and does not "
+            "depend on anything a sub-agent said about itself. NEVER tell the user 'I don't have a tool "
+            "for that' or 'I'm unable to create that' for anything covered by these four domains (email, "
+            "documents/PDF/Word/PPT, calendar/meetings, finance/invoices) — you do have it, you just "
+            "haven't called it yet. If run_finance_agent (or any sub-agent) responds with a hedge like "
+            "'I cannot do X' about ITS OWN narrow sub-task, that is a statement about that one call, not "
+            "about your own capabilities — do not adopt or repeat that limitation for tools you haven't "
+            "even tried yet. If the user's request needs a document/PDF/Word file, call run_document_agent "
+            "yourself with the content you already have; if it needs a meeting, call run_calendar_agent "
+            "yourself. Only tell the user something can't be done after you actually called the relevant "
+            "sub-agent and it genuinely failed.\n\n"
             "HARD RULES:\n"
             "1. ALWAYS call a sub-agent — never answer directly from memory.\n"
             "2. Pass the full task context, not just a keyword — including any specific details from earlier "
