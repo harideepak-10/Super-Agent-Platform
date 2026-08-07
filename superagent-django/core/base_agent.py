@@ -285,6 +285,7 @@ class BaseAgent:
         self._hallucination_reprompts: int = 0
         self._confirmation_reprompts: int = 0
         self._coverage_reprompts: int = 0
+        self._force_tool_next_call: bool = False
 
         # Populated just before ApprovalRequired is raised so the API
         # layer can save full state and resume after human approval.
@@ -367,8 +368,15 @@ class BaseAgent:
                 # Force a tool call when no tool has run yet — prevents the model
                 # from skipping straight to a hallucinated final answer.
                 # Disabled for conversational follow-ups (force_first_tool=False).
+                # Also force it right after a confirmation/coverage reprompt — a
+                # text nudge alone is easy for the model to ignore and just
+                # respond with more text again; forcing tool_choice on that one
+                # retry makes it actually impossible to do that.
                 tools_used_so_far = any(m.get("role") == "tool" for m in messages)
-                force_tool = bool(tool_schemas) and not tools_used_so_far and force_first_tool
+                force_tool = bool(tool_schemas) and (
+                    (not tools_used_so_far and force_first_tool) or self._force_tool_next_call
+                )
+                self._force_tool_next_call = False
                 response = self._llm.send(messages, tool_schemas, force_tool=force_tool)
                 self._cost_so_far += response.get("cost_eur", 0.0)
 
@@ -424,6 +432,7 @@ class BaseAgent:
                                 "same details you just described. Your response must be a tool call, not text."
                             ),
                         })
+                        self._force_tool_next_call = True
                         continue
 
                     # Guard: the original task implies a domain (e.g. "...and set
@@ -468,6 +477,7 @@ class BaseAgent:
                                 "your final answer as normal."
                             ),
                         })
+                        self._force_tool_next_call = True
                         continue
 
                     if tool_schemas and not tools_used_so_far and self._hallucination_reprompts < 3 and force_first_tool:
@@ -802,6 +812,7 @@ class BaseAgent:
         self._hallucination_reprompts = 0
         self._confirmation_reprompts = 0
         self._coverage_reprompts = 0
+        self._force_tool_next_call = False
         self.audit_log = []
         self.pending_approval = None
         self._memory.clear()
