@@ -11,6 +11,7 @@ content ready to be passed to create_pdf / create_docx / export_csv.
 from __future__ import annotations
 
 import json
+import os
 from core.tools.base_tool import BaseTool, ToolZone
 
 
@@ -251,16 +252,15 @@ class GenerateContentTool(BaseTool):
         return slides
 
     def _call_llm(self, system_msg: str, user_msg: str, section_list: list) -> list:
-        """Call Claude to generate actual section content. Falls back to stubs on error."""
+        """Call Claude (Anthropic) to generate actual section content. Falls back to stubs on error."""
         import logging
-        import os
         import re
         _log = logging.getLogger(__name__)
         try:
-            from groq import Groq
-            client = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+            from anthropic import Anthropic
+            client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
             completion = client.messages.create(
-                model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                model=os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
                 system=system_msg,
                 messages=[{"role": "user", "content": user_msg}],
                 temperature=0.7,
@@ -308,3 +308,4 @@ class GenerateContentTool(BaseTool):
                 "required": ["title", "doc_type", "prompt"],
             },
         }}
+        
