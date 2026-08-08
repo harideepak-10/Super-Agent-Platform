@@ -3528,6 +3528,124 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
             notify_task_failed(task)
             return {"status": "failed", "task_id": task_id}
 
+        # ── Orchestrator continuation ────────────────────────────────────────
+        # The tool just approved/executed above belongs to a nested sub-agent
+        # (email/document/calendar/finance) that the Orchestrator delegated to.
+        # That nested approval interrupted and discarded the Orchestrator's OWN
+        # conversation — react_agent above is a standalone leaf agent whose
+        # tools don't include run_email_agent/run_calendar_agent/etc, so even
+        # if it correctly notices the original request had more parts, it is
+        # physically unable to do them. Without this, any multi-part request
+        # that hits a nested approval (e.g. "email X AND create a meeting")
+        # silently drops everything after the approved step.
+        #
+        # Fix: if the parent Task's agent really is the Orchestrator, check
+        # the ORIGINAL request against what's been completed so far (accumulated
+        # via "_orch_completed" across possibly several chained approvals), and
+        # if something is still missing, re-invoke the Orchestrator itself —
+        # with its full tool set — to finish the rest.
+        if _nested_kind and agent_model and agent_model.agent_type == "orchestrator":
+            from core.base_agent import find_missed_subtasks
+            _orch_available = set(agent_model.tools or []) or set(
+                _TEMPLATE_AGENT_TYPE_MAP.get("orchestrator", {}).get("tools", [])
+            )
+            _already_done = set(snapshot.get("_orch_completed", [])) | {"run_{}_agent".format(_nested_kind)}
+            _original_task_text = snapshot.get("task", task.prompt)
+            _missing = find_missed_subtasks(_original_task_text, _orch_available, _already_done)
+
+            if _missing:
+                _logger.info(
+                    "ORCH_CONTINUE task=%s already_done=%s missing=%s",
+                    task_id, sorted(_already_done), _missing,
+                )
+                _orch_tools = _build_tools(agent_model, workspace_id=workspace_id)
+                _orch_llm_model = agent_model.llm_model or "llama-3.3-70b-versatile"
+                if _orch_llm_model.startswith("claude-"):
+                    from core.llm.anthropic_provider import AnthropicProvider as _OrchAnthropicProvider
+                    _orch_llm = _OrchAnthropicProvider(model=_orch_llm_model)
+                else:
+                    from core.llm.groq_provider import GroqProvider as _OrchGroqProvider
+                    _orch_llm = _OrchGroqProvider(model=_orch_llm_model)
+
+                _orch_agent = DjangoAgent(
+                    name=agent_model.name,
+                    llm_provider=_orch_llm,
+                    tools=_orch_tools,
+                    max_steps=int(agent_model.max_steps or 20),
+                    max_cost=float(agent_model.max_cost_usd or 1.0),
+                    task_id=task_id,
+                    system_prompt=(agent_model.system_prompt or "") + _today_context,
+                )
+                _continuation_prompt = (
+                    "{}\n\n"
+                    "[CONTINUATION] The following part(s) of this request are ALREADY DONE — "
+                    "do not repeat them: {}. Result of the most recent one: {}.\n"
+                    "Complete ONLY whatever part(s) of the original request above are still "
+                    "outstanding, then give a final summary covering everything (both what was "
+                    "already done and what you just did)."
+                ).format(
+                    _original_task_text,
+                    ", ".join(sorted(_already_done)),
+                    str(_tool_result)[:300],
+                )
+                _continue_offset = step_offset + len(react_agent.audit_log)
+                try:
+                    _orch_result = _orch_agent.run(task=_continuation_prompt)
+                    _save_audit_steps(task, _orch_agent.audit_log, step_offset=_continue_offset)
+                    _orch_cost = _orch_agent.get_cost_summary()
+                    task.total_tokens = (task.total_tokens or 0) + _orch_llm.total_tokens
+                    cost["total_steps"] += _orch_cost["total_steps"]
+                    cost["total_cost_eur"] += _orch_cost["total_cost_eur"]
+                    result = (result or "").rstrip() + "\n\n" + (_orch_result or "")
+                    # Re-check failure against the COMBINED outcome — the
+                    # continuation's own tool calls might fail even if the
+                    # originally-approved action succeeded.
+                    _failed, _reason = _task_actually_failed(result or "", _orch_agent.audit_log)
+                    if _failed:
+                        task.status = Task.Status.FAILED
+                        task.error_message = _reason[:500]
+                        task.result = result
+                        task.completed_at = timezone.now()
+                        task.steps_taken = (task.steps_taken or 0) + cost["total_steps"]
+                        task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_eur"]
+                        task.total_tokens = (task.total_tokens or 0) + llm.total_tokens
+                        task.save()
+                        from apps.notifications.utils import notify_task_failed
+                        notify_task_failed(task)
+                        return {"status": "failed", "task_id": task_id}
+                except ApprovalRequired as _orch_exc:
+                    _save_audit_steps(task, _orch_agent.audit_log, step_offset=_continue_offset)
+                    try:
+                        _orch_tool_input = json.loads(_orch_exc.tool_input) if _orch_exc.tool_input else {}
+                    except Exception:
+                        _orch_tool_input = {"raw": str(_orch_exc.tool_input)}
+                    _orch_snapshot = dict(getattr(_orch_exc, "snapshot", None) or _orch_agent.pending_approval or {})
+                    # Carry the accumulated "already done" list forward so
+                    # whenever THIS new approval is eventually decided, that
+                    # resume knows about everything completed so far — not
+                    # just the one thing that was just approved this time.
+                    _orch_snapshot["_orch_completed"] = sorted(_already_done)
+                    _orch_snapshot["task"] = _original_task_text
+                    _last_step = TaskStep.objects.filter(task=task).order_by("-step_number").first()
+                    _orch_cost = _orch_agent.get_cost_summary()
+                    _new_approval = Approval.objects.create(
+                        task=task,
+                        step=_last_step,
+                        tool_name=_orch_exc.tool_name,
+                        tool_input=_orch_tool_input,
+                        tool_zone="yellow",
+                        resume_snapshot=_orch_snapshot,
+                    )
+                    task.status = Task.Status.WAITING_APPROVAL
+                    task.steps_taken = (task.steps_taken or 0) + cost["total_steps"] + _orch_cost["total_steps"]
+                    task.cost_usd = float(task.cost_usd or 0) + cost["total_cost_eur"] + _orch_cost["total_cost_eur"]
+                    task.total_tokens = (task.total_tokens or 0) + _orch_llm.total_tokens
+                    task.save(update_fields=["status", "steps_taken", "cost_usd", "total_tokens"])
+                    from apps.notifications.utils import notify_approval_needed
+                    notify_approval_needed(task, _new_approval)
+                    return {"status": "waiting_approval", "approval_id": str(_new_approval.id)}
+        # ─────────────────────────────────────────────────────────────────────
+
         task.status = Task.Status.COMPLETED
         task.result = result
         task.completed_at = timezone.now()
