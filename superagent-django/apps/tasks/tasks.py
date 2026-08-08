@@ -3550,8 +3550,22 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
                 _TEMPLATE_AGENT_TYPE_MAP.get("orchestrator", {}).get("tools", [])
             )
             _already_done = set(snapshot.get("_orch_completed", [])) | {"run_{}_agent".format(_nested_kind)}
-            _original_task_text = snapshot.get("task", task.prompt)
-            _missing = find_missed_subtasks(_original_task_text, _orch_available, _already_done)
+            # NOTE: deliberately NOT snapshot.get("task", task.prompt) — when the
+            # approval came from a NESTED leaf agent (email/document/etc), that
+            # leaf's own snapshot["task"] holds ITS OWN narrow delegated sub-task
+            # ("send an email to X"), not the Orchestrator's true original request.
+            # task.prompt is the Django Task row's own prompt, set once at
+            # creation and never touched by any nested delegation — always correct.
+            _original_task_text = task.prompt
+            # Hard cap on chained continuations — there are only 4 sub-agent
+            # domains, so _already_done can never validly exceed that. If it
+            # somehow does (a bug, or a request naming the same domain twice),
+            # stop chaining rather than risk a runaway loop of repeated actions.
+            if len(_already_done) > 4:
+                _logger.warning("ORCH_CONTINUE task=%s aborting — already_done exceeds domain count: %s", task_id, _already_done)
+                _missing = []
+            else:
+                _missing = find_missed_subtasks(_original_task_text, _orch_available, _already_done)
 
             if _missing:
                 _logger.info(

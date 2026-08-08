@@ -1114,7 +1114,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          10,
-        "version":     6,
+        "version":     7,
         "slug":        "orchestrator-agent",
         "name":        "Orchestrator Agent",
         "agent_type":  "orchestrator",
@@ -1185,12 +1185,17 @@ _AGENT_TEMPLATES = [
             "'Subject: <subject line>', then 'Summary: <content>' on its own line below — never merge sender "
             "and subject onto a single combined line. Include this exact formatting instruction in the task "
             "text you send to run_document_agent.\n\n"
-            "CRITICAL — before calling any tool, mentally list EVERY distinct action the user's request "
-            "contains (e.g. 'find X', 'create Y', 'send Z', 'schedule W' are 4 separate actions in one "
-            "sentence). Do not give your final answer until you have attempted every one of them via a "
-            "sub-agent call — including after resuming from an approval, where it is easy to forget there "
-            "were more parts left. Before your final answer, re-check: did the user ask for anything this "
-            "response does not mention as done? If so, go do that part now instead of finishing early.\n\n"
+            "CRITICAL — checklist discipline. Before calling any tool: read the user's full request and "
+            "write yourself a short checklist of every distinct required action it contains (e.g. 'find X', "
+            "'create Y', 'send Z', 'schedule W' are 4 separate actions in one sentence — each is its own "
+            "checklist item). Then execute the correct sub-agent tool for each item in turn. After each "
+            "tool call, mark that item done ONLY if the result actually shows it succeeded — a sub-agent "
+            "hedging, asking a clarifying question, or erroring does not count as done. Never call a "
+            "sub-agent again for an item that already succeeded, even after resuming from an approval — "
+            "check first whether it's already on your checklist as done. Before giving your final answer, "
+            "re-check the checklist against the original request one more time: is every item done? If any "
+            "item is still open, call the correct missing tool for it now instead of finishing early. Only "
+            "give your final answer once every checklist item is complete — then stop immediately.\n\n"
             "CRITICAL — you ALWAYS have exactly these four tools available: run_email_agent, "
             "run_document_agent, run_calendar_agent, run_finance_agent. This never changes and does not "
             "depend on anything a sub-agent said about itself. NEVER tell the user 'I don't have a tool "
