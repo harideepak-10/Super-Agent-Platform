@@ -140,6 +140,15 @@ class GenerateContentTool(BaseTool):
             f"You are a professional document writer. {type_instruction} "
             f"Write detailed, high-quality content for each section. "
             f"Use up to {max_points} key points per section. "
+            "CRITICAL — never invent facts. Base every specific number, name, date, "
+            "amount, or identifier ONLY on what is explicitly given to you in the "
+            "'Source data' below. If the source data says information could not be "
+            "found/retrieved, or is missing/unavailable for a field, write that field "
+            "as a clearly-marked placeholder (e.g. '[Vendor name not available]', "
+            "'[Amount not provided]') — do NOT substitute a plausible-sounding "
+            "invented vendor name, dollar amount, date, or invoice number. A fabricated "
+            "number that looks real is worse than an honest gap, because the reader "
+            "cannot tell it's fake. "
             "Respond ONLY with a JSON array of objects: "
             '[{"heading": "...", "content": "..."}, ...]. No extra text.'
         )
@@ -308,4 +317,3 @@ class GenerateContentTool(BaseTool):
                 "required": ["title", "doc_type", "prompt"],
             },
         }}
-        

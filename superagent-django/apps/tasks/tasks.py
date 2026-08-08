@@ -3549,7 +3549,25 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
             _orch_available = set(agent_model.tools or []) or set(
                 _TEMPLATE_AGENT_TYPE_MAP.get("orchestrator", {}).get("tools", [])
             )
-            _already_done = set(snapshot.get("_orch_completed", [])) | {"run_{}_agent".format(_nested_kind)}
+            # NOTE: deliberately NOT built from snapshot["_orch_completed"] alone.
+            # _nested_kind can only ever be "email" or "calendar" — send_email
+            # and create_meeting/update_event/etc are the ONLY YELLOW-zone tools
+            # in the whole system (see _HIGH_ZONE_TOOLS above). Finance and
+            # Document tools are all GREEN, so they NEVER trigger this nested-
+            # approval path — meaning an in-memory/snapshot-only accumulator can
+            # never learn those domains were already attempted, and every
+            # continuation cycle would re-flag and re-run them from scratch
+            # forever. Query the actual persistent TaskStep history instead —
+            # every run_*_agent delegation this Task has ever made, across
+            # every resume cycle, is already saved there via _save_audit_steps.
+            _delegation_tool_names = {
+                "run_email_agent", "run_document_agent", "run_calendar_agent", "run_finance_agent",
+            }
+            _already_done = set(
+                TaskStep.objects.filter(task=task, tool_name__in=_delegation_tool_names)
+                .values_list("tool_name", flat=True)
+                .distinct()
+            ) | {"run_{}_agent".format(_nested_kind)}
             # NOTE: deliberately NOT snapshot.get("task", task.prompt) — when the
             # approval came from a NESTED leaf agent (email/document/etc), that
             # leaf's own snapshot["task"] holds ITS OWN narrow delegated sub-task
@@ -3634,11 +3652,13 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
                     except Exception:
                         _orch_tool_input = {"raw": str(_orch_exc.tool_input)}
                     _orch_snapshot = dict(getattr(_orch_exc, "snapshot", None) or _orch_agent.pending_approval or {})
-                    # Carry the accumulated "already done" list forward so
-                    # whenever THIS new approval is eventually decided, that
-                    # resume knows about everything completed so far — not
-                    # just the one thing that was just approved this time.
-                    _orch_snapshot["_orch_completed"] = sorted(_already_done)
+                    # "already done" tracking is now derived from the persistent
+                    # TaskStep history (see above) rather than threaded through
+                    # snapshots, since that's the only source that reliably
+                    # covers GREEN-zone domains (finance/document) too. No need
+                    # to stash "_orch_completed" here any more — just keep the
+                    # true original task text so the next resume never picks up
+                    # a nested leaf's own narrow sub-task by mistake.
                     _orch_snapshot["task"] = _original_task_text
                     _last_step = TaskStep.objects.filter(task=task).order_by("-step_number").first()
                     _orch_cost = _orch_agent.get_cost_summary()

@@ -762,7 +762,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          2,
-        "version":     13,
+        "version":     14,
         "slug":        "document-agent",
         "name":        "Document Agent",
         "agent_type":  "document",
@@ -885,7 +885,14 @@ _AGENT_TEMPLATES = [
             "  translate_document — translate content to another language\n"
             "  upload_to_drive    — upload file to Google Drive (GREEN — auto, no approval needed)\n"
             "  current_time       — today's date and time\n"
-            "  web_search         — find supporting data or references"
+            "  web_search         — find supporting data or references\n\n"
+            "CRITICAL — never invent facts to fill a document. If you were given source data that says "
+            "something could not be found or is missing (e.g. 'unable to retrieve invoice details'), pass "
+            "that honestly into generate_content/create_pdf/create_docx as a clearly-marked placeholder for "
+            "that field (e.g. 'Vendor: [not available]', 'Amount: [not provided]') — never substitute a "
+            "plausible-sounding invented vendor name, amount, date, or invoice number of your own. A "
+            "fabricated number that looks real is a serious error, worse than an honest gap, because the "
+            "reader has no way to tell it's fake."
         ),
         "max_steps":   20,
         "max_cost_usd": 1.0,
@@ -1114,7 +1121,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          10,
-        "version":     7,
+        "version":     8,
         "slug":        "orchestrator-agent",
         "name":        "Orchestrator Agent",
         "agent_type":  "orchestrator",
@@ -1218,6 +1225,18 @@ _AGENT_TEMPLATES = [
             "than asking — the sub-agent itself will ask for missing details if it needs to.\n"
             "6. NEVER take an action beyond what the user explicitly requested. Stop as soon as the request "
             "is fully answered.\n"
+            "7. NEVER ask a sub-agent to invent, guess, or use placeholder-but-realistic-looking data (fake "
+            "vendor names, fake amounts, fake dates, fake invoice numbers) when a real search came back "
+            "empty or incomplete. If run_finance_agent (or any sub-agent) could not find real data, tell "
+            "run_document_agent the TRUE outcome (e.g. 'no real invoice data was found — mark every field "
+            "as not available, do not invent numbers') rather than asking it to 'create a summary anyway' "
+            "in a way that invites fabrication. A document with honest placeholders is correct; a document "
+            "with invented-but-plausible numbers is a serious error, since the reader cannot tell it's fake.\n"
+            "8. When telling run_email_agent to send a file/document/report you just created, always pass "
+            "it the ACTUAL Drive link or content — never send (or ask it to send) an email that merely "
+            "claims a file exists or was created without including that real link/content in the body. If "
+            "no real link or content is available yet, do not send the email — finish creating/locating the "
+            "real thing first.\n"
         ),
         "max_steps":   8,
         "max_cost_usd": 2.0,
