@@ -95,13 +95,19 @@ SUBAGENT_COVERAGE_KEYWORDS: dict[str, list[str]] = {
         "email", "inbox", "gmail", "send a message", "reply to", "forward the",
     ],
     "run_document_agent": [
-        "document", "docx", "word doc", "word document", " pdf", "report",
+        "document", "docx", "word doc", "word document", " pdf",
         "presentation", "slide deck", "translate", "ocr", "spreadsheet",
         "export csv",
     ],
     "run_finance_agent": [
         "invoice", "expense", "budget", "receipt", "tax", "financial statement",
         "payment", "billing",
+    ],
+    "run_reporting_agent": [
+        "report", "eod", "end of day", "productivity summary", "activity summary",
+        "activity report", "success rate", "failure rate", "success/failure",
+        "tool usage", "cost usage", "token usage", "execution history",
+        "statistics", "stats", "business report",
     ],
 }
 

@@ -2413,6 +2413,58 @@ class FindInvoiceEmailsTool(BaseTool):
 
 
 # =============================================================================
+# REPORTING AGENT TOOL WRAPPER
+# =============================================================================
+
+class GetSystemReportDataTool(BaseTool):
+    """Delegate to core GetSystemReportDataTool — real, workspace-scoped system data."""
+    name = "get_system_report_data"
+    description = (
+        "Get REAL aggregated data about the SuperAgent system's own operation, scoped to "
+        "the current workspace. NEVER invent report numbers — always call this tool first "
+        "and use exactly what it returns. "
+        "Input JSON: {\"report_type\": \"task_activity|agent_activity|email_activity|"
+        "meeting_activity|document_activity|productivity|execution_history|success_failure|"
+        "tool_usage|cost_usage|combined\", "
+        "\"period\": \"today|yesterday|this_week|last_week|this_month|last_month|custom\", "
+        "\"date_from\": \"YYYY-MM-DD (only with period=custom)\", "
+        "\"date_to\": \"YYYY-MM-DD (only with period=custom)\", "
+        "\"agent_name\": \"...(optional filter)\", \"limit\": 50}. "
+        "Use report_type='combined' for a full daily/weekly/monthly EOD or business report."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str: str) -> str:
+        from core.tools.reporting.get_system_report_data import GetSystemReportDataTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "report_type": {"type": "string", "enum": [
+                        "task_activity", "agent_activity", "email_activity", "meeting_activity",
+                        "document_activity", "productivity", "execution_history", "success_failure",
+                        "tool_usage", "cost_usage", "combined",
+                    ]},
+                    "period": {"type": "string", "enum": [
+                        "today", "yesterday", "this_week", "last_week", "this_month", "last_month", "custom",
+                    ]},
+                    "date_from":  {"type": "string"},
+                    "date_to":    {"type": "string"},
+                    "agent_name": {"type": "string"},
+                    "limit":      {"type": "integer"},
+                },
+                "required": ["report_type", "period"],
+            },
+        }}
+
+
+# =============================================================================
 # TOOL REGISTRY
 # =============================================================================
 
@@ -2420,6 +2472,7 @@ from core.tools.orchestrator.run_email_agent import RunEmailAgentTool
 from core.tools.orchestrator.run_document_agent import RunDocumentAgentTool
 from core.tools.orchestrator.run_calendar_agent import RunCalendarAgentTool
 from core.tools.orchestrator.run_finance_agent import RunFinanceAgentTool
+from core.tools.orchestrator.run_reporting_agent import RunReportingAgentTool
 
 _TOOL_REGISTRY: dict = {
     # Orchestrator sub-agent tools
@@ -2427,6 +2480,7 @@ _TOOL_REGISTRY: dict = {
     "run_document_agent": RunDocumentAgentTool,
     "run_calendar_agent": RunCalendarAgentTool,
     "run_finance_agent":  RunFinanceAgentTool,
+    "run_reporting_agent": RunReportingAgentTool,
     # Email core
     "send_email":               SendEmailTool,
     "read_email":               ReadEmailTool,
@@ -2505,6 +2559,8 @@ _TOOL_REGISTRY: dict = {
     "generate_invoice":               GenerateInvoiceTool,
     "summarize_financial_document":   SummarizeFinancialDocumentTool,
     "find_invoice_emails":            FindInvoiceEmailsTool,
+    # Reporting tools
+    "get_system_report_data":         GetSystemReportDataTool,
 }
 
 _HIGH_ZONE_TOOLS = {
@@ -2834,6 +2890,8 @@ _TOOL_LABELS = {
     "generate_invoice":             ("Generating invoice",         "Building invoice document"),
     "summarize_financial_document": ("Summarizing financial doc",  "Reading statement/report"),
     "find_invoice_emails":          ("Finding invoice emails",     "Searching Gmail for bills/receipts"),
+    # Reporting
+    "get_system_report_data":       ("Gathering report data",      "Querying system activity and stats"),
 }
 
 
@@ -3391,7 +3449,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
     _clear_cached_emails(workspace_id)
     step_offset = TaskStep.objects.filter(task=task).count()
 
-    if _nested_kind in ("email", "document", "calendar", "finance"):
+    if _nested_kind in ("email", "document", "calendar", "finance", "reporting"):
         from apps.agents.views import _TEMPLATE_AGENT_TYPE_MAP
         _tmpl = _TEMPLATE_AGENT_TYPE_MAP.get(_nested_kind, {})
 
@@ -3562,6 +3620,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
             # every resume cycle, is already saved there via _save_audit_steps.
             _delegation_tool_names = {
                 "run_email_agent", "run_document_agent", "run_calendar_agent", "run_finance_agent",
+                "run_reporting_agent",
             }
             _already_done = set(
                 TaskStep.objects.filter(task=task, tool_name__in=_delegation_tool_names)
