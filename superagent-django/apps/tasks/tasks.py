@@ -2726,9 +2726,19 @@ class DjangoAgent(BaseAgent):
         )
 
     def _log(self, event_type: str, details: dict) -> None:
-        """Override to push standardised WS events to the channel layer in real-time.
+        """Override to persist each step immediately AND push standardised WS
+        events to the channel layer in real-time.
 
-        Standardised event shapes
+        Live persistence
+        ─────────────────
+        Every call creates a real TaskStep row right away (see
+        _persist_step_live) instead of waiting until the whole run finishes —
+        this is what makes GET /tasks/{id}/ return the current steps[] while
+        a task is still running, not just after completion. A "step_update"
+        WS event carrying the real DB step_id/step_number/created_at is then
+        pushed immediately for the same step.
+
+        Standardised event shapes (unchanged, still pushed alongside step_update)
         ─────────────────────────
         step_started   — LLM thinking or tool about to run
         step_finished  — tool result received
@@ -2747,6 +2757,11 @@ class DjangoAgent(BaseAgent):
         }
         """
         super()._log(event_type, details)
+
+        # Persist immediately — independent of WS health, so steps are always
+        # visible via GET /tasks/{id}/ even if the channel layer is down.
+        created_step = _persist_step_live(self.task_id, self.name, event_type, details)
+
         if getattr(self, "_ws_dead", False):
             return
         import json as _json
@@ -2758,6 +2773,30 @@ class DjangoAgent(BaseAgent):
             channel_layer = get_channel_layer()
             if not channel_layer or not self.task_id:
                 return
+
+            group_name = "task_{}".format(self.task_id)
+
+            # step_update — one real, DB-backed step per event, for the
+            # Flutter live steps list. Carries the real DB step id/number so
+            # the client can dedupe/order against a later GET /tasks/{id}/.
+            if created_step is not None:
+                async_to_sync(channel_layer.group_send)(group_name, {
+                    "type":        "task_update",
+                    "event":       "step_update",
+                    "task_id":     self.task_id,
+                    "step_id":     str(created_step.id),
+                    "step_number": created_step.step_number,
+                    "step_type":   created_step.step_type,
+                    "title":       created_step.title,
+                    "detail":      created_step.detail,
+                    "tool_name":   created_step.tool_name,
+                    "agent_name":  created_step.agent_name,
+                    "created_at":  created_step.created_at.isoformat() if created_step.created_at else None,
+                })
+                _ws_logger.info(
+                    "WS_PUSH_OK task=%s ws_event=step_update step=%s",
+                    self.task_id, created_step.step_number,
+                )
 
             try:
                 safe_details = _json.loads(_json.dumps(details, default=str))
@@ -2800,7 +2839,6 @@ class DjangoAgent(BaseAgent):
             if new_status:
                 payload["status"] = new_status
 
-            group_name = "task_{}".format(self.task_id)
             async_to_sync(channel_layer.group_send)(group_name, {
                 "type": "task_update",
                 **payload,
@@ -2930,7 +2968,127 @@ def _step_title_detail(event_type, tname, details):
     return event_type.replace("_", " ").title(), ""
 
 
+def _build_step_fields(event_type, details, fallback_step_index):
+    """Return (stype, content, tname, tinput, toutput) for one audit_log entry.
+
+    Shared by both the live, per-event persistence path (DjangoAgent._log →
+    _persist_step_live, called immediately as each step happens) and the
+    bulk reconciliation path (_save_audit_steps, called at the end of a run
+    as a safety net) — so both produce byte-identical TaskStep content for
+    the same event.
+    """
+    from .models import TaskStep
+    tname, tinput, toutput = "", None, None
+
+    if event_type == "llm_called":
+        stype = TaskStep.StepType.THOUGHT
+        content = "Thinking... (step {})".format(details.get("step", fallback_step_index))
+
+    elif event_type == "tool_called":
+        stype = TaskStep.StepType.TOOL_CALL
+        tname = details.get("tool_name", "")
+        raw_in = details.get("tool_input", "")
+        content = "Calling tool: {}".format(tname)
+        try:
+            tinput = json.loads(raw_in) if isinstance(raw_in, str) else raw_in
+        except Exception:
+            tinput = {"raw": str(raw_in)}
+
+    elif event_type == "tool_result":
+        stype = TaskStep.StepType.TOOL_RESULT
+        tname = details.get("tool_name", "")
+        raw_out = details.get("result", "")
+        content = str(raw_out)[:500]
+        try:
+            toutput = (
+                json.loads(raw_out)
+                if isinstance(raw_out, str) and raw_out.strip().startswith("{")
+                else {"result": str(raw_out)}
+            )
+        except Exception:
+            toutput = {"result": str(raw_out)}
+
+    elif event_type in ("task_completed", "task_resumed"):
+        stype = TaskStep.StepType.FINAL_ANSWER
+        content = str(details.get("result", details.get("task", "Completed")))
+
+    elif event_type == "approval_needed":
+        stype = TaskStep.StepType.TOOL_CALL
+        tname = details.get("tool_name", "")
+        content = "Approval required for: {}".format(tname)
+        tinput = {"raw": str(details.get("tool_input", ""))}
+
+    else:
+        stype = TaskStep.StepType.THOUGHT
+        content = "{}: {}".format(event_type, json.dumps(details)[:200])
+
+    return stype, content, tname, tinput, toutput
+
+
+def _persist_step_live(task_id, agent_name, event_type, details):
+    """Create ONE TaskStep row immediately as the event happens, for real-time
+    display via GET /tasks/{id}/ and the step_update WebSocket event.
+
+    Uses the CURRENT row count for this task as the next step_number, so the
+    later bulk reconciliation pass (_save_audit_steps) naturally computes the
+    same step_number for the same entry (same order, same starting offset)
+    and its dedup check skips it — no duplicates under normal operation.
+
+    Returns the created TaskStep, or None if it couldn't be created (no
+    task_id — e.g. a nested sub-agent that was intentionally given
+    task_id=None — task not found, or a DB error). Never raises: a failure
+    here must never break the agent loop itself.
+    """
+    if not task_id:
+        return None
+    from .models import Task, TaskStep
+    import logging as _logging
+    _live_logger = _logging.getLogger("ws.live")
+
+    try:
+        task = Task.objects.get(id=task_id)
+    except Task.DoesNotExist:
+        return None
+    except Exception as exc:
+        _live_logger.error("_persist_step_live: could not load task=%s err=%s", task_id, exc)
+        return None
+
+    try:
+        step_num = TaskStep.objects.filter(task=task).count() + 1
+        stype, content, tname, tinput, toutput = _build_step_fields(event_type, details, step_num)
+        title, detail = _step_title_detail(event_type, tname, details)
+        return TaskStep.objects.create(
+            task=task,
+            step_number=step_num,
+            step_type=stype,
+            content=content if stype == TaskStep.StepType.FINAL_ANSWER else content[:2000],
+            tool_name=tname,
+            tool_input=tinput,
+            tool_output=toutput,
+            tool_zone="yellow" if tname in _HIGH_ZONE_TOOLS else "green",
+            tokens_used=0,
+            agent_name=agent_name,
+            title=title,
+            detail=detail,
+        )
+    except Exception as exc:
+        _live_logger.error(
+            "_persist_step_live: create failed task=%s event=%s err=%s",
+            task_id, event_type, exc, exc_info=True,
+        )
+        return None
+
+
 def _save_audit_steps(task, audit_log, step_offset=0):
+    """Bulk-save any audit_log entries not already persisted as TaskStep rows.
+
+    Safety-net reconciliation pass — under normal operation every entry is
+    already saved live as it happens (see _persist_step_live, called from
+    DjangoAgent._log), so this is typically a no-op. It still runs after
+    every agent run/resume so that anything which somehow wasn't captured
+    live (a DB hiccup mid-run, a nested sub-agent run with no task_id of its
+    own) still ends up persisted.
+    """
     from .models import TaskStep
 
     agent_name = task.agent.name if task.agent else "Agent"
@@ -2944,50 +3102,7 @@ def _save_audit_steps(task, audit_log, step_offset=0):
         if TaskStep.objects.filter(task=task, step_number=step_num).exists():
             continue
 
-        tname, tinput, toutput = "", None, None
-
-        if event_type == "llm_called":
-            stype = TaskStep.StepType.THOUGHT
-            content = "Thinking... (step {})".format(details.get("step", i + 1))
-
-        elif event_type == "tool_called":
-            stype = TaskStep.StepType.TOOL_CALL
-            tname = details.get("tool_name", "")
-            raw_in = details.get("tool_input", "")
-            content = "Calling tool: {}".format(tname)
-            try:
-                tinput = json.loads(raw_in) if isinstance(raw_in, str) else raw_in
-            except Exception:
-                tinput = {"raw": str(raw_in)}
-
-        elif event_type == "tool_result":
-            stype = TaskStep.StepType.TOOL_RESULT
-            tname = details.get("tool_name", "")
-            raw_out = details.get("result", "")
-            content = str(raw_out)[:500]
-            try:
-                toutput = (
-                    json.loads(raw_out)
-                    if isinstance(raw_out, str) and raw_out.strip().startswith("{")
-                    else {"result": str(raw_out)}
-                )
-            except Exception:
-                toutput = {"result": str(raw_out)}
-
-        elif event_type in ("task_completed", "task_resumed"):
-            stype = TaskStep.StepType.FINAL_ANSWER
-            content = str(details.get("result", details.get("task", "Completed")))
-
-        elif event_type == "approval_needed":
-            stype = TaskStep.StepType.TOOL_CALL
-            tname = details.get("tool_name", "")
-            content = "Approval required for: {}".format(tname)
-            tinput = {"raw": str(details.get("tool_input", ""))}
-
-        else:
-            stype = TaskStep.StepType.THOUGHT
-            content = "{}: {}".format(event_type, json.dumps(details)[:200])
-
+        stype, content, tname, tinput, toutput = _build_step_fields(event_type, details, i + 1)
         title, detail = _step_title_detail(event_type, tname, details)
 
         TaskStep.objects.create(
