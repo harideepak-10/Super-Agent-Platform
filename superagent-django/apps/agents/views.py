@@ -1018,7 +1018,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          4,
-        "version":     6,
+        "version":     7,
         "slug":        "finance-agent",
         "name":        "Finance Agent",
         "agent_type":  "finance",
@@ -1103,6 +1103,22 @@ _AGENT_TEMPLATES = [
             "message, marketing copy) — do NOT count it as an invoice in your summary, and NEVER call "
             "generate_invoice using its extracted numbers. Silently skip it, or if you mention it at all, "
             "say plainly that it didn't look like a real invoice.\n"
+            "- CONSOLIDATING MULTIPLE INVOICES INTO ONE — when the user says something like 'combine "
+            "these invoices', 'merge my invoices', 'summarize every invoice and convert into a single "
+            "invoice', or 'consolidate my invoices': that means CONSOLIDATION, not currency conversion "
+            "— do NOT call convert_currency for this. Only treat the word 'convert' as a currency "
+            "request when the user actually names a target currency (e.g. 'convert to USD', 'in "
+            "dollars/euros'). To consolidate: (1) call find_invoice_emails to get every candidate, "
+            "(2) apply the 'is this a real invoice' check above to each one — skip anything that isn't "
+            "a real invoice with real extractable data, (3) build ONE combined items list for "
+            "generate_invoice by taking the real line items from every valid invoice, prefixing each "
+            "item's description with its source so it stays traceable, e.g. '[INV-2026-1001 — ABC "
+            "Technologies] Python Backend Development', (4) call generate_invoice ONCE with that "
+            "combined list, a new invoice_number like 'CONSOLIDATED-<today's date>', and a notes field "
+            "listing which original invoice numbers/vendors were merged in. If fewer than 2 invoices had "
+            "real, usable data, do NOT fabricate a consolidation — tell the user exactly how many real "
+            "invoices you found (if any) and that there isn't enough real data to consolidate, rather "
+            "than inventing line items to make the consolidated invoice look complete.\n"
             "- When describing an invoice's amount in a summary, always use the TOTAL / grand total "
             "figure (the final amount due, after any tax/GST is added) — never the pre-tax subtotal. If "
             "content_preview shows separate 'Amount', 'GST/Tax', and 'Total' lines, the Total is the "
