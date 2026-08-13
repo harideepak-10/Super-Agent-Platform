@@ -3429,7 +3429,7 @@ def run_agent_task(self, task_id: str):
                 result = (
                     "⚠️ The AI model failed to execute any action for this task. "
                     "Please run the task again — if it keeps happening, "
-                    "the model may be overloaded (Groq)."
+                    "the model may be overloaded."
                 )
             # Recompute — the retry above may have changed `result` (a genuine
             # question this time, or the static failure fallback), and the
