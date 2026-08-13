@@ -1137,7 +1137,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          5,
-        "version":     1,
+        "version":     2,
         "slug":        "reporting-agent",
         "name":        "Reporting Agent",
         "agent_type":  "reporting",
@@ -1151,6 +1151,7 @@ _AGENT_TEMPLATES = [
             "Generates daily/weekly/monthly EOD (end-of-day) reports",
             "Task and agent activity reports, broken down by status and agent",
             "Email, meeting, and document/file activity summaries",
+            "Finds today's email attachments and organizes them into dated Google Drive folders by section",
             "Productivity summaries and execution history",
             "Success/failure statistics, tool usage, and token/cost usage reports",
             "Combined business reports covering everything at once",
@@ -1159,6 +1160,8 @@ _AGENT_TEMPLATES = [
         ],
         "tools": [
             "get_system_report_data",
+            "find_daily_attachments",
+            "organize_attachments_to_drive",
             "generate_content",
             "create_pdf",
             "create_docx",
@@ -1183,13 +1186,32 @@ _AGENT_TEMPLATES = [
             "raw tabular data (use export_csv for that instead).\n"
             "- create_pdf / create_docx / create_presentation — build the actual output file.\n"
             "- export_csv — for tabular/list-style data (execution history, tool usage counts, etc).\n"
-            "- upload_to_drive — save the created file to Google Drive so it has a shareable link.\n"
+            "- upload_to_drive — save a created REPORT file to Google Drive so it has a shareable link.\n"
+            "- find_daily_attachments — for 'find today's attachments' / 'organize my attachments' style "
+            "requests: finds a day's email attachments, downloads them, and classifies each into a "
+            "section (Invoices, Contracts, Reports, Images, Other). GREEN, no approval needed. Always "
+            "call this FIRST for any attachment-organizing request — never guess what attachments exist.\n"
+            "- organize_attachments_to_drive — the ONLY tool that actually creates the dated Drive "
+            "folder structure and uploads the attachments found by find_daily_attachments. Requires "
+            "approval (YELLOW) — ALWAYS pass the exact 'attachments' list find_daily_attachments "
+            "returned, never a list you made up. If find_daily_attachments found zero attachments, do "
+            "NOT call this tool at all — just tell the user honestly that there were none today.\n"
             "- current_time — resolve relative periods like 'today' or 'this week' correctly.\n\n"
+            "## Organizing today's attachments — follow this exact sequence\n\n"
+            "1. Call find_daily_attachments with the requested date (default 'today').\n"
+            "2. If attachment_count is 0, tell the user honestly — 'No attachments found for <date>' — "
+            "and stop. Do not call organize_attachments_to_drive with an empty or invented list.\n"
+            "3. If attachments were found, call organize_attachments_to_drive, passing the date and the "
+            "EXACT attachments list from step 1 unchanged (do not edit filenames, sections, or paths).\n"
+            "4. After it runs (post-approval), report the real result: how many were uploaded, into "
+            "which folder structure (Root/Date/Section), and list any that failed with their real error "
+            "— never claim something uploaded successfully unless the tool result says so.\n\n"
             "## Workflow — follow this order every time\n\n"
             "1. Read the FULL user request. Identify: which report(s) are being asked for (one or "
             "several of: EOD, task/agent activity, email report, meeting report, document/file report, "
             "productivity summary, execution history, success/failure stats, tool usage, token/cost "
-            "usage, or a combined business report), the time period, any agent/filter, and the "
+            "usage, attachment organizing, or a combined business report), the time period, any "
+            "agent/filter, and the "
             "requested output format (text answered in chat, or a PDF/DOCX/CSV/PPTX file — default to "
             "a plain text answer in chat if no file format was requested).\n"
             "2. Call get_system_report_data with the matching report_type and period (use 'combined' "
@@ -1229,7 +1251,7 @@ _AGENT_TEMPLATES = [
     },
     {
         "id":          10,
-        "version":     9,
+        "version":     10,
         "slug":        "orchestrator-agent",
         "name":        "Orchestrator Agent",
         "agent_type":  "orchestrator",
@@ -1277,7 +1299,10 @@ _AGENT_TEMPLATES = [
             "summary, execution history, success/failure statistics, tool usage, token/cost usage, or 'how "
             "many emails/meetings/tasks' style questions about the system's own activity — do NOT route these "
             "to run_document_agent even if a PDF/DOCX output is requested, since run_reporting_agent creates "
-            "its own output files using real system data.\n"
+            "its own output files using real system data. ALSO route here for 'find today's attachments and "
+            "organize/save them to Drive' style requests — run_reporting_agent finds and organizes email "
+            "attachments into dated Drive folders (this is NOT run_email_agent's job, since email agent "
+            "cannot create Drive folder structures, and NOT run_document_agent's job either).\n"
             "→ MULTIPLE agents sequentially for tasks spanning more than one domain "
             "(e.g. 'find my last invoice email and generate a Word summary' → run_finance_agent then run_document_agent; "
             "'summarise this email and schedule a follow-up meeting' → run_email_agent then run_calendar_agent)\n\n"

@@ -316,7 +316,7 @@ class ReadEmailTool(BaseTool):
             _cache_emails(self._workspace_id, result)
             return result
         return json.dumps({
-            "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account first.",
+            "error": "Gmail is not connected. Please go to Connected apps and connect your Gmail account first.",
             "emails": [], "count": 0,
         })
 
@@ -350,7 +350,7 @@ class SearchEmailTool(BaseTool):
         service = _build_gmail_service(self._workspace_id)
         if not service:
             return json.dumps({
-                "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account.",
+                "error": "Gmail is not connected. Please go to Connected apps and connect your Gmail account.",
                 "emails": [], "count": 0,
             })
         from core.tools.gmail.search_emails import SearchEmailsTool
@@ -515,7 +515,7 @@ class SendEmailTool(BaseTool):
 
         result = json.dumps({
             "status": "no_gmail",
-            "note": "Gmail not connected. Go to Integrations to connect Gmail first.",
+            "note": "Gmail not connected. Go to Connected apps to connect Gmail first.",
             "to": to,
             "subject": subject,
         })
@@ -712,7 +712,7 @@ class CalReadTool(BaseTool):
         pass
 
     def run(self, input_str: str) -> str:
-        return json.dumps({"note": "Google Calendar not connected. Connect in Integrations.", "events": []})
+        return json.dumps({"note": "Google Calendar not connected. Connect in Connected apps.", "events": []})
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -2052,7 +2052,7 @@ class ReadEmailAttachmentContentTool(BaseTool):
 
         service = _build_gmail_service(self._workspace_id)
         if not service:
-            return json.dumps({"error": "Gmail not connected. Go to Integrations to connect Gmail."})
+            return json.dumps({"error": "Gmail not connected. Go to Connected apps to connect Gmail."})
 
         # ── Step 1: find matching email IDs ───────────────────────────────────
         try:
@@ -2464,6 +2464,87 @@ class GetSystemReportDataTool(BaseTool):
         }}
 
 
+class FindDailyAttachmentsTool(BaseTool):
+    """Delegate to core FindDailyAttachmentsTool — Gmail attachment discovery/classification (GREEN)."""
+    name = "find_daily_attachments"
+    description = (
+        "Find a given day's email attachments, download them locally, and classify each into "
+        "a section (Invoices, Contracts, Reports, Images, Other) based on filename/subject "
+        "keywords. GREEN — read-only, no approval needed. "
+        "Input JSON: {\"date\": \"today\"(optional, default today; also accepts 'yesterday' or "
+        "YYYY-MM-DD), \"max_emails\": 50(optional)}. "
+        "Returns the real attachments list found — an empty list is a valid, honest result if "
+        "there were none. Pass that list to organize_attachments_to_drive to upload them."
+    )
+    zone = ToolZone.GREEN
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str: str) -> str:
+        from core.tools.reporting.find_daily_attachments import FindDailyAttachmentsTool as CoreTool
+        return CoreTool(
+            gmail_service=_build_gmail_service(self._workspace_id),
+            workspace_id=self._workspace_id,
+        ).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "date": {"type": "string"},
+                    "max_emails": {"type": "integer"},
+                },
+            },
+        }}
+
+
+class OrganizeAttachmentsToDriveTool(BaseTool):
+    """Delegate to core OrganizeAttachmentsToDriveTool — nested Drive folder creation + upload (YELLOW)."""
+    name = "organize_attachments_to_drive"
+    description = (
+        "Create a dated Google Drive folder, organized by section, and upload a batch of "
+        "already-downloaded attachments into it (Root/Date/Section structure). ALWAYS requires "
+        "human approval (YELLOW zone) — one approval for the whole batch, not one per file. "
+        "Input JSON: {\"date\": \"2026-08-13\", \"root_folder_name\": \"Attachments\"(optional), "
+        "\"attachments\": [the exact 'attachments' list returned by find_daily_attachments]}. "
+        "Always call find_daily_attachments FIRST and pass its real list here — never invent "
+        "attachment entries."
+    )
+    zone = ToolZone.YELLOW
+
+    def __init__(self, workspace_id=None):
+        self._workspace_id = workspace_id
+
+    def run(self, input_str: str) -> str:
+        from core.tools.reporting.organize_attachments_to_drive import OrganizeAttachmentsToDriveTool as CoreTool
+        return CoreTool(workspace_id=self._workspace_id).run(input_str)
+
+    def to_schema(self):
+        return {"type": "function", "function": {
+            "name": self.name, "description": self.description,
+            "parameters": {"type": "object",
+                "properties": {
+                    "date": {"type": "string"},
+                    "root_folder_name": {"type": "string"},
+                    "attachments": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "local_path": {"type": "string"},
+                                "filename": {"type": "string"},
+                                "section": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+                "required": ["date", "attachments"],
+            },
+        }}
+
+
 # =============================================================================
 # TOOL REGISTRY
 # =============================================================================
@@ -2561,6 +2642,8 @@ _TOOL_REGISTRY: dict = {
     "find_invoice_emails":            FindInvoiceEmailsTool,
     # Reporting tools
     "get_system_report_data":         GetSystemReportDataTool,
+    "find_daily_attachments":         FindDailyAttachmentsTool,
+    "organize_attachments_to_drive":  OrganizeAttachmentsToDriveTool,
 }
 
 _HIGH_ZONE_TOOLS = {
@@ -2569,6 +2652,7 @@ _HIGH_ZONE_TOOLS = {
     "create_meeting",
     "update_event", "delete_event", "respond_to_invite",
     "create_recurring_event", "block_focus_time", "send_meeting_summary",
+    "organize_attachments_to_drive",
 }
 
 # Phrases that signal the AI described an action and asked for confirmation
@@ -2598,7 +2682,7 @@ def _looks_like_confirmation_request(text: str) -> bool:
 # Keep these SPECIFIC — generic phrases like "not connected" can appear in email content
 _FAILURE_PHRASES_STRICT = [
     "gmail is not connected", "drive is not connected",
-    "please go to integrations", "token has expired", "authentication failed",
+    "please go to Connected apps", "token has expired", "authentication failed",
     # Calendar scheduling blocked
     "please choose a different time", "please select a different time",
     "please pick a different time", "already have an event at that time",
@@ -2930,6 +3014,8 @@ _TOOL_LABELS = {
     "find_invoice_emails":          ("Finding invoice emails",     "Searching Gmail for bills/receipts"),
     # Reporting
     "get_system_report_data":       ("Gathering report data",      "Querying system activity and stats"),
+    "find_daily_attachments":       ("Finding attachments",        "Scanning today's emails for attachments"),
+    "organize_attachments_to_drive": ("Organizing to Drive",       "Creating dated folders and uploading files"),
 }
 
 

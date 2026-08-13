@@ -107,7 +107,8 @@ SUBAGENT_COVERAGE_KEYWORDS: dict[str, list[str]] = {
         "report", "eod", "end of day", "productivity summary", "activity summary",
         "activity report", "success rate", "failure rate", "success/failure",
         "tool usage", "cost usage", "token usage", "execution history",
-        "statistics", "stats", "business report",
+        "statistics", "stats", "business report", "organize attachment",
+        "organize my attachment", "today's attachment", "sort attachment",
     ],
 }
 
