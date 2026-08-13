@@ -3431,18 +3431,55 @@ def run_agent_task(self, task_id: str):
                     "Please run the task again — if it keeps happening, "
                     "the model may be overloaded (Groq)."
                 )
+            # Recompute — the retry above may have changed `result` (a genuine
+            # question this time, or the static failure fallback), and the
+            # needs_input check below must see the CURRENT value, not the
+            # pre-retry one that was used only to decide whether to retry.
+            _looks_like_question = bool(result) and result.strip().endswith("?")
 
         result = _strip_nul(_inject_summary_result(result, react_agent.audit_log))
         _save_audit_steps(task, react_agent.audit_log)
         _save_document_deliverables(task, react_agent.audit_log)
         cost = react_agent.get_cost_summary()
+
+        # If the agent never called a tool and its final text reads as a genuine
+        # clarifying question, the request is missing required information.
+        # Per spec: ask ONE question, stop immediately — no retry, no more tool
+        # calls, no further final answers (the retry block above already skips
+        # retrying in exactly this case). This is NOT a failure — mark it
+        # needs_input and return without falling through to the FAILED/
+        # COMPLETED branches below at all.
+        _needs_input = (not _tool_called) and _looks_like_question
+        if _needs_input:
+            task.status = Task.Status.NEEDS_INPUT
+            task.result = result
+            task.completed_at = timezone.now()
+            task.steps_taken = cost["total_steps"]
+            task.cost_usd = cost["total_cost_eur"]
+            task.total_tokens = llm.total_tokens
+            task.save()
+            try:
+                from channels.layers import get_channel_layer
+                from asgiref.sync import async_to_sync
+                channel_layer = get_channel_layer()
+                if channel_layer:
+                    async_to_sync(channel_layer.group_send)("task_{}".format(task_id), {
+                        "type": "task_update",
+                        "event": "status_changed",
+                        "task_id": task_id,
+                        "status": "needs_input",
+                        "title": "Needs your input",
+                        "detail": result[:200] if result else "",
+                    })
+            except Exception as _ws_exc:
+                _logger.warning("run_agent_task: needs_input WS push failed task=%s err=%s", task_id, _ws_exc)
+            return {"status": "needs_input", "task_id": task_id}
+
         # Detect if task actually failed despite agent finishing
         _failed, _reason = _task_actually_failed(result or "", react_agent.audit_log)
         if not _failed and not _tool_called:
-            # The agent never called a tool — it only replied with text (e.g. asking
-            # for missing info like date/duration). That's not a real completion,
-            # so don't show it as "completed". Keep the agent's actual question as
-            # the visible result, but mark the task as needing your input.
+            # No tool called and the text doesn't read as a question either —
+            # a genuine stall, not a clarifying question. This IS a failure.
             _failed = True
             _reason = "Task needs more information from you before it can proceed."
         if not _failed:
