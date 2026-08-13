@@ -2968,6 +2968,33 @@ def _step_title_detail(event_type, tname, details):
     return event_type.replace("_", " ").title(), ""
 
 
+def _strip_nul(value):
+    """Recursively remove NUL (0x00) bytes from strings/dicts/lists.
+
+    Postgres text/json columns reject a literal NUL byte outright, raising
+    "ValueError: A string literal cannot contain NUL (0x00) characters" and
+    crashing the whole Celery task at .save() time — AFTER the agent has
+    already finished successfully, which is what makes it so confusing (the
+    task did everything right and still ends up FAILED/crashed).
+
+    NUL bytes typically leak in from a tool that read external file content
+    into what's supposed to be plain text — a corrupted/scanned PDF, OCR on
+    an image, a binary attachment mis-decoded as text, etc. Rather than
+    trying to prevent every possible source tool from ever producing one,
+    this sanitizes at the actual DB write boundaries: every TaskStep field
+    (via _build_step_fields, the single shared source for both the live and
+    bulk save paths) and task.result/error_message at the point they're
+    computed.
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "") if "\x00" in value else value
+    if isinstance(value, dict):
+        return {k: _strip_nul(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_nul(v) for v in value]
+    return value
+
+
 def _build_step_fields(event_type, details, fallback_step_index):
     """Return (stype, content, tname, tinput, toutput) for one audit_log entry.
 
@@ -3022,7 +3049,7 @@ def _build_step_fields(event_type, details, fallback_step_index):
         stype = TaskStep.StepType.THOUGHT
         content = "{}: {}".format(event_type, json.dumps(details)[:200])
 
-    return stype, content, tname, tinput, toutput
+    return stype, _strip_nul(content), tname, _strip_nul(tinput), _strip_nul(toutput)
 
 
 def _persist_step_live(task_id, agent_name, event_type, details):
@@ -3405,7 +3432,7 @@ def run_agent_task(self, task_id: str):
                     "the model may be overloaded (Groq)."
                 )
 
-        result = _inject_summary_result(result, react_agent.audit_log)
+        result = _strip_nul(_inject_summary_result(result, react_agent.audit_log))
         _save_audit_steps(task, react_agent.audit_log)
         _save_document_deliverables(task, react_agent.audit_log)
         cost = react_agent.get_cost_summary()
@@ -3676,7 +3703,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
             task=snapshot.get("task", task.prompt),
             initial_messages=messages,
         )
-        result = _inject_summary_result(result, react_agent.audit_log)
+        result = _strip_nul(_inject_summary_result(result, react_agent.audit_log))
         _save_audit_steps(task, react_agent.audit_log, step_offset=step_offset)
         cost = react_agent.get_cost_summary()
 
@@ -3686,7 +3713,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
         _failed, _reason = _task_actually_failed(result or "", react_agent.audit_log)
         if _resume_tool_failed and not _failed:
             _failed = True
-            _reason = "The approved action failed: {}".format(str(_tool_result)[:300])
+            _reason = _strip_nul("The approved action failed: {}".format(str(_tool_result)[:300]))
 
         if _failed:
             task.status = Task.Status.FAILED
@@ -3802,7 +3829,7 @@ def resume_agent_task(self, task_id: str, approval_id: str, approved: bool = Tru
                     task.total_tokens = (task.total_tokens or 0) + _orch_llm.total_tokens
                     cost["total_steps"] += _orch_cost["total_steps"]
                     cost["total_cost_eur"] += _orch_cost["total_cost_eur"]
-                    result = (result or "").rstrip() + "\n\n" + (_orch_result or "")
+                    result = _strip_nul((result or "").rstrip() + "\n\n" + (_orch_result or ""))
                     # Re-check failure against the COMBINED outcome — the
                     # continuation's own tool calls might fail even if the
                     # originally-approved action succeeded.
