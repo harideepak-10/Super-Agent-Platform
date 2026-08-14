@@ -66,10 +66,19 @@ if REDIS_URL != "memory://":
 # Celery Beat — scheduled tasks
 # ---------------------------------------------------------------------------
 from datetime import timedelta
+from celery.schedules import crontab
 CELERY_BEAT_SCHEDULE = {
     "aggregate-daily-costs": {
         "task": "apps.costs.tasks.aggregate_daily_costs",
         "schedule": timedelta(hours=1),   # runs every hour
+    },
+    "nightly-eod-attachment-sweep": {
+        "task": "apps.tasks.tasks.run_nightly_eod_attachment_sweep",
+        # CELERY_TIMEZONE is UTC (see TIME_ZONE above), but the app treats
+        # "today" as IST everywhere else — 18:00 UTC = 23:30 IST, i.e. just
+        # before midnight India time, so "today's" attachments means the
+        # same day a user would expect.
+        "schedule": crontab(hour=18, minute=0),
     },
 }
 

@@ -316,7 +316,7 @@ class ReadEmailTool(BaseTool):
             _cache_emails(self._workspace_id, result)
             return result
         return json.dumps({
-            "error": "Gmail is not connected. Please go to Connected apps and connect your Gmail account first.",
+            "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account first.",
             "emails": [], "count": 0,
         })
 
@@ -350,7 +350,7 @@ class SearchEmailTool(BaseTool):
         service = _build_gmail_service(self._workspace_id)
         if not service:
             return json.dumps({
-                "error": "Gmail is not connected. Please go to Connected apps and connect your Gmail account.",
+                "error": "Gmail is not connected. Please go to Integrations and connect your Gmail account.",
                 "emails": [], "count": 0,
             })
         from core.tools.gmail.search_emails import SearchEmailsTool
@@ -515,7 +515,7 @@ class SendEmailTool(BaseTool):
 
         result = json.dumps({
             "status": "no_gmail",
-            "note": "Gmail not connected. Go to Connected apps to connect Gmail first.",
+            "note": "Gmail not connected. Go to Integrations to connect Gmail first.",
             "to": to,
             "subject": subject,
         })
@@ -712,7 +712,7 @@ class CalReadTool(BaseTool):
         pass
 
     def run(self, input_str: str) -> str:
-        return json.dumps({"note": "Google Calendar not connected. Connect in Connected apps.", "events": []})
+        return json.dumps({"note": "Google Calendar not connected. Connect in Integrations.", "events": []})
 
     def to_schema(self):
         return {"type": "function", "function": {
@@ -2052,7 +2052,7 @@ class ReadEmailAttachmentContentTool(BaseTool):
 
         service = _build_gmail_service(self._workspace_id)
         if not service:
-            return json.dumps({"error": "Gmail not connected. Go to Connected apps to connect Gmail."})
+            return json.dumps({"error": "Gmail not connected. Go to Integrations to connect Gmail."})
 
         # ── Step 1: find matching email IDs ───────────────────────────────────
         try:
@@ -2682,7 +2682,7 @@ def _looks_like_confirmation_request(text: str) -> bool:
 # Keep these SPECIFIC — generic phrases like "not connected" can appear in email content
 _FAILURE_PHRASES_STRICT = [
     "gmail is not connected", "drive is not connected",
-    "please go to Connected apps", "token has expired", "authentication failed",
+    "please go to integrations", "token has expired", "authentication failed",
     # Calendar scheduling blocked
     "please choose a different time", "please select a different time",
     "please pick a different time", "already have an event at that time",
@@ -3343,6 +3343,287 @@ def send_scheduled_email(workspace_id: str, to: str, subject: str, body: str, cc
 
 
 # =============================================================================
+# CELERY TASK: run_nightly_eod_attachment_sweep  (Celery Beat — scheduled,
+# see superagent/settings/production.py CELERY_BEAT_SCHEDULE)
+# =============================================================================
+
+def _nightly_get_drive_service(workspace_id):
+    """Build a Drive service for a workspace. Returns None if not connected.
+
+    Self-contained (not imported from core/tools/reporting/organize_attachments_to_drive.py)
+    so this scheduled job has no dependency on that tool's internals — it
+    mirrors the same pattern used there and in core/tools/document/upload_to_drive.py.
+    """
+    try:
+        from apps.integrations.models import Integration
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        integration = Integration.objects.filter(
+            workspace_id=workspace_id,
+            provider=Integration.Provider.GOOGLE_DRIVE,
+            status=Integration.Status.ACTIVE,
+        ).first()
+        if not integration or not integration.access_token:
+            return None
+
+        creds = Credentials(
+            token=integration.access_token,
+            refresh_token=integration.refresh_token,
+            client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+            client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+            token_uri="https://oauth2.googleapis.com/token",
+        )
+        return build("drive", "v3", credentials=creds)
+    except Exception as exc:
+        _logger.warning("_nightly_get_drive_service: workspace=%s error=%s", workspace_id, exc)
+        return None
+
+
+def _nightly_get_or_create_folder(service, folder_name, parent_id):
+    """Return a Drive folder ID under the given parent, creating it if needed.
+
+    Always parent-scoped (never a global name search) — required for correct
+    nesting, since e.g. two different date folders can each legitimately
+    contain their own "Invoices" subfolder with the same name.
+    """
+    try:
+        safe_name = folder_name.replace("'", "\\'")
+        query = (
+            f"name='{safe_name}' and mimeType='application/vnd.google-apps.folder' "
+            f"and trashed=false and '{parent_id}' in parents"
+            if parent_id else
+            f"name='{safe_name}' and mimeType='application/vnd.google-apps.folder' "
+            f"and trashed=false and 'root' in parents"
+        )
+        results = service.files().list(q=query, fields="files(id, name)").execute()
+        files = results.get("files", [])
+        if files:
+            return files[0]["id"]
+
+        metadata = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
+        if parent_id:
+            metadata["parents"] = [parent_id]
+        folder = service.files().create(body=metadata, fields="id").execute()
+        return folder["id"]
+    except Exception as exc:
+        _logger.warning("_nightly_get_or_create_folder: name=%s parent=%s error=%s", folder_name, parent_id, exc)
+        return None
+
+
+def _nightly_file_exists_in_folder(service, filename, parent_id):
+    """De-duplication check — True if a file with this exact name already
+    exists directly inside the given Drive folder. Checked immediately
+    before every upload, so this job is safe to re-run (a manual re-trigger,
+    or Beat firing twice) without creating duplicate files."""
+    try:
+        safe_name = filename.replace("'", "\\'")
+        query = f"name='{safe_name}' and trashed=false and '{parent_id}' in parents"
+        results = service.files().list(q=query, fields="files(id)").execute()
+        return bool(results.get("files", []))
+    except Exception as exc:
+        _logger.warning("_nightly_file_exists_in_folder: name=%s parent=%s error=%s", filename, parent_id, exc)
+        # If the dedup check itself fails, err on the side of NOT uploading a
+        # possible duplicate — treat it as "exists" and skip. A missed upload
+        # can be caught on the next run; a duplicate file cannot be un-created.
+        return True
+
+
+_NIGHTLY_MIME_MAP = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".csv": "text/csv",
+    ".txt": "text/plain",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".gif": "image/gif", ".webp": "image/webp",
+}
+
+
+def _nightly_upload_file(service, file_path, filename, parent_id):
+    from googleapiclient.http import MediaFileUpload
+    ext = os.path.splitext(filename)[1].lower()
+    mime_type = _NIGHTLY_MIME_MAP.get(ext, "application/octet-stream")
+    media = MediaFileUpload(file_path, mimetype=mime_type, resumable=True)
+    uploaded = service.files().create(
+        body={"name": filename, "parents": [parent_id]},
+        media_body=media,
+        fields="id, webViewLink",
+    ).execute()
+    service.permissions().create(fileId=uploaded["id"], body={"type": "anyone", "role": "reader"}).execute()
+    return uploaded.get("webViewLink", f"https://drive.google.com/file/d/{uploaded['id']}/view")
+
+
+@shared_task(bind=True, name="apps.tasks.tasks.run_nightly_eod_attachment_sweep", max_retries=0)
+def run_nightly_eod_attachment_sweep(self, date: str | None = None):
+    """Nightly EOD job — scheduled via Celery Beat (production.py CELERY_BEAT_SCHEDULE).
+
+    For every workspace with BOTH Gmail and Drive actively connected: finds
+    today's (or `date`'s) email attachments and uploads them into Google
+    Drive under Attachments/<date>/<section>/.
+
+    Runs fully automatically — NO human approval, unlike the interactive
+    organize_attachments_to_drive tool (YELLOW/approval-gated, for
+    user-initiated chat tasks). This is a background job, so it bypasses the
+    agent/approval layer entirely and calls the discovery tool and a
+    self-contained dedup-aware upload routine directly.
+
+    De-duplication: before uploading each file, checks whether a file with
+    the same name already exists in the EXACT destination folder
+    (Attachments/date/section) via _nightly_file_exists_in_folder, and skips
+    it if so — safe to re-run without ever creating duplicate files.
+
+    Returns a summary dict with "status": "completed" on success (per
+    workspace/file counts included) — there is no separate Task DB row for
+    this job since it isn't tied to any one user; the return value and the
+    EOD_SWEEP_COMPLETED log line are the record of completion.
+    """
+    date_label_requested = date or "today"
+    root_folder_name = "Attachments"
+
+    try:
+        from apps.integrations.models import Integration
+        from core.tools.reporting.find_daily_attachments import FindDailyAttachmentsTool
+    except Exception as exc:
+        _logger.error("run_nightly_eod_attachment_sweep: import failed: %s", exc)
+        return {"status": "failed", "error": str(exc)}
+
+    gmail_ws_ids = set(
+        Integration.objects.filter(
+            provider=Integration.Provider.GMAIL, status=Integration.Status.ACTIVE,
+        ).values_list("workspace_id", flat=True)
+    )
+    drive_ws_ids = set(
+        Integration.objects.filter(
+            provider=Integration.Provider.GOOGLE_DRIVE, status=Integration.Status.ACTIVE,
+        ).values_list("workspace_id", flat=True)
+    )
+    eligible_ws_ids = gmail_ws_ids & drive_ws_ids
+
+    summary = {
+        "job": "run_nightly_eod_attachment_sweep",
+        "date_requested": date_label_requested,
+        "workspaces_eligible": len(eligible_ws_ids),
+        "workspaces_processed": 0,
+        "workspaces_skipped": 0,
+        "total_attachments_found": 0,
+        "total_uploaded": 0,
+        "total_duplicates_skipped": 0,
+        "total_failed": 0,
+        "per_workspace": [],
+        "status": "running",
+    }
+
+    for ws_id in eligible_ws_ids:
+        ws_result = {
+            "workspace_id": str(ws_id),
+            "attachments_found": 0,
+            "uploaded": 0,
+            "duplicates_skipped": 0,
+            "failed": 0,
+            "errors": [],
+        }
+        try:
+            gmail_service = _build_gmail_service(ws_id)
+            if not gmail_service:
+                ws_result["errors"].append("Gmail service could not be built despite an active integration.")
+                summary["workspaces_skipped"] += 1
+                summary["per_workspace"].append(ws_result)
+                continue
+
+            find_tool = FindDailyAttachmentsTool(gmail_service=gmail_service, workspace_id=ws_id)
+            find_result = json.loads(find_tool.run(json.dumps({"date": date_label_requested})))
+
+            if find_result.get("error"):
+                ws_result["errors"].append("find_daily_attachments: {}".format(find_result["error"]))
+                summary["workspaces_skipped"] += 1
+                summary["per_workspace"].append(ws_result)
+                continue
+
+            attachments = find_result.get("attachments", [])
+            date_label = find_result.get("date", date_label_requested)
+            ws_result["attachments_found"] = len(attachments)
+            summary["total_attachments_found"] += len(attachments)
+
+            if not attachments:
+                summary["workspaces_processed"] += 1
+                summary["per_workspace"].append(ws_result)
+                continue
+
+            drive_service = _nightly_get_drive_service(ws_id)
+            if not drive_service:
+                ws_result["errors"].append("Google Drive not connected.")
+                summary["workspaces_skipped"] += 1
+                summary["per_workspace"].append(ws_result)
+                continue
+
+            root_id = _nightly_get_or_create_folder(drive_service, root_folder_name, parent_id=None)
+            date_id = _nightly_get_or_create_folder(drive_service, date_label, parent_id=root_id) if root_id else None
+            if not root_id or not date_id:
+                ws_result["errors"].append("Could not create root/date Drive folder.")
+                summary["workspaces_skipped"] += 1
+                summary["per_workspace"].append(ws_result)
+                continue
+
+            section_folder_ids = {}
+            for att in attachments:
+                local_path = att.get("local_path", "")
+                filename = att.get("filename") or (os.path.basename(local_path) if local_path else "")
+                section = att.get("section") or "Other"
+
+                if not local_path or not os.path.exists(local_path):
+                    ws_result["failed"] += 1
+                    ws_result["errors"].append("{}: local file missing".format(filename))
+                    continue
+
+                try:
+                    if section not in section_folder_ids:
+                        section_id = _nightly_get_or_create_folder(drive_service, section, parent_id=date_id)
+                        if not section_id:
+                            ws_result["failed"] += 1
+                            ws_result["errors"].append("{}: could not create section folder '{}'".format(filename, section))
+                            continue
+                        section_folder_ids[section] = section_id
+                    section_id = section_folder_ids[section]
+
+                    if _nightly_file_exists_in_folder(drive_service, filename, section_id):
+                        ws_result["duplicates_skipped"] += 1
+                        summary["total_duplicates_skipped"] += 1
+                    else:
+                        _nightly_upload_file(drive_service, local_path, filename, section_id)
+                        ws_result["uploaded"] += 1
+                        summary["total_uploaded"] += 1
+
+                    try:
+                        os.remove(local_path)
+                    except OSError:
+                        pass
+                except Exception as exc:
+                    ws_result["failed"] += 1
+                    ws_result["errors"].append("{}: {}".format(filename, exc))
+
+            summary["total_failed"] += ws_result["failed"]
+            summary["workspaces_processed"] += 1
+
+        except Exception as exc:
+            _logger.exception("run_nightly_eod_attachment_sweep: workspace=%s failed", ws_id)
+            ws_result["errors"].append("Unexpected error: {}".format(exc))
+            summary["workspaces_skipped"] += 1
+
+        summary["per_workspace"].append(ws_result)
+
+    summary["status"] = "completed"
+    _logger.info(
+        "EOD_SWEEP_COMPLETED date=%s workspaces_processed=%d uploaded=%d duplicates_skipped=%d failed=%d",
+        date_label_requested, summary["workspaces_processed"], summary["total_uploaded"],
+        summary["total_duplicates_skipped"], summary["total_failed"],
+    )
+    return summary
+
+
+# =============================================================================
 # CONVERSATION HISTORY BUILDER
 # =============================================================================
 
@@ -3515,7 +3796,7 @@ def run_agent_task(self, task_id: str):
                 result = (
                     "⚠️ The AI model failed to execute any action for this task. "
                     "Please run the task again — if it keeps happening, "
-                    "the model may be overloaded."
+                    "the model may be overloaded (Groq)."
                 )
             # Recompute — the retry above may have changed `result` (a genuine
             # question this time, or the static failure fallback), and the

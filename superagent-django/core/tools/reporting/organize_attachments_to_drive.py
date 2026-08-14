@@ -58,9 +58,14 @@ class OrganizeAttachmentsToDriveTool(BaseTool):
             "date": "2026-08-13",
             "root_folder_name": "Attachments",
             "uploaded_count": 4,
+            "duplicates_skipped_count": 1,
             "failed_count": 0,
             "uploaded": [
                 {"filename": "...", "section": "Invoices", "drive_url": "...", "folder_path": "Attachments/2026-08-13/Invoices"},
+                ...
+            ],
+            "duplicates_skipped": [
+                {"filename": "...", "section": "Invoices", "folder_path": "Attachments/2026-08-13/Invoices"},
                 ...
             ],
             "failed": [ {"filename": "...", "error": "..."} , ... ]
@@ -70,13 +75,15 @@ class OrganizeAttachmentsToDriveTool(BaseTool):
     name: str = "organize_attachments_to_drive"
     description: str = (
         "Create a dated Google Drive folder, organized by section, and upload a batch of "
-        "already-downloaded attachments into it (Root/Date/Section structure). ALWAYS requires "
+        "already-downloaded attachments into it (Root/Date/Section structure). Automatically "
+        "skips any file that already exists (by exact name) in its destination folder — safe "
+        "to call again on the same day without creating duplicates. ALWAYS requires "
         "human approval (YELLOW zone) — this is one approval for the whole batch, not one per "
         "file. Input JSON: {\"date\": \"2026-08-13\", \"root_folder_name\": \"Attachments\"(optional), "
         "\"attachments\": [the exact 'attachments' list returned by find_daily_attachments]}. "
         "Always call find_daily_attachments FIRST and pass its real attachments list here — "
         "never invent attachment entries. Returns the real Drive links for every file actually "
-        "uploaded, and honestly reports any that failed."
+        "uploaded, which ones were skipped as duplicates, and honestly reports any that failed."
     )
     zone: ToolZone = ToolZone.YELLOW
 
@@ -119,6 +126,7 @@ class OrganizeAttachmentsToDriveTool(BaseTool):
 
         section_folder_ids: dict[str, str] = {}
         uploaded = []
+        duplicates_skipped = []
         failed = []
 
         for att in attachments:
@@ -138,6 +146,18 @@ class OrganizeAttachmentsToDriveTool(BaseTool):
                         continue
                     section_folder_ids[section] = section_id
                 section_id = section_folder_ids[section]
+
+                if self._file_exists_in_folder(drive_service, filename, section_id):
+                    duplicates_skipped.append({
+                        "filename": filename,
+                        "section": section,
+                        "folder_path": f"{root_folder_name}/{date_label}/{section}",
+                    })
+                    try:
+                        os.remove(local_path)
+                    except OSError:
+                        pass
+                    continue
 
                 drive_url, file_id = self._upload_one(drive_service, local_path, filename, section_id)
                 uploaded.append({
@@ -159,8 +179,10 @@ class OrganizeAttachmentsToDriveTool(BaseTool):
             "date": date_label,
             "root_folder_name": root_folder_name,
             "uploaded_count": len(uploaded),
+            "duplicates_skipped_count": len(duplicates_skipped),
             "failed_count": len(failed),
             "uploaded": uploaded,
+            "duplicates_skipped": duplicates_skipped,
             "failed": failed,
         }, ensure_ascii=False)
 
@@ -232,6 +254,29 @@ class OrganizeAttachmentsToDriveTool(BaseTool):
         except Exception as exc:
             logger.warning("Could not get/create folder '%s' under parent=%s: %s", folder_name, parent_id, exc)
             return None
+
+    @staticmethod
+    def _file_exists_in_folder(service, filename: str, parent_id: str) -> bool:
+        """De-duplication check — True if a file with this exact name already
+        exists directly inside the given Drive folder. Checked immediately
+        before every upload, so re-running this tool (e.g. the user asks
+        again, or retries after a partial failure) never creates duplicates.
+        Mirrors _nightly_file_exists_in_folder in apps/tasks/tasks.py, used
+        by the scheduled nightly sweep — kept as a separate copy so this
+        tool has no dependency on that job's internals, same reasoning as
+        why the nightly job doesn't import this file's upload logic either.
+        """
+        try:
+            safe_name = filename.replace("'", "\\'")
+            query = f"name='{safe_name}' and trashed=false and '{parent_id}' in parents"
+            results = service.files().list(q=query, fields="files(id)").execute()
+            return bool(results.get("files", []))
+        except Exception as exc:
+            logger.warning("Could not check for duplicate '%s' in folder=%s: %s", filename, parent_id, exc)
+            # If the check itself fails, err on the side of NOT uploading a
+            # possible duplicate — a missed upload is caught next time; a
+            # duplicate file cannot be un-created.
+            return True
 
     @staticmethod
     def _upload_one(service, file_path: str, filename: str, parent_id: str):
