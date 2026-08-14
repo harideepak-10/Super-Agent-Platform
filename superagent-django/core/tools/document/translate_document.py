@@ -84,36 +84,74 @@ class TranslateDocumentTool(BaseTool):
         with open(file_path, encoding="utf-8", errors="ignore") as f:
             return f.read()
 
-    def _translate_text(self, text: str, target_lang: str, source_lang: str) -> str:
-        """Try Google Translate API; fall back to chunked translation prompt."""
-        try:
-            from google.cloud import translate_v2 as translate
-            client = translate.Client()
-            result = client.translate(
-                text,
-                target_language=target_lang,
-                source_language=source_lang or None,
-            )
-            return result["translatedText"]
-        except Exception:
-            pass
+def _translate_text(self, text: str, target_lang: str, source_lang: str) -> str:
+    errors = []
 
-        # Fallback: use deep-translator (pip install deep-translator) if available
-        try:
-            from deep_translator import GoogleTranslator
-            # Chunk into 4500-char pieces (Google Translate limit)
-            chunks     = [text[i:i + 4500] for i in range(0, len(text), 4500)]
-            translator = GoogleTranslator(source=source_lang or "auto", target=target_lang)
-            translated = [translator.translate(chunk) for chunk in chunks]
-            return "\n".join(t or "" for t in translated)
-        except Exception:
-            pass
+    # Google Cloud Translate
+    try:
+        from google.cloud import translate_v2 as translate
 
-        # Last resort: return note
-        return (
-            f"[Translation to {_LANG_NAMES.get(target_lang, target_lang)} not available. "
-            f"Install deep-translator: pip install deep-translator]\n\n{text[:500]}..."
+        client = translate.Client()
+
+        result = client.translate(
+            text,
+            target_language=target_lang,
+            source_language=source_lang if source_lang else None,
         )
+
+        translated = result.get("translatedText")
+
+        if translated:
+            logger.info(
+                "Google Cloud translation successful: %s -> %s",
+                source_lang,
+                target_lang,
+            )
+            return translated
+
+    except Exception as exc:
+        errors.append(f"Google Cloud: {exc}")
+        logger.exception("Google Cloud Translate failed")
+
+    # deep-translator fallback
+    try:
+        from deep_translator import GoogleTranslator
+
+        chunks = [
+            text[i:i + 4500]
+            for i in range(0, len(text), 4500)
+        ]
+
+        translator = GoogleTranslator(
+            source=source_lang or "auto",
+            target=target_lang,
+        )
+
+        translated_chunks = []
+
+        for chunk in chunks:
+            translated_chunks.append(
+                translator.translate(chunk) or ""
+            )
+
+        translated = "\n".join(translated_chunks)
+
+        if translated.strip():
+            logger.info(
+                "deep-translator successful: %s -> %s",
+                source_lang,
+                target_lang,
+            )
+            return translated
+
+    except Exception as exc:
+        errors.append(f"deep-translator: {exc}")
+        logger.exception("deep-translator failed")
+
+    raise RuntimeError(
+        "Translation failed. "
+        + " | ".join(errors)
+    )
 
     def _save_output(self, text: str, file_path: str, target_lang: str, fmt: str) -> str:
         base     = os.path.splitext(os.path.basename(file_path))[0]
@@ -146,7 +184,7 @@ class TranslateDocumentTool(BaseTool):
 
         file_path   = data.get("file_path", "")
         target_lang = data.get("target_lang", "")
-        source_lang = data.get("source_lang", "en")
+        source_lang = data.get("source_lang") or None
         out_format  = data.get("output_format", "docx")
 
         if not file_path:
