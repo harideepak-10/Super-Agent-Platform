@@ -19,7 +19,7 @@ from core.tools.base_tool import BaseTool, ToolZone
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_LIMIT       = 1
+_DEFAULT_LIMIT       = 5
 _DEFAULT_FILTER      = "-in:spam -in:trash"
 _BODY_PREVIEW_CHARS  = 200
 _FULL_BODY_MAX_CHARS = 600
@@ -172,7 +172,8 @@ class ReadEmailsTool(BaseTool):
         "For date requests pass 'date' with exactly what the user typed — any format works. "
         "For date ranges also pass 'date_to'. "
         "For non-date queries use 'filter'. "
-        "Default limit is 1 unless user specifies more. "
+        "ALWAYS pass 'limit' explicitly when the user gives a number ('last 5 emails' → limit=5) — "
+        "never omit it. Default limit if genuinely no number was given is 5. "
         "Returns {\"emails\": [...], \"count\": N}."
     )
     zone: ToolZone = ToolZone.GREEN
