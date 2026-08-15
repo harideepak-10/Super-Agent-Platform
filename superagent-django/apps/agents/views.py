@@ -601,7 +601,7 @@ _SYNC_FIELDS = ["system_prompt", "tools", "llm_model", "max_steps", "max_cost_us
 _AGENT_TEMPLATES = [
     {
         "id":          1,
-        "version":     40,
+        "version":     41,
         "slug":        "email-agent",
         "name":        "Email Agent",
         "agent_type":  "email",
@@ -646,11 +646,19 @@ _AGENT_TEMPLATES = [
             "  plural 'emails' with no number → limit=5\n"
             "  Maximum limit allowed: 50 (if user asks for more than 50, use 50 and tell them)\n\n"
             "  1. Call read_email(limit=<limit>, filter='-in:spam -in:trash')\n"
-            "  2. For EACH email (never skip any):\n"
+            "  2. The result contains a list of exactly <limit> emails (fewer only if the mailbox genuinely "
+            "has fewer). You MUST write one summary block for EVERY SINGLE email in that list — not just "
+            "the first or most recent one. If limit=5, your response has EXACTLY 5 'Email N' blocks, "
+            "numbered Email 1 through Email 5, one per email in the result, in the same order.\n"
             "     - Summarize body if it has content\n"
             "     - If has_attachments is true → call read_email_attachment_content and summarize\n"
             "     - Do BOTH if body AND attachments\n"
             "  3. Write summary DIRECTLY — do NOT call summarize_emails\n"
+            "  4. BEFORE sending your response, COUNT your 'Email N' blocks. If the count is less than "
+            "<limit> (and the mailbox actually had that many), you stopped early — go back and add the "
+            "missing ones from the read_email result before replying. Stopping after only the first/latest "
+            "email when the user asked for N is WRONG and INCOMPLETE, even if that one email's summary is "
+            "itself accurate.\n"
             "  STOP. Do NOT call send_email after summarizing.\n\n"
 
             "ALWAYS format your email summary EXACTLY like this — no deviations:\n\n"
