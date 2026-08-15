@@ -240,15 +240,35 @@ def _mutating_tool_ran(audit_log: list) -> bool:
 
 
 def _inject_summary_result(result: str, audit_log: list) -> str:
-    """Replace an empty/wrong LLM answer with the tool-produced summary."""
+    """Replace an empty/inadequate LLM answer with the tool-produced summary.
+
+    Only kicks in when the model's own final answer is missing or clearly
+    too short to be a real response — NOT just because a summary-producing
+    tool happened to run somewhere in the task. The previous version only
+    skipped the override if the tool's formatted_summary's first line was
+    literally quoted in the model's answer — but the model paraphrases
+    rather than copies, so that check almost never protected a real,
+    independently-written answer. That let a substantial, correct
+    multi-email summary get silently replaced by a single email's
+    attachment summary whenever read_email_attachment_content happened to
+    run as one sub-step of a broader task (e.g. "summarize my last 5
+    emails" where only one of the five had an attachment).
+    """
     summary = _extract_summary_deliverable(audit_log)
     if not summary:
         return result
     if _mutating_tool_ran(audit_log):
         return result
-    # Don't overwrite if the model already included the summary's first line
+    stripped = (result or "").strip()
+    # Trust the model's own answer once it's substantial — a real answer to
+    # even a simple request is normally well over this length. Only rescue
+    # answers that are missing or clearly too short to be genuine.
+    if len(stripped) >= 80:
+        return result
+    # Keep the original signal too: if the model already quoted the tool's
+    # own summary verbatim, it's already using it correctly.
     first_line = summary.split("\n")[0].strip()
-    if first_line and first_line in (result or ""):
+    if first_line and first_line in stripped:
         return result
     return summary
 
